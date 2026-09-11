@@ -1,0 +1,113 @@
+// the meter log: which rows count, how blocks are keyed, what stale means.
+import { mkdtempSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { describe, expect, it } from 'vitest'
+import { blocks, currentBlock, monotonic, readSamples, type Sample } from './samples'
+
+function logWith(rows: unknown[]): string {
+  const dir = mkdtempSync(join(tmpdir(), 'tally-samples-'))
+  const path = join(dir, 'limits.jsonl')
+  writeFileSync(path, rows.map((row) => JSON.stringify(row)).join('\n') + '\n')
+  return path
+}
+
+function apiRow(t: number, pct: number, resetsAt: number, extra: Record<string, unknown> = {}) {
+  return {
+    t,
+    src: 'api',
+    limits: { five_hour: { used_percentage: pct, resets_at: resetsAt }, seven_day: { used_percentage: 40, resets_at: resetsAt + 86400 } },
+    scoped: [{ model: 'Fable', percent: 12, resets_at: resetsAt + 86400 }],
+    ...extra,
+  }
+}
+
+describe('readSamples', () => {
+  it('drops everything that is not an api row', () => {
+    const path = logWith([
+      apiRow(100, 10, 18000),
+      // the statusline hook writes no `src`; an idle tab republishes a stale number
+      { t: 120, limits: { five_hour: { used_percentage: 3, resets_at: 18000 } } },
+      { t: 130, src: 'statusline', limits: { five_hour: { used_percentage: 99, resets_at: 18000 } } },
+    ])
+    const samples = readSamples(path)
+    expect(samples.map((s) => s.pct)).toEqual([10])
+  })
+
+  it('skips a row with no five-hour reset', () => {
+    const path = logWith([{ t: 1, src: 'api', limits: { seven_day: { used_percentage: 4, resets_at: 9 } } }])
+    expect(readSamples(path)).toEqual([])
+  })
+
+  it('keeps unmodelled fields instead of dropping them', () => {
+    const path = logWith([apiRow(100, 10, 18000, { boost: { multiplier: 1.5 } })])
+    expect(readSamples(path)[0]!.unknown).toEqual({ boost: { multiplier: 1.5 } })
+  })
+
+  it('carries the scoped meter and the paid overflow', () => {
+    const path = logWith([apiRow(100, 10, 18000, { extra: { used: 46, limit: 100, currency: 'EUR' } })])
+    const sample = readSamples(path)[0]!
+    expect(sample.scoped[0]).toEqual({ model: 'Fable', pct: 12, resetsAt: 18000 + 86400 })
+    expect(sample.extra).toEqual({ used: 46, limit: 100, currency: 'EUR' })
+  })
+
+  it('survives a truncated last line', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'tally-samples-'))
+    const path = join(dir, 'limits.jsonl')
+    writeFileSync(path, `${JSON.stringify(apiRow(100, 10, 18000))}\n{"t":101,"src":"api","lim`)
+    expect(readSamples(path)).toHaveLength(1)
+  })
+
+  it('returns nothing when the log is missing', () => {
+    expect(readSamples('/nope/limits.jsonl')).toEqual([])
+  })
+})
+
+describe('blocks', () => {
+  it('keys on the reset minute, so a one-second jitter stays one block', () => {
+    const path = logWith([apiRow(100, 10, 18_000), apiRow(400, 12, 17_999), apiRow(700, 14, 18_000)])
+    const grouped = blocks(readSamples(path))
+    expect(grouped).toHaveLength(1)
+    expect(grouped[0]!.samples).toHaveLength(3)
+    expect(grouped[0]!.start).toBe(18_000 - 5 * 3600)
+  })
+
+  it('splits two different resets', () => {
+    const path = logWith([apiRow(100, 90, 18_000), apiRow(400, 5, 36_000)])
+    expect(blocks(readSamples(path)).map((b) => b.resetKey)).toEqual([18_000, 36_000])
+  })
+})
+
+describe('monotonic', () => {
+  it('drops a reading that went down', () => {
+    const rows = [10, 12, 11, 15, 14, 15].map((pct, i) => ({ t: i, pct }) as Sample)
+    expect(monotonic(rows).map((r) => r.pct)).toEqual([10, 12, 15, 15])
+  })
+})
+
+describe('currentBlock', () => {
+  const path = logWith([apiRow(1000, 10, 18_000), apiRow(2000, 9, 18_000), apiRow(3000, 30, 18_000)])
+  const current = currentBlock(blocks(readSamples(path)), 4000)!
+
+  it('measures the delta over the monotonic span only', () => {
+    expect(current.delta).toBe(20)
+    expect(current.first.t).toBe(1000)
+    expect(current.last.t).toBe(3000)
+    expect(current.maxGap).toBe(2000)
+  })
+
+  it('reports how stale the reading is', () => {
+    expect(current.sampleAge).toBe(1000)
+    expect(current.expired).toBe(false)
+    expect(currentBlock(blocks(readSamples(path)), 20_000)!.expired).toBe(true)
+  })
+
+  it('flags saturation, because movement after 100% is censored', () => {
+    const saturated = logWith([apiRow(1000, 80, 18_000), apiRow(2000, 100, 18_000)])
+    expect(currentBlock(blocks(readSamples(saturated)), 2500)!.saturated).toBe(true)
+  })
+
+  it('has nothing to say about an empty log', () => {
+    expect(currentBlock([], 10)).toBeNull()
+  })
+})
