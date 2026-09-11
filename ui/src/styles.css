@@ -1,0 +1,433 @@
+/* mock v4's palette as tokens; dark is the same page with the values swapped */
+:root {
+  --bg: #f7f6f3;
+  --fg: #1c1b19;
+  --soft: #3a3835;
+  --muted: #6f6c67;
+  --faint: #8a8783;
+  --dim: #b3ada4;
+  --line: #e6e3dd;
+  --line-soft: #eeebe5;
+  --track: #ebe8e2;
+  --accent: #d94f2a;
+  --good: #2a7a4f;
+  --lane: #b5836a;
+  --strip-label: #fff;
+}
+
+[data-theme='dark'] {
+  --bg: #17161a;
+  --fg: #eceae5;
+  --soft: #cbc7c0;
+  --muted: #9c978f;
+  --faint: #837e76;
+  --dim: #5d5851;
+  --line: #2c2a2f;
+  --line-soft: #242228;
+  --track: #2c2a2f;
+  --accent: #e8683f;
+  --good: #5bb98a;
+  --lane: #c28e6f;
+  --strip-label: #17161a;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  font: 15px/1.45 Inter, system-ui, sans-serif;
+  color: var(--fg);
+  background: var(--bg);
+  margin: 0;
+  padding: 32px 40px;
+  max-width: 1400px;
+}
+
+a {
+  color: inherit;
+}
+
+.top {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  margin-bottom: 4px;
+}
+
+h1 {
+  font-size: 18px;
+  font-weight: 600;
+  margin: 0;
+}
+
+h2 {
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  margin: 0 0 10px;
+}
+
+.toggle {
+  margin-left: auto;
+  font: inherit;
+  font-size: 13px;
+  color: var(--muted);
+  background: none;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 3px 10px;
+  cursor: pointer;
+}
+
+.toggle:hover {
+  color: var(--fg);
+}
+
+.legend {
+  color: var(--faint);
+  font-size: 13px;
+  margin-bottom: 28px;
+}
+
+.legend b {
+  color: var(--fg);
+  font-weight: 500;
+}
+
+.warn {
+  color: var(--accent);
+  font-size: 13px;
+  margin: 0 0 14px;
+}
+
+/* hero */
+.hero {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 36px;
+  align-items: end;
+  margin-bottom: 10px;
+}
+
+.big {
+  font-size: 104px;
+  font-weight: 600;
+  line-height: 0.85;
+  letter-spacing: -0.035em;
+}
+
+.big small {
+  font-size: 14px;
+  font-weight: 400;
+  letter-spacing: 0;
+  color: var(--muted);
+  display: block;
+  margin-top: 10px;
+}
+
+.verdict {
+  font-size: 22px;
+  font-weight: 500;
+  padding-bottom: 12px;
+}
+
+.verdict b {
+  color: var(--good);
+  font-weight: 600;
+}
+
+.verdict b.over {
+  color: var(--accent);
+}
+
+.verdict span {
+  display: block;
+  font-size: 13px;
+  color: var(--faint);
+  font-weight: 400;
+  margin-top: 2px;
+}
+
+.wk {
+  display: grid;
+  grid-template-columns: auto 120px 44px auto;
+  gap: 0 12px;
+  align-items: center;
+  font-size: 13px;
+  color: var(--muted);
+  padding-bottom: 14px;
+  row-gap: 8px;
+}
+
+.wk .l {
+  text-align: right;
+}
+
+.wk .b {
+  height: 5px;
+  background: var(--track);
+  border-radius: 3px;
+}
+
+.wk .b i {
+  display: block;
+  height: 100%;
+  background: var(--faint);
+  border-radius: 3px;
+}
+
+.wk .p {
+  font-weight: 600;
+  color: var(--fg);
+  font-variant-numeric: tabular-nums;
+}
+
+.wk .v {
+  color: var(--good);
+  font-weight: 500;
+}
+
+.wk .v.n {
+  color: var(--faint);
+  font-weight: 400;
+}
+
+.wk .v.over {
+  color: var(--accent);
+  font-weight: 500;
+}
+
+.meter {
+  height: 6px;
+  background: var(--track);
+  border-radius: 3px;
+  margin: 0 0 40px;
+  position: relative;
+}
+
+.meter i {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  border-radius: 3px;
+}
+
+.meter u {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  background: repeating-linear-gradient(90deg, var(--accent) 0 4px, transparent 4px 8px);
+  opacity: 0.5;
+}
+
+/* block split */
+.strip {
+  display: flex;
+  height: 34px;
+  border-radius: 4px;
+  overflow: hidden;
+  margin-bottom: 6px;
+  background: var(--track);
+}
+
+.strip i {
+  display: flex;
+  align-items: center;
+  padding-left: 8px;
+  color: var(--strip-label);
+  font-style: normal;
+  font-size: 13px;
+  font-weight: 600;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.stripcap {
+  color: var(--faint);
+  font-size: 13px;
+  margin-bottom: 18px;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: 96px 1fr;
+  align-items: center;
+  gap: 16px;
+  padding: 9px 0;
+  border-top: 1px solid var(--line);
+}
+
+.pts {
+  font-size: 20px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pts s {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  display: inline-block;
+  flex: none;
+}
+
+.pts .share {
+  font-size: 20px;
+}
+
+.nd {
+  color: var(--dim);
+  font-size: 14px;
+  font-weight: 400;
+}
+
+.name a {
+  color: var(--fg);
+  text-decoration: none;
+  border-bottom: 1px solid var(--dim);
+}
+
+.meta {
+  display: block;
+  color: var(--faint);
+  font-size: 13px;
+}
+
+.meta .approx {
+  color: var(--muted);
+}
+
+.lv {
+  color: var(--good);
+}
+
+.caveat {
+  margin: 14px 0 0;
+  color: var(--faint);
+  font-size: 13px;
+}
+
+/* day chart and lanes */
+.calc {
+  margin: 0 0 12px;
+  color: var(--soft);
+}
+
+.calc small {
+  color: var(--faint);
+  font-size: 12px;
+  margin-left: 8px;
+}
+
+svg {
+  display: block;
+}
+
+.tk {
+  font-size: 11px;
+  fill: var(--faint);
+}
+
+.h5 {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2;
+}
+
+.pj {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2;
+  stroke-dasharray: 4 5;
+  opacity: 0.6;
+}
+
+.grid {
+  stroke: var(--line);
+}
+
+.mk {
+  stroke: var(--fg);
+  stroke-dasharray: 2 3;
+  opacity: 0.5;
+}
+
+.grp {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  margin: 16px 0 4px;
+  font-weight: 600;
+}
+
+.grp span {
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+  margin-left: 8px;
+}
+
+.lr {
+  display: grid;
+  grid-template-columns: 230px 1fr;
+  height: 22px;
+  align-items: center;
+  border-top: 1px solid var(--line-soft);
+  font-size: 12px;
+}
+
+.lt {
+  color: var(--soft);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding-right: 12px;
+}
+
+.lt a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.lt a:hover {
+  text-decoration: underline;
+}
+
+.lb {
+  position: relative;
+  height: 14px;
+  margin-right: 20px;
+}
+
+.lb i {
+  position: absolute;
+  top: 0;
+  height: 14px;
+  background: var(--lane);
+  border-radius: 2px;
+}
+
+.lb em {
+  position: absolute;
+  top: 0;
+  line-height: 14px;
+  font-style: normal;
+  color: var(--faint);
+  white-space: nowrap;
+}
+
+.more {
+  color: var(--faint);
+  display: block;
+  line-height: 22px;
+}
+
+.loading {
+  color: var(--faint);
+}
