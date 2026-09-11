@@ -11,7 +11,7 @@ for the maths behind every number here.
 
 ```
 npm install
-npm start          # builds the ui, serves on 127.0.0.1:4190, opens the browser
+npm start          # builds the ui, serves on 127.0.0.1:1337, opens the browser
 ```
 
 Other scripts:

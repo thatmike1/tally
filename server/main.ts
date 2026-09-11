@@ -7,7 +7,7 @@ import { serve } from '@hono/node-server'
 import { createApp } from './app'
 import { DEFAULT_CCBROWSE } from './ccbrowse'
 
-const DEFAULT_PORT = 4190
+const DEFAULT_PORT = 1337
 
 export interface Options {
   port: number
