@@ -24,6 +24,13 @@ Other scripts:
 | `npm run typecheck` | tsc over server and ui |
 | `npm run oracle` | regenerate the expected tables from `jobs/*.py` (see Tests) |
 
+## As a service
+
+`systemd/install.sh` builds the ui and enables `systemd/tally.service` as a user
+unit (linked from this repo, so edits apply after `systemctl --user daemon-reload`).
+It serves the built `ui/dist`, so after ui changes run `npm run build` and
+`systemctl --user restart tally`. The cc-browse tray has an `Open tally` row.
+
 Flags: `--port <n>`, `--ccbrowse <url>`, `--no-ccbrowse`, `--no-open`.
 `bin/tally.mjs` is a launcher that works from any directory, so
 `ln -s ~/git/tally/bin/tally.mjs ~/.local/bin/tally` is enough to run it anywhere.
