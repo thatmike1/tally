@@ -14,11 +14,18 @@ import {
   CAVEAT,
   dailyDeltas,
   project,
+  scopedReadings,
   splitBlock,
+  splitFable,
+  splitWeekly,
+  WEEK_CAVEAT,
+  weeklyReadings,
   weeklyVerdict,
+  weekWindow,
   type BlockSplit,
   type SessionSplit,
   type WeeklyVerdict,
+  type WindowSplit,
 } from './split'
 import { otherThreads, statePath, type Thread } from './t3'
 import { dayBounds } from './time'
@@ -50,8 +57,14 @@ export interface MeterView {
 export interface SessionRow extends SessionSplit {
   kind: 'claude'
   live: boolean
+  /** by rank within its section, so a section's strips and list always match */
   color: string
+  /** this session's share of the Fable meter's movement over the week window; null when there is no Fable split */
+  fableShare: number | null
+  fablePoints: number | null
 }
+
+export type WeekSplit = Omit<WindowSplit, 'sessions'> & { sessions: SessionRow[] }
 
 export interface OtherRow extends Thread {
   color: string
@@ -88,6 +101,17 @@ export interface State {
     projection: { pctAtReset: number; hitsHundredAt: number | null; pace: number }
   } | null
   split: (Omit<BlockSplit, 'sessions'> & { sessions: SessionRow[] }) | null
+  /** which sessions moved the weekly and Fable meters, since the last look or since midnight */
+  week: {
+    /** the window asked for; each split snaps inside it to the samples it has */
+    from: number
+    to: number
+    since: 'lastLooked' | 'today'
+    lastLooked: number | null
+    caveat: string
+    weekly: WeekSplit | null
+    fable: WeekSplit | null
+  }
   others: OtherRow[]
   day: {
     start: number
@@ -173,24 +197,44 @@ export async function buildState(options: Options = {}): Promise<State> {
   const notes: string[] = []
   for (const key of Object.keys(latest?.unknown ?? {})) notes.push(`sample carries an extra field: ${key}`)
 
+  const weeklyRows = weeklyReadings(samples)
+  const window = weekWindow(now, lastLooked, latest?.weeklyResetsAt ?? null, weeklyRows, dayStart)
+  const scanStart = Math.min(window.from, current?.block.start ?? window.from)
+  const { records, sessions } = await scan(scanStart, now, projectsRoot(home))
+
+  const rawWeekly = splitWeekly(records, sessions, weeklyRows, window)
+  const rawFable = fableName ? splitFable(records, sessions, scopedReadings(samples, fableName), window) : null
+  const fableById = new Map((rawFable?.sessions ?? []).map((row) => [row.sessionId, row]))
+
+  // the week section ranks by Fable share, then weekly share, so the top Fable
+  // mover takes the first colour and both week strips agree with its list
+  const weekRank = new Map<string, number>()
+  for (const row of [...(rawFable?.sessions ?? []), ...(rawWeekly?.sessions ?? [])]) {
+    if (!weekRank.has(row.sessionId)) weekRank.set(row.sessionId, weekRank.size)
+  }
+  const toRow = (row: SessionSplit, rank: number): SessionRow => {
+    const fableRow = fableById.get(row.sessionId)
+    return {
+      ...row,
+      kind: 'claude',
+      live: now - (sessions.get(row.sessionId)?.modified ?? 0) < LIVE_WINDOW,
+      color: PALETTE[Math.min(rank, PALETTE.length - 1)]!,
+      fableShare: rawFable && !rawFable.crossedReset ? (fableRow?.share ?? 0) : null,
+      fablePoints: fableRow?.points ?? null,
+    }
+  }
+  const withRows = (raw: WindowSplit | null): WeekSplit | null =>
+    raw ? { ...raw, sessions: raw.sessions.map((row) => toRow(row, weekRank.get(row.sessionId)!)) } : null
+
   let block: State['block'] = null
   let split: State['split'] = null
   if (current) {
     const from = current.first.t
     const to = current.last.t
-    const { records, sessions } = await scan(current.block.start, now, projectsRoot(home))
     // no delta to divide means no points at all, per the proof
     const delta = to > from ? current.delta : null
     const raw = splitBlock(records, sessions, { from, to, delta, blockStart: current.block.start })
-    split = {
-      ...raw,
-      sessions: raw.sessions.map((row, index) => ({
-        ...row,
-        kind: 'claude' as const,
-        live: now - (sessions.get(row.sessionId)?.modified ?? 0) < LIVE_WINDOW,
-        color: PALETTE[Math.min(index, PALETTE.length - 1)]!,
-      })),
-    }
+    split = { ...raw, sessions: raw.sessions.map(toRow) }
     block = {
       start: current.block.start,
       resetsAt: current.block.resetKey,
@@ -234,6 +278,13 @@ export async function buildState(options: Options = {}): Promise<State> {
     notes,
     block,
     split,
+    week: {
+      ...window,
+      lastLooked,
+      caveat: WEEK_CAVEAT,
+      weekly: withRows(rawWeekly),
+      fable: withRows(rawFable),
+    },
     others,
     day: {
       start: dayStart,
