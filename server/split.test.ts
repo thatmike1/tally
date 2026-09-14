@@ -1,10 +1,22 @@
 // the split math, the projection, and the provisional weekly rule.
 import { describe, expect, it } from 'vitest'
+import type { Family } from './prices'
 import type { Sample } from './samples'
-import { dailyDeltas, median, project, splitBlock, weeklyVerdict } from './split'
+import {
+  dailyDeltas,
+  median,
+  project,
+  splitBlock,
+  splitFable,
+  splitWeekly,
+  WEEKLY_POINTS_PER_DOLLAR,
+  weekWindow,
+  weeklyVerdict,
+  type Reading,
+} from './split'
 import type { RequestRecord, SessionMeta } from './transcripts'
 
-function request(sessionId: string, t: number, cost: number, agent = false): RequestRecord {
+function request(sessionId: string, t: number, cost: number, agent = false, family: Family = 'opus'): RequestRecord {
   return {
     t,
     file: agent ? `/p/${sessionId}/subagents/agent-${t}.jsonl` : `/p/${sessionId}.jsonl`,
@@ -12,8 +24,8 @@ function request(sessionId: string, t: number, cost: number, agent = false): Req
     project: 'p',
     sessionId,
     agent,
-    model: 'claude-opus-5',
-    family: 'opus',
+    model: `claude-${family}-5`,
+    family,
     priced: true,
     cost,
     in: 0,
@@ -27,6 +39,7 @@ function request(sessionId: string, t: number, cost: number, agent = false): Req
 const metas = new Map<string, SessionMeta>([
   ['a', { sessionId: 'a', project: 'p', title: 'session a', modified: 0 }],
   ['b', { sessionId: 'b', project: 'p', title: 'session b', modified: 0 }],
+  ['c', { sessionId: 'c', project: 'p', title: 'session c', modified: 0 }],
 ])
 
 describe('splitBlock', () => {
@@ -80,6 +93,122 @@ describe('splitBlock', () => {
     const split = splitBlock(free, metas, { from: 50, to: 200, delta: 40 })
     expect(split.sessions[0]!.share).toBe(0)
     expect(split.sessions[0]!.points).toBeNull()
+  })
+})
+
+describe('weekWindow', () => {
+  const midnight = 1000
+  const reset = 500_000
+  const read = (...ts: number[]): Reading[] => ts.map((t) => ({ t, pct: 50, resetsAt: reset }))
+
+  it('runs from the last look when the look is inside this weekly period', () => {
+    expect(weekWindow(9000, 2000, reset, read(2100, 2400), midnight)).toEqual({ from: 2000, to: 9000, since: 'lastLooked' })
+    // yesterday still counts, as long as the weekly meter has not reset since
+    expect(weekWindow(9000, 400, reset, read(), midnight).since).toBe('lastLooked')
+  })
+
+  it('falls back to Prague midnight without a look, or with one from a previous week', () => {
+    expect(weekWindow(9000, null, reset, read(2100, 2400), midnight)).toEqual({ from: 1000, to: 9000, since: 'today' })
+    expect(weekWindow(9000, reset - 8 * 24 * 3600, reset, read(2100, 2400), midnight).since).toBe('today')
+  })
+
+  it('falls back to the day when the sampler has not read the meter twice since the look', () => {
+    expect(weekWindow(9000, 8800, reset, read(2100, 2400, 8900), midnight).since).toBe('today')
+  })
+})
+
+describe('splitFable and splitWeekly', () => {
+  const reset = 900_000
+  const readings = (points: [number, number][]): Reading[] => points.map(([t, pct]) => ({ t, pct, resetsAt: reset }))
+  const window = { from: 90, to: 400, since: 'today' as const }
+  const records = [
+    request('a', 50, 99, false, 'fable'), // before the window
+    request('a', 95, 1, false, 'fable'), // in the window, before the first reading
+    request('a', 120, 3, false, 'fable'),
+    request('a', 130, 10, false, 'opus'),
+    request('b', 140, 1, true, 'fable'),
+    request('c', 150, 40, false, 'opus'), // the biggest session, and no Fable at all
+    request('b', 350, 5, false, 'fable'), // after the last reading
+  ]
+  const meters = readings([
+    [80, 60],
+    [100, 62],
+    [200, 66],
+    [300, 70],
+    [410, 90],
+  ])
+
+  it('snaps the window to the first and last reading inside it, and measures the delta there', () => {
+    const split = splitFable(records, metas, meters, window)!
+    expect([split.from, split.to]).toEqual([100, 300])
+    expect([split.startPct, split.endPct, split.delta]).toEqual([62, 70, 8])
+    expect(split.costBeforeFirstSample).toBe(1)
+    expect(split.costAfterLastSample).toBe(5)
+  })
+
+  it('divides the Fable meter by Fable cost only, so a session without Fable has no share', () => {
+    const split = splitFable(records, metas, meters, window)!
+    expect(split.sessions.map((s) => s.sessionId)).toEqual(['a', 'b'])
+    expect(split.totalCost).toBe(4)
+    expect(split.sessions[0]!.share).toBeCloseTo(3 / 4, 10)
+    expect(split.sessions[0]!.cost).toBe(3)
+    expect(split.sessions[0]!.points).toBeCloseTo(6, 10)
+    expect(split.sessions[1]!.subagents).toBe(1)
+  })
+
+  it('divides the weekly meter by cost weighted per family', () => {
+    const { opus, fable } = WEEKLY_POINTS_PER_DOLLAR
+    const split = splitWeekly(records, metas, meters, window)!
+    const weights = { a: 3 * fable + 10 * opus, b: 1 * fable, c: 40 * opus }
+    const total = weights.a + weights.b + weights.c
+    expect(split.sessions.map((s) => s.sessionId)).toEqual(['c', 'a', 'b'])
+    expect(split.sessions[0]!.share).toBeCloseTo(weights.c / total, 10)
+    expect(split.sessions[1]!.share).toBeCloseTo(weights.a / total, 10)
+    expect(split.sessions[2]!.points).toBeCloseTo((weights.b / total) * 8, 10)
+    // the dollars stay list-price dollars; only the division is weighted
+    expect(split.sessions[1]!.cost).toBe(13)
+    expect(split.totalCost).toBe(54)
+  })
+
+  it('treats sonnet and haiku at the opus rate', () => {
+    const mixed = [request('a', 120, 10, false, 'sonnet'), request('c', 130, 10, false, 'haiku')]
+    const split = splitWeekly(mixed, metas, meters, window)!
+    expect(split.sessions.map((s) => s.share)).toEqual([0.5, 0.5])
+  })
+
+  it('shows shares but no points when the meter did not move', () => {
+    const flat = readings([
+      [100, 70],
+      [300, 70],
+    ])
+    const split = splitFable(records, metas, flat, window)!
+    expect(split.delta).toBe(0)
+    expect(split.sessions.every((s) => s.points === null)).toBe(true)
+    expect(split.sessions[0]!.share).toBeCloseTo(3 / 4, 10)
+  })
+
+  it('splits nothing when the window crossed the weekly reset', () => {
+    const crossed = readings([
+      [100, 95],
+      [300, 3],
+    ])
+    const split = splitWeekly(records, metas, crossed, window)!
+    expect(split.crossedReset).toBe(true)
+    expect(split.sessions).toEqual([])
+    expect(split.delta).toBeNull()
+    expect([split.startPct, split.endPct]).toEqual([95, 3])
+  })
+
+  it('catches a reset the meter climbed back over, by the reset time moving', () => {
+    const climbed: Reading[] = [
+      { t: 100, pct: 2, resetsAt: reset },
+      { t: 300, pct: 9, resetsAt: reset + 7 * 24 * 3600 },
+    ]
+    expect(splitFable(records, metas, climbed, window)!.crossedReset).toBe(true)
+  })
+
+  it('has nothing to say about a window the sampler never read', () => {
+    expect(splitWeekly(records, metas, readings([[80, 60]]), window)).toBeNull()
   })
 })
 
