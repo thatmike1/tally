@@ -62,7 +62,7 @@ export function splitBlock(
     delta: number | null
     blockStart?: number
     /** what a request weighs in the division; list-price cost unless a meter counts families differently */
-    weigh?: (record: RequestRecord) => number
+    weigh?: ((record: RequestRecord) => number) | undefined
   },
 ): BlockSplit {
   const { from, to, delta } = opts
