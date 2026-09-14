@@ -8,6 +8,7 @@
 // none at all for a window whose delta is unknown.
 import type { RequestRecord, SessionMeta } from './transcripts'
 import { isWeekend, dayKey, workdaysBetween } from './time'
+import type { Family } from './prices'
 import type { Sample } from './samples'
 
 /** shown wherever a points figure appears */
@@ -19,7 +20,7 @@ export interface SessionSplit {
   project: string
   title: string | null
   cost: number
-  /** fraction of the block's cost, 0..1 — the honest headline number */
+  /** fraction of the block's cost (weighted, where the meter weighs families), 0..1 — the honest headline number */
   share: number
   /** share x measured delta, rounded for display; null when the delta is unknown */
   points: number | null
@@ -55,12 +56,21 @@ export interface BlockSplit {
 export function splitBlock(
   records: RequestRecord[],
   sessions: Map<string, SessionMeta>,
-  opts: { from: number; to: number; delta: number | null; blockStart?: number },
+  opts: {
+    from: number
+    to: number
+    delta: number | null
+    blockStart?: number
+    /** what a request weighs in the division; list-price cost unless a meter counts families differently */
+    weigh?: (record: RequestRecord) => number
+  },
 ): BlockSplit {
   const { from, to, delta } = opts
   const blockStart = opts.blockStart ?? from
-  const byId = new Map<string, SessionSplit & { agentFiles: Set<string> }>()
+  const weigh = opts.weigh ?? ((record: RequestRecord) => record.cost)
+  const byId = new Map<string, SessionSplit & { agentFiles: Set<string>; weight: number }>()
   let totalCost = 0
+  let totalWeight = 0
   let costBeforeFirstSample = 0
   let costAfterLastSample = 0
   for (const record of records) {
@@ -84,10 +94,12 @@ export function splitBlock(
         tokens: 0,
         unpriced: false,
         agentFiles: new Set<string>(),
+        weight: 0,
       }
       byId.set(record.sessionId, row)
     }
     row.cost += record.cost
+    row.weight += weigh(record)
     row.requests += 1
     row.tokens += record.in + record.cw1h + record.cw5m + record.cr + record.out
     row.start = Math.min(row.start, record.t)
@@ -95,15 +107,173 @@ export function splitBlock(
     if (!record.priced) row.unpriced = true
     if (record.agent) row.agentFiles.add(record.file)
     totalCost += record.cost
+    totalWeight += weigh(record)
   }
-  const list: SessionSplit[] = [...byId.values()].map(({ agentFiles, ...row }) => ({
+  const list: SessionSplit[] = [...byId.values()].map(({ agentFiles, weight, ...row }) => ({
     ...row,
     subagents: agentFiles.size,
-    share: totalCost > 0 ? row.cost / totalCost : 0,
-    points: delta === null || totalCost <= 0 ? null : (row.cost / totalCost) * delta,
+    share: totalWeight > 0 ? weight / totalWeight : 0,
+    points: delta === null || totalWeight <= 0 ? null : (weight / totalWeight) * delta,
   }))
   list.sort((a, b) => b.share - a.share)
   return { from, to, delta, totalCost, sessions: list, costBeforeFirstSample, costAfterLastSample }
+}
+
+/** shown under the weekly and Fable strips */
+export const WEEK_CAVEAT =
+  'Weekly movement split by list-price cost weighted per model, Fable movement by Fable cost alone. Approximate.'
+
+/**
+ * points of the 7-day meter per list dollar, from the weekly control in
+ * `attribution-proof.md` (fitted 11 Sep 2026 over one weekly window, RMSE 0.86
+ * points on a 28-point climb). a starting calibration to re-measure, not a
+ * constant: a split only uses the ratio between families, and a boost or a plan
+ * change can move that ratio silently.
+ */
+export const WEEKLY_POINTS_PER_DOLLAR = {
+  measured: '2026-09-11',
+  opus: 0.1352,
+  fable: 0.0597,
+  // the fit gave sonnet 0.0 and haiku 0.012 from a few dollars of either, which
+  // is noise rather than a discount, so both borrow the opus rate until a week
+  // with real sonnet or haiku use re-measures them. mythos and unknown models too.
+  other: 0.1352,
+} as const
+
+export function weeklyWeight(family: Family): number {
+  if (family === 'fable') return WEEKLY_POINTS_PER_DOLLAR.fable
+  if (family === 'opus') return WEEKLY_POINTS_PER_DOLLAR.opus
+  return WEEKLY_POINTS_PER_DOLLAR.other
+}
+
+const WEEK = 7 * 24 * 3600
+
+export interface WeekWindow {
+  from: number
+  to: number
+  since: 'lastLooked' | 'today'
+}
+
+/** one reading of a weekly meter */
+export interface Reading {
+  t: number
+  pct: number
+  resetsAt: number | null
+}
+
+export function weeklyReadings(samples: Sample[]): Reading[] {
+  return samples.flatMap((s) => (s.weeklyPct === null ? [] : [{ t: s.t, pct: s.weeklyPct, resetsAt: s.weeklyResetsAt }]))
+}
+
+export function scopedReadings(samples: Sample[], model: string): Reading[] {
+  return samples.flatMap((s) => {
+    const meter = s.scoped.find((m) => m.model === model)
+    return meter ? [{ t: s.t, pct: meter.pct, resetsAt: meter.resetsAt }] : []
+  })
+}
+
+/**
+ * the span the weekly split covers: since the last look, when that look is
+ * inside the current weekly period, else since Prague midnight.
+ *
+ * a last look the sampler has read fewer than twice since (a reload a minute
+ * later) has no movement to split, so it falls back to the day as well.
+ */
+export function weekWindow(
+  now: number,
+  lastLooked: number | null,
+  weeklyResetsAt: number | null,
+  readings: Reading[],
+  midnight: number,
+): WeekWindow {
+  const inPeriod =
+    lastLooked !== null && weeklyResetsAt !== null && lastLooked >= weeklyResetsAt - WEEK && lastLooked < now
+  if (inPeriod) {
+    const read = readings.filter((r) => r.t >= lastLooked && r.t <= now).length
+    if (read >= 2 || lastLooked <= midnight) return { from: lastLooked, to: now, since: 'lastLooked' }
+  }
+  return { from: midnight, to: now, since: 'today' }
+}
+
+export interface WindowSplit extends BlockSplit {
+  /** the meter at `from` and at `to` */
+  startPct: number
+  endPct: number
+  /** the meter's weekly reset fell inside the window: nothing is split */
+  crossedReset: boolean
+}
+
+/**
+ * a block split over an arbitrary window of one weekly meter. `from` and `to`
+ * snap to the first and last reading inside the window, so the delta is always
+ * one the sampler measured.
+ */
+function splitWindow(
+  records: RequestRecord[],
+  sessions: Map<string, SessionMeta>,
+  readings: Reading[],
+  window: WeekWindow,
+  weigh?: (record: RequestRecord) => number,
+): WindowSplit | null {
+  const inside = readings.filter((r) => r.t >= window.from && r.t <= window.to)
+  const first = inside[0]
+  const last = inside.at(-1)
+  if (!first || !last) return null
+  // resets_at jitters by a second between samples; a real reset moves it a week
+  const movedReset =
+    first.resetsAt !== null && last.resetsAt !== null && Math.abs(last.resetsAt - first.resetsAt) > 3600
+  if (last.pct < first.pct || movedReset) {
+    return {
+      from: first.t,
+      to: last.t,
+      delta: null,
+      totalCost: 0,
+      sessions: [],
+      costBeforeFirstSample: 0,
+      costAfterLastSample: 0,
+      startPct: first.pct,
+      endPct: last.pct,
+      crossedReset: true,
+    }
+  }
+  const delta = last.t > first.t ? last.pct - first.pct : null
+  // a meter that did not move still has honest shares, but no points to hand out
+  const split = splitBlock(records, sessions, {
+    from: first.t,
+    to: last.t,
+    delta: delta ? delta : null,
+    blockStart: window.from,
+    weigh,
+  })
+  return { ...split, delta, startPct: first.pct, endPct: last.pct, crossedReset: false }
+}
+
+/**
+ * the Fable meter's movement over the window, divided by Fable list cost only.
+ * a session with no Fable requests has no share, however big it is otherwise.
+ */
+export function splitFable(
+  records: RequestRecord[],
+  sessions: Map<string, SessionMeta>,
+  readings: Reading[],
+  window: WeekWindow,
+): WindowSplit | null {
+  return splitWindow(
+    records.filter((record) => record.family === 'fable'),
+    sessions,
+    readings,
+    window,
+  )
+}
+
+/** the 7-day meter's movement over the window, divided by cost weighted per family */
+export function splitWeekly(
+  records: RequestRecord[],
+  sessions: Map<string, SessionMeta>,
+  readings: Reading[],
+  window: WeekWindow,
+): WindowSplit | null {
+  return splitWindow(records, sessions, readings, window, (record) => record.cost * weeklyWeight(record.family))
 }
 
 export interface Projection {
