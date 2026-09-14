@@ -1,5 +1,5 @@
 import { agentsview, type State } from '../api'
-import { hm, money, pct, tokens } from '../format'
+import { hm, labelOn, money, pct, tokens } from '../format'
 
 /**
  * the block's measured jump, divided by list-price cost.
@@ -15,6 +15,7 @@ export function BlockSplit({ state }: { state: State }) {
   const claude = split.sessions.filter((row) => row.share > 0)
   const missingBefore = split.costBeforeFirstSample
   const missingAfter = split.costAfterLastSample
+  const since = state.week.since === 'lastLooked' ? `since ${hm(state.week.from)}` : 'today'
 
   return (
     <>
@@ -24,7 +25,7 @@ export function BlockSplit({ state }: { state: State }) {
       </h2>
       <div className="strip">
         {claude.map((row) => (
-          <i key={row.sessionId} style={{ width: `${row.share * 100}%`, background: row.color }}>
+          <i key={row.sessionId} style={{ width: `${row.share * 100}%`, background: row.color, color: labelOn(row.color) }}>
             {row.share >= 0.06 ? (row.points === null ? pct(row.share * 100) : row.points.toFixed(1)) : ''}
           </i>
         ))}
@@ -61,6 +62,7 @@ export function BlockSplit({ state }: { state: State }) {
             <span className="meta">
               claude
               {row.points === null ? '' : <> · <span className="approx">~{row.points.toFixed(1)} pts</span></>}
+              {row.fableShare ? ` · ${pct(row.fableShare * 100)} of ${state.fable?.model ?? 'Fable'} ${since}` : ''}
               {row.subagents ? ` · ${row.subagents} subagent${row.subagents === 1 ? '' : 's'}` : ''}
               {row.live ? <> · <b className="lv">live</b></> : ''}
               {` · ${hm(row.start)}–${hm(row.end)}`}

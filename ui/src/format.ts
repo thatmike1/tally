@@ -55,6 +55,16 @@ export function tokens(n: number): string {
   return String(n)
 }
 
+/**
+ * a strip label that reads on its segment: the palette's pale greys take dark
+ * text whatever the theme, since the segment colour does not change with it
+ */
+export function labelOn(background: string): string | undefined {
+  const value = Number.parseInt(background.slice(1), 16)
+  const luma = 0.299 * ((value >> 16) & 255) + 0.587 * ((value >> 8) & 255) + 0.114 * (value & 255)
+  return luma > 155 ? '#1c1b19' : undefined
+}
+
 export function pct(value: number): string {
   return `${Math.round(value)}%`
 }

@@ -312,6 +312,67 @@ h2 {
   font-size: 13px;
 }
 
+/* weekly and Fable split */
+.wstrips {
+  display: grid;
+  grid-template-columns: 72px 1fr;
+  column-gap: 16px;
+}
+
+.wstrips .wl {
+  font-size: 13px;
+  color: var(--muted);
+  padding-top: 8px;
+}
+
+.wstrips .stripcap {
+  margin-bottom: 12px;
+}
+
+.wrow {
+  display: grid;
+  grid-template-columns: 96px 1fr 110px;
+  align-items: center;
+  gap: 16px;
+  padding: 9px 0;
+  border-top: 1px solid var(--line);
+}
+
+.wrow.whead {
+  padding: 14px 0 4px;
+  border-top: none;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--faint);
+}
+
+.whead > div:last-child,
+.wk2 {
+  text-align: right;
+}
+
+.wk2 {
+  font-size: 17px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--soft);
+}
+
+.wk2 .approx {
+  display: block;
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--muted);
+}
+
+.wsep {
+  border-top: 1px solid var(--dim);
+  padding: 10px 0 6px;
+  color: var(--faint);
+  font-size: 13px;
+}
+
 /* day chart and lanes */
 .calc {
   margin: 0 0 12px;

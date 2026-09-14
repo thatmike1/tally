@@ -24,24 +24,27 @@ export function Day({ state }: { state: State }) {
   }, [])
 
   const { start, end } = state.day
+  const resets = resetsCrossed(state)
   const x = (t: number) => LABELS + ((t - start) / (end - start)) * (width - LABELS - RIGHT_PAD)
   const y = (pct: number) => BASELINE - pct * ((BASELINE - TOP) / 100)
 
   return (
     <div ref={box}>
       <h2 style={{ marginTop: 44 }}>today on the clock</h2>
-      <p className="calc">
-        {sentence(state)}
-        <small>computed, no model</small>
-      </p>
+      {resets ? (
+        <p className="calc">
+          {resets}
+          <small>computed, no model</small>
+        </p>
+      ) : null}
       <Chart state={state} width={width} x={x} y={y} />
       <Lanes state={state} />
     </div>
   )
 }
 
-/** the numbers-only line: resets crossed today and what the weekly meters did */
-function sentence(state: State): string {
+/** the numbers-only line: 5-hour resets crossed today. the weekly meters moved to the week section */
+function resetsCrossed(state: State): string | null {
   const points = state.day.meter
   if (!points.length) return 'no api meter samples yet today.'
   const bits: string[] = []
@@ -49,22 +52,13 @@ function sentence(state: State): string {
     const previous = points[i - 1]!
     const current = points[i]!
     if (current.resetKey !== previous.resetKey) {
-      if (previous.pct >= 100) bits.push(`Hit 100% before ${hm(previous.resetKey)}`)
+      if (previous.pct >= 100) bits.push(`hit 100% before ${hm(previous.resetKey)}`)
       bits.push(`reset at ${hm(previous.resetKey)}`)
     }
   }
-  const first = points[0]!
-  const last = points.at(-1)!
-  const meters: string[] = []
-  if (first.weeklyPct !== null && last.weeklyPct !== null) {
-    meters.push(`Weekly ${Math.round(first.weeklyPct)} → ${Math.round(last.weeklyPct)}`)
-  }
-  if (first.scopedPct !== null && last.scopedPct !== null) {
-    meters.push(`${state.fable?.model ?? 'Fable'} ${Math.round(first.scopedPct)} → ${Math.round(last.scopedPct)}`)
-  }
-  const head = bits.length ? `${bits.join(', ')}. ` : ''
-  const tail = meters.length ? `${meters.join(', ')} since ${hm(first.t)}.` : ''
-  return `${head}${tail}` || 'the meter has not moved today.'
+  if (!bits.length) return null
+  const line = bits.join(', ')
+  return `${line[0]!.toUpperCase()}${line.slice(1)}.`
 }
 
 function Chart({

@@ -3,6 +3,7 @@ import { fetchState, type State } from './api'
 import { Day } from './components/day'
 import { Hero } from './components/hero'
 import { BlockSplit } from './components/split'
+import { Week } from './components/week'
 import { ago } from './format'
 
 const POLL_MS = 60_000
@@ -58,7 +59,7 @@ export function App() {
       </div>
       <div className="legend">
         <b>Real:</b> the meters, the day's meter line, every reset time, the lanes (cc-browse), the other agents'
-        titles. <b>Computed from real:</b> the split, the projection, the weekly verdicts.{' '}
+        titles. <b>Computed from real:</b> the splits, the projection, the weekly verdicts.{' '}
         <b>Not shown:</b> points for any stretch the sampler did not measure.
         {state.fiveHour ? ` Meter read ${ago(state.fiveHour.ageSeconds)}.` : ''}
       </div>
@@ -75,6 +76,7 @@ export function App() {
       ))}
       <Hero state={state} />
       <BlockSplit state={state} />
+      <Week state={state} />
       <Day state={state} />
     </>
   )
