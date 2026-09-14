@@ -30,6 +30,11 @@ interface Expected {
   priced: boolean
 }
 
+/** the oracle was written from one checkout; key its paths on the fixture home so any checkout matches */
+function fromHome(path: string): string {
+  return path.slice(path.indexOf('/test/fixtures/home/'))
+}
+
 function oracle(): Expected[] {
   return readFileSync(EXPECTED, 'utf8')
     .split('\n')
@@ -70,9 +75,9 @@ describe('scan, against jobs/extract.py', () => {
     const { records } = await scan(0, 9_999_999_999, projectsRoot(FIXTURE_HOME))
     expect(records.length).toBe(expected.length)
 
-    const mine = new Map(records.map((r) => [`${r.file} ${r.mid}`, r]))
+    const mine = new Map(records.map((r) => [`${fromHome(r.file)} ${r.mid}`, r]))
     for (const row of expected) {
-      const got = mine.get(`${row.file} ${row.mid}`)
+      const got = mine.get(`${fromHome(row.file)} ${row.mid}`)
       expect(got, `${row.file} ${row.mid}`).toBeDefined()
       expect(got!.t).toBe(row.t)
       expect(got!.model).toBe(row.model)
