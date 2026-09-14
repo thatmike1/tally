@@ -1,6 +1,6 @@
 // the Prague clock, including the two DST days it has to survive.
 import { describe, expect, it } from 'vitest'
-import { dayBounds, dayKey, isWeekend, startOfDay, weekdayName, workdaysBetween } from './time'
+import { dayBounds, dayKey, formatLocalTime, isWeekend, startOfDay, weekdayName, workdaysBetween } from './time'
 
 const at = (iso: string) => Date.parse(iso) / 1000
 
@@ -53,5 +53,14 @@ describe('weekdays', () => {
     // Friday noon to next Wednesday: Fri, Mon, Tue, Wed
     expect(workdaysBetween(at('2026-09-11T12:00:00+02:00'), at('2026-09-16T23:00:00+02:00'))).toBe(4)
     expect(workdaysBetween(at('2026-09-11T12:00:00+02:00'), at('2026-09-11T11:00:00+02:00'))).toBe(0)
+  })
+})
+
+describe('formatLocalTime', () => {
+  it('formats ISO timestamps and unix seconds into Europe/Prague weekday and time', () => {
+    expect(formatLocalTime('2026-09-14T22:20:00.000Z')).toBe('Tue 00:20')
+    expect(formatLocalTime(at('2026-09-19T21:00:00Z'))).toBe('Sat 23:00')
+    expect(formatLocalTime(null)).toBeNull()
+    expect(formatLocalTime('invalid')).toBeNull()
   })
 })

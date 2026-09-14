@@ -28,7 +28,7 @@ import {
   type WindowSplit,
 } from './split'
 import { otherThreads, statePath, type Thread } from './t3'
-import { dayBounds } from './time'
+import { dayBounds, formatLocalTime } from './time'
 import { projectsRoot, scan } from './transcripts'
 
 /** the strip and the list share these, in rank order, so the two always match */
@@ -196,6 +196,17 @@ export async function buildState(options: Options = {}): Promise<State> {
 
   const notes: string[] = []
   for (const key of Object.keys(latest?.unknown ?? {})) notes.push(`sample carries an extra field: ${key}`)
+  for (const entry of latest?.otherLimits ?? []) {
+    if (typeof entry === 'object' && entry !== null) {
+      const { kind, percent, resets_at } = entry as Record<string, unknown>
+      if (kind && percent !== undefined) {
+        const time = formatLocalTime(resets_at)
+        notes.push(time ? `limit: ${kind} ${percent}% resets ${time}` : `limit: ${kind} ${percent}%`)
+        continue
+      }
+    }
+    notes.push(JSON.stringify(entry))
+  }
 
   const weeklyRows = weeklyReadings(samples)
   const window = weekWindow(now, lastLooked, latest?.weeklyResetsAt ?? null, weeklyRows, dayStart)

@@ -1,5 +1,5 @@
 // the assembled page state, over the frozen fixture home.
-import { mkdtempSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -100,6 +100,37 @@ describe('buildState', () => {
       const inFable = fable!.sessions.find((f) => f.sessionId === row.sessionId)
       if (inFable) expect(inFable.color).toBe(row.color)
     }
+  })
+
+  it('formats other limits as notes', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'tally-notes-home-'))
+    const logDir = join(dir, '.cache', 'cc-browse-tray')
+    mkdirSync(logDir, { recursive: true })
+    writeFileSync(
+      join(logDir, 'limits.jsonl'),
+      JSON.stringify({
+        t: NOW,
+        src: 'api',
+        limits: { five_hour: { used_percentage: 20, resets_at: NOW + 18000 } },
+        other_limits: [
+          { kind: 'session', percent: 20, resets_at: '2026-09-14T22:20:00.000Z' },
+          { kind: 'weekly_all', percent: 15 },
+          { custom: 'val' },
+        ],
+        unknown_key: 'something',
+      }) + '\n',
+    )
+    const built = await buildState({
+      home: dir,
+      now: NOW,
+      ccbrowse: null,
+      lastLookedPath: join(dir, 'last-looked'),
+      recordLook: false,
+    })
+    expect(built.notes).toContain('sample carries an extra field: unknown_key')
+    expect(built.notes).toContain('limit: session 20% resets Tue 00:20')
+    expect(built.notes).toContain('limit: weekly_all 15%')
+    expect(built.notes).toContain(JSON.stringify({ custom: 'val' }))
   })
 
   it('names its sources, so a wrong number can be traced home', async () => {

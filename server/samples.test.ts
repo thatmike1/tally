@@ -51,6 +51,19 @@ describe('readSamples', () => {
     expect(sample.extra).toEqual({ used: 46, limit: 100, currency: 'EUR' })
   })
 
+  it('carries other limits and raw extra without putting them in unknown', () => {
+    const path = logWith([
+      apiRow(100, 10, 18000, {
+        other_limits: [{ kind: 'session', percent: 10 }],
+        raw_extra: { tangelo: null },
+      }),
+    ])
+    const sample = readSamples(path)[0]!
+    expect(sample.otherLimits).toEqual([{ kind: 'session', percent: 10 }])
+    expect(sample.rawExtra).toEqual({ tangelo: null })
+    expect(sample.unknown).toEqual({})
+  })
+
   it('survives a truncated last line', () => {
     const dir = mkdtempSync(join(tmpdir(), 'tally-samples-'))
     const path = join(dir, 'limits.jsonl')

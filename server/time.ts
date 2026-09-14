@@ -37,6 +37,21 @@ export function isWeekend(t: number): boolean {
   return name === 'Sat' || name === 'Sun'
 }
 
+const clockFormat = new Intl.DateTimeFormat('en-GB', {
+  timeZone: TZ,
+  hour: '2-digit',
+  minute: '2-digit',
+  hour12: false,
+})
+
+/** `Tue 00:20` or `Sat 23:00` in Europe/Prague */
+export function formatLocalTime(value: unknown): string | null {
+  if (value === null || value === undefined) return null
+  const d = typeof value === 'number' ? new Date(value * (value < 1e11 ? 1000 : 1)) : new Date(String(value))
+  if (Number.isNaN(d.getTime())) return null
+  return `${weekdayName(d.getTime() / 1000)} ${clockFormat.format(d)}`
+}
+
 /** seconds Prague is ahead of UTC at this instant */
 function offsetAt(t: number): number {
   const parts = partsFormat.formatToParts(new Date(t * 1000))

@@ -32,6 +32,8 @@ export interface Sample {
   scoped: ScopedMeter[]
   /** paid overflow, when the endpoint reported any */
   extra: { used: number | null; limit: number | null; currency: string | null } | null
+  otherLimits: unknown[]
+  rawExtra: Record<string, unknown>
   /**
    * every top-level field of the sample row that tally does not model. the
    * September boost ("weekly limit 50% higher through the 13th") has no field in
@@ -52,7 +54,7 @@ export function limitsLogPath(home = homedir()): string {
   return join(home, '.cache', 'cc-browse-tray', 'limits.jsonl')
 }
 
-const KNOWN_KEYS = new Set(['t', 'src', 'limits', 'scoped', 'extra'])
+const KNOWN_KEYS = new Set(['t', 'src', 'limits', 'scoped', 'extra', 'other_limits', 'raw_extra'])
 
 /** api-sourced meter readings, oldest first */
 export function readSamples(path = limitsLogPath()): Sample[] {
@@ -98,6 +100,9 @@ export function readSamples(path = limitsLogPath()): Sample[] {
             currency: row.extra.currency ?? null,
           }
         : null,
+      otherLimits: Array.isArray(row.other_limits) ? row.other_limits : [],
+      rawExtra:
+        row.raw_extra && typeof row.raw_extra === 'object' && !Array.isArray(row.raw_extra) ? row.raw_extra : {},
       unknown,
     })
   }
