@@ -6,6 +6,8 @@ import { parseArgs } from 'node:util'
 import { serve } from '@hono/node-server'
 import { createApp } from './app'
 import { DEFAULT_CCBROWSE } from './ccbrowse'
+import { buildState } from './state'
+import { defaultWidgetsDir, removeWidget, writeWidget } from './widget'
 
 const DEFAULT_PORT = 1337
 
@@ -14,9 +16,10 @@ export interface Options {
   /** cc-browse's base url, or null to skip the day lanes */
   ccbrowse: string | null
   open: boolean
+  widget: boolean
 }
 
-/** parses `tally [--port <n>] [--ccbrowse <url>|--no-ccbrowse] [--no-open]` */
+/** parses `tally [--port <n>] [--ccbrowse <url>|--no-ccbrowse] [--no-open] [--no-widget]` */
 export function parseOptions(argv: string[]): Options {
   const { values } = parseArgs({
     args: argv,
@@ -25,6 +28,7 @@ export function parseOptions(argv: string[]): Options {
       ccbrowse: { type: 'string' },
       'no-ccbrowse': { type: 'boolean' },
       'no-open': { type: 'boolean' },
+      'no-widget': { type: 'boolean' },
     },
     allowPositionals: false,
   })
@@ -36,6 +40,7 @@ export function parseOptions(argv: string[]): Options {
     port,
     ccbrowse: values['no-ccbrowse'] ? null : (values.ccbrowse ?? DEFAULT_CCBROWSE),
     open: !values['no-open'],
+    widget: !values['no-widget'],
   }
 }
 
@@ -63,7 +68,28 @@ function main(): void {
     }
   })
 
+  const widgetsDir = defaultWidgetsDir()
+  let widgetInterval: NodeJS.Timeout | null = null
+
+  if (options.widget) {
+    const updateWidget = async () => {
+      try {
+        const state = await buildState({ ccbrowse: options.ccbrowse, recordLook: false })
+        writeWidget(state, widgetsDir)
+      } catch (error) {
+        console.error(`tally: widget update failed: ${error instanceof Error ? error.message : String(error)}`)
+      }
+    }
+    void updateWidget()
+    widgetInterval = setInterval(updateWidget, 60_000)
+    widgetInterval.unref()
+  }
+
   const stop = () => {
+    if (widgetInterval) clearInterval(widgetInterval)
+    if (options.widget) {
+      removeWidget(widgetsDir)
+    }
     server.close(() => process.exit(0))
   }
   process.on('SIGINT', stop)

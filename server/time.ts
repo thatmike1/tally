@@ -44,6 +44,11 @@ const clockFormat = new Intl.DateTimeFormat('en-GB', {
   hour12: false,
 })
 
+/** `23:20` in Europe/Prague */
+export function formatHm(t: number): string {
+  return clockFormat.format(new Date(t * 1000))
+}
+
 /** `Tue 00:20` or `Sat 23:00` in Europe/Prague */
 export function formatLocalTime(value: unknown): string | null {
   if (value === null || value === undefined) return null
