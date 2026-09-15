@@ -6,6 +6,8 @@ import { ago, dayClock, hm, pct, until } from '../format'
 export function Hero({ state }: { state: State }) {
   const [takeaway, setTakeaway] = useState<string | null>(null)
 
+  // the server refreshes the text on its own minute tick and the route only
+  // reads memory, so every state poll asks again rather than waiting for a new sample
   useEffect(() => {
     let alive = true
     fetch('/api/takeaway')
@@ -19,7 +21,7 @@ export function Hero({ state }: { state: State }) {
     return () => {
       alive = false
     }
-  }, [state.fiveHour?.sampledAt, state.block?.to])
+  }, [state.now])
 
   const five = state.fiveHour
   if (!five || !state.block) return <p className="loading">no api meter sample in the log yet.</p>
