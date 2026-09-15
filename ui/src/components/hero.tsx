@@ -1,8 +1,26 @@
+import { useEffect, useState } from 'react'
 import type { State } from '../api'
 import { ago, dayClock, hm, pct, until } from '../format'
 
 /** the one big number, its reset, the projection verdict, and the two weekly bars */
 export function Hero({ state }: { state: State }) {
+  const [takeaway, setTakeaway] = useState<string | null>(null)
+
+  useEffect(() => {
+    let alive = true
+    fetch('/api/takeaway')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: { text: string | null; model: string | null } | null) => {
+        if (alive && data?.text) {
+          setTakeaway(data.text)
+        }
+      })
+      .catch(() => {})
+    return () => {
+      alive = false
+    }
+  }, [state.fiveHour?.sampledAt, state.block?.to])
+
   const five = state.fiveHour
   if (!five || !state.block) return <p className="loading">no api meter sample in the log yet.</p>
   const projection = state.block.projection
@@ -35,6 +53,7 @@ export function Hero({ state }: { state: State }) {
               <span>at this block's pace</span>
             </>
           )}
+          {takeaway ? <div className="takeaway">{takeaway}</div> : null}
         </div>
         <div className="wk">
           <WeeklyBar label="weekly" meter={state.weekly} />

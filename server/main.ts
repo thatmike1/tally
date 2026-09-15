@@ -17,9 +17,10 @@ export interface Options {
   ccbrowse: string | null
   open: boolean
   widget: boolean
+  takeaway: boolean
 }
 
-/** parses `tally [--port <n>] [--ccbrowse <url>|--no-ccbrowse] [--no-open] [--no-widget]` */
+/** parses `tally [--port <n>] [--ccbrowse <url>|--no-ccbrowse] [--no-open] [--no-widget] [--no-takeaway]` */
 export function parseOptions(argv: string[]): Options {
   const { values } = parseArgs({
     args: argv,
@@ -29,6 +30,7 @@ export function parseOptions(argv: string[]): Options {
       'no-ccbrowse': { type: 'boolean' },
       'no-open': { type: 'boolean' },
       'no-widget': { type: 'boolean' },
+      'no-takeaway': { type: 'boolean' },
     },
     allowPositionals: false,
   })
@@ -41,6 +43,7 @@ export function parseOptions(argv: string[]): Options {
     ccbrowse: values['no-ccbrowse'] ? null : (values.ccbrowse ?? DEFAULT_CCBROWSE),
     open: !values['no-open'],
     widget: !values['no-widget'],
+    takeaway: !values['no-takeaway'],
   }
 }
 
@@ -54,7 +57,7 @@ function main(): void {
   }
 
   const uiDist = resolve(dirname(fileURLToPath(import.meta.url)), '../ui/dist')
-  const app = createApp({ uiDist, ccbrowse: options.ccbrowse })
+  const app = createApp({ uiDist, ccbrowse: options.ccbrowse, takeaway: options.takeaway })
 
   const server = serve({ fetch: app.fetch, hostname: '127.0.0.1', port: options.port }, (info) => {
     const url = `http://127.0.0.1:${info.port}/`

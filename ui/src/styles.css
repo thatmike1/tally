@@ -150,6 +150,14 @@ h2 {
   margin-top: 2px;
 }
 
+.verdict .takeaway {
+  font-size: 13px;
+  color: var(--muted);
+  font-weight: 400;
+  margin-top: 6px;
+  line-height: 1.4;
+}
+
 .wk {
   display: grid;
   grid-template-columns: auto 120px 44px auto;

@@ -5,14 +5,17 @@ import { existsSync } from 'node:fs'
 import { serveStatic } from '@hono/node-server/serve-static'
 import { Hono } from 'hono'
 import { buildState, type Options } from './state'
+import { getTakeaway } from './takeaway'
 
 export interface AppConfig extends Options {
   /** absolute path to the built ui, served at / when it exists */
   uiDist?: string | null
+  /** whether takeaway generation is enabled; set to false by --no-takeaway */
+  takeaway?: boolean
 }
 
 export function createApp(config: AppConfig = {}) {
-  const { uiDist = null, ...stateOptions } = config
+  const { uiDist = null, takeaway = true, ...stateOptions } = config
   const app = new Hono()
 
   app.onError((error, c) => {
@@ -25,6 +28,15 @@ export function createApp(config: AppConfig = {}) {
     // what the tray face will want
     const peek = c.req.query('peek') !== undefined
     return c.json(await buildState({ ...stateOptions, recordLook: !peek }))
+  })
+
+  app.get('/api/takeaway', async (c) => {
+    if (!takeaway) {
+      return c.json({ text: null, model: null })
+    }
+    const state = await buildState({ ...stateOptions, recordLook: false })
+    const result = await getTakeaway(state)
+    return c.json(result)
   })
 
   if (uiDist && existsSync(uiDist)) {
