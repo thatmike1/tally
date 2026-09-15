@@ -48,14 +48,16 @@ function credits(value: number): string {
 }
 
 /** which Codex threads moved the weekly meter, split by credits off the rollout files */
-export function CodexThreads({ state }: { state: State }) {
+export function CodexThreads({ state, beside = false }: { state: State; beside?: boolean }) {
+  // under the Codex meter in its own column the section needs no "codex" in its name
+  const name = beside ? 'what moved it' : 'codex this week'
   const split = state.codex.split
   if (!split) return null
   const rows = split.threads.filter((row) => row.credits > 0)
   if (!rows.length) {
     return (
       <div className="cx-threads">
-        <h2>codex this week</h2>
+        <h2>{name}</h2>
         <p className="stripcap">no Codex calls in this week's rollouts yet</p>
       </div>
     )
@@ -65,7 +67,7 @@ export function CodexThreads({ state }: { state: State }) {
   return (
     <div className="cx-threads">
       <h2>
-        codex this week · since {dayClock(split.from)} · {Math.round(split.pct)} points
+        {name} · since {dayClock(split.from)} · {Math.round(split.pct)} points
       </h2>
       <div className="strip">
         {rows.map((row) => (

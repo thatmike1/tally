@@ -666,3 +666,43 @@ svg {
   color: var(--fg);
   border-color: var(--dim);
 }
+
+/* wide screens: Claude keeps its column, Codex sits beside it and stays in view */
+@media (min-width: 1880px) {
+  body {
+    max-width: 2040px;
+  }
+
+  .columns {
+    display: grid;
+    grid-template-columns: minmax(0, 1400px) minmax(420px, 1fr);
+    gap: 64px;
+    align-items: start;
+  }
+
+  .columns > main {
+    min-width: 0;
+  }
+
+  .codex-col {
+    position: sticky;
+    top: 24px;
+    max-height: calc(100vh - 48px);
+    overflow-y: auto;
+    scrollbar-width: thin;
+    padding-left: 32px;
+    border-left: 1px solid var(--line);
+  }
+
+  .codex-col .codex {
+    grid-template-columns: 1fr;
+    gap: 16px;
+    margin: 0;
+    padding-top: 0;
+    border-top: none;
+  }
+
+  .codex-col .cx-threads {
+    margin-top: 36px;
+  }
+}

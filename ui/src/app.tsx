@@ -9,6 +9,20 @@ import { ago } from './format'
 
 const POLL_MS = 60_000
 
+/** past this width the Claude page keeps its 1400px and Codex gets its own column beside it */
+const WIDE_QUERY = '(min-width: 1880px)'
+
+function useWide(): boolean {
+  const [wide, setWide] = useState(() => window.matchMedia(WIDE_QUERY).matches)
+  useEffect(() => {
+    const query = window.matchMedia(WIDE_QUERY)
+    const update = () => setWide(query.matches)
+    query.addEventListener('change', update)
+    return () => query.removeEventListener('change', update)
+  }, [])
+  return wide
+}
+
 function useTheme(): [string, () => void] {
   const [theme, setTheme] = useState(() => localStorage.getItem('tally-theme') ?? 'light')
   useEffect(() => {
@@ -22,6 +36,7 @@ export function App() {
   const [state, setState] = useState<State | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [theme, toggleTheme] = useTheme()
+  const wide = useWide()
   const [weekMode, setWeekMode] = useState<WeekMode>(() => (localStorage.getItem('tally-week') === 'whole' ? 'whole' : 'recent'))
   // the minute poll reads the mode through a ref so it keeps one timer
   const weekModeRef = useRef(weekMode)
@@ -101,12 +116,29 @@ export function App() {
           {note}
         </p>
       ))}
-      <Hero state={state} />
-      <Codex state={state} />
-      <BlockSplit state={state} />
-      <Week state={state} mode={weekMode} onMode={changeWeekMode} />
-      <CodexThreads state={state} />
-      <Day state={state} />
+      {wide ? (
+        <div className="columns">
+          <main>
+            <Hero state={state} />
+            <BlockSplit state={state} />
+            <Week state={state} mode={weekMode} onMode={changeWeekMode} />
+            <Day state={state} />
+          </main>
+          <aside className="codex-col">
+            <Codex state={state} />
+            <CodexThreads state={state} beside />
+          </aside>
+        </div>
+      ) : (
+        <>
+          <Hero state={state} />
+          <Codex state={state} />
+          <BlockSplit state={state} />
+          <Week state={state} mode={weekMode} onMode={changeWeekMode} />
+          <CodexThreads state={state} />
+          <Day state={state} />
+        </>
+      )}
     </>
   )
 }
