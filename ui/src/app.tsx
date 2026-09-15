@@ -9,8 +9,8 @@ import { ago } from './format'
 
 const POLL_MS = 60_000
 
-/** past this width the Claude page keeps its 1400px and Codex gets its own column beside it */
-const WIDE_QUERY = '(min-width: 1880px)'
+/** past this width Codex gets its own column beside the Claude page */
+const WIDE_QUERY = '(min-width: 1900px)'
 
 function useWide(): boolean {
   const [wide, setWide] = useState(() => window.matchMedia(WIDE_QUERY).matches)

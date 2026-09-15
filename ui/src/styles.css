@@ -43,7 +43,6 @@ body {
   background: var(--bg);
   margin: 0;
   padding: 32px 40px;
-  max-width: 1400px;
 }
 
 a {
@@ -667,16 +666,12 @@ svg {
   border-color: var(--dim);
 }
 
-/* wide screens: Claude keeps its column, Codex sits beside it and stays in view */
-@media (min-width: 1880px) {
-  body {
-    max-width: 2040px;
-  }
-
+/* wide screens: Claude and Codex side by side, filling the window, one page scroll */
+@media (min-width: 1900px) {
   .columns {
     display: grid;
-    grid-template-columns: minmax(0, 1400px) minmax(420px, 1fr);
-    gap: 64px;
+    grid-template-columns: minmax(0, 2fr) minmax(480px, 1fr);
+    gap: 56px;
     align-items: start;
   }
 
@@ -685,24 +680,32 @@ svg {
   }
 
   .codex-col {
-    position: sticky;
-    top: 24px;
-    max-height: calc(100vh - 48px);
-    overflow-y: auto;
-    scrollbar-width: thin;
-    padding-left: 32px;
+    min-width: 0;
+    container-type: inline-size;
+    padding-left: 40px;
     border-left: 1px solid var(--line);
   }
 
   .codex-col .codex {
-    grid-template-columns: 1fr;
-    gap: 16px;
+    grid-template-columns: auto 1fr;
+    gap: 16px 32px;
     margin: 0;
     padding-top: 0;
     border-top: none;
   }
 
+  .codex-col .cx-chart {
+    grid-column: 1 / -1;
+  }
+
   .codex-col .cx-threads {
     margin-top: 36px;
+  }
+}
+
+/* the Codex column's number and verdict share a row only when it has room for both */
+@container (max-width: 680px) {
+  .codex-col .codex {
+    grid-template-columns: 1fr;
   }
 }
