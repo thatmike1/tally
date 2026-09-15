@@ -1,5 +1,5 @@
 // generates an optional one-line takeaway of what ate the 5-hour block and
-// whether the reset is safe, using a cheap model via agy on a background tick.
+// whether the reset is safe, using a cheap model via agy on a visible-page request.
 import { execFile } from 'node:child_process'
 import type { State } from './state'
 
@@ -128,9 +128,9 @@ export interface TakeawayRefresher {
 
 /**
  * keeps the last good one-line takeaway in memory. `agy -p` takes 17 to 29 s,
- * so the server calls `refresh` from its minute tick and the route only reads
- * `current`. only a success moves the cache key, so a failed or timed-out run
- * is retried on the next tick.
+ * so the page's request waits for `refresh` while keeping the rest of Tally
+ * responsive. only a success moves the cache key, so a failed or timed-out run
+ * is retried the next time the user returns to the page.
  * runs `agy -p <prompt> --model gemini-3.8-flash-low --output-format text`.
  */
 export function createTakeawayRefresher(options: TakeawayOptions = {}): TakeawayRefresher {

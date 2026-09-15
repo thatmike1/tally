@@ -208,7 +208,7 @@ describe('parseOptions --no-takeaway', () => {
   })
 })
 
-describe('GET /api/takeaway endpoint', () => {
+describe('/api/takeaway endpoint', () => {
   it('serves the refresher text without running the model', async () => {
     let callCount = 0
     const runner: CommandRunner = async () => {
@@ -245,6 +245,37 @@ describe('GET /api/takeaway endpoint', () => {
       text: 'Short block run, reset is safe.',
       model: 'gemini-3.8-flash-low',
     })
+  })
+
+  it('runs the model only when POST explicitly requests a fresh takeaway', async () => {
+    let callCount = 0
+    const runner: CommandRunner = async () => {
+      callCount++
+      return { stdout: 'Visible page requested this line.', stderr: '' }
+    }
+    const refresher = createTakeawayRefresher({ runner })
+    const app = createApp({
+      home: FIXTURE_HOME,
+      now: NOW,
+      ccbrowse: null,
+      recordLook: false,
+      takeaway: refresher,
+    })
+
+    const read = await app.request('/api/takeaway')
+    expect(callCount).toBe(0)
+    expect(await read.json()).toEqual({ text: null, model: null })
+
+    const generated = await app.request('/api/takeaway', { method: 'POST' })
+    expect(callCount).toBe(1)
+    expect(await generated.json()).toEqual({
+      text: 'Visible page requested this line.',
+      model: 'gemini-3.8-flash-low',
+    })
+
+    // the unchanged state is cached even if focus/visibility events race
+    await app.request('/api/takeaway', { method: 'POST' })
+    expect(callCount).toBe(1)
   })
 
   it('returns null when takeaway is disabled via createApp config', async () => {

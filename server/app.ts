@@ -10,8 +10,8 @@ import type { TakeawayRefresher } from './takeaway'
 export interface AppConfig extends Options {
   /** absolute path to the built ui, served at / when it exists */
   uiDist?: string | null
-  /** the background takeaway the route reads; null under --no-takeaway */
-  takeaway?: Pick<TakeawayRefresher, 'current'> | null
+  /** the on-demand takeaway generator; null under --no-takeaway */
+  takeaway?: Pick<TakeawayRefresher, 'current' | 'refresh'> | null
 }
 
 export function createApp(config: AppConfig = {}) {
@@ -30,8 +30,17 @@ export function createApp(config: AppConfig = {}) {
     return c.json(await buildState({ ...stateOptions, recordLook: !peek }))
   })
 
-  // never runs the model: the server's minute tick refreshes it in the background
+  // reads the last generated line without spending tokens
   app.get('/api/takeaway', (c) => c.json(takeaway?.current() ?? { text: null, model: null }))
+
+  // the focused, visible page calls this when the user opens or returns to it
+  app.post('/api/takeaway', async (c) => {
+    if (takeaway) {
+      const state = await buildState({ ...stateOptions, recordLook: false })
+      await takeaway.refresh(state)
+    }
+    return c.json(takeaway?.current() ?? { text: null, model: null })
+  })
 
   if (uiDist && existsSync(uiDist)) {
     app.use('/*', serveStatic({ root: uiDist }))

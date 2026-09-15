@@ -77,8 +77,8 @@ function main(): void {
   const widgetsDir = defaultWidgetsDir()
   let kickedFor: number | null = null
 
-  // one state build a minute feeds the widget file, the takeaway (in the
-  // background, agy takes longer than a request should wait) and the reset kick
+  // one state build a minute feeds the widget file and the reset kick. the
+  // browser requests the Gemini takeaway only while Tally is visible and focused
   const tick = async () => {
     try {
       const state = await buildState({ ccbrowse: options.ccbrowse, recordLook: false })
@@ -90,7 +90,6 @@ function main(): void {
         child.on('error', () => console.error('tally: could not start usage-sample.service'))
       }
       if (options.widget) writeWidget(state, widgetsDir)
-      if (takeaway) void takeaway.refresh(state)
     } catch (error) {
       console.error(`tally: minute tick failed: ${error instanceof Error ? error.message : String(error)}`)
     }

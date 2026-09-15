@@ -39,8 +39,8 @@ cc-browse, bd-board and AgentsView and start or stop cc-browse and AgentsView.
 block stays on the page.
 
 Flags: `--port <n>`, `--ccbrowse <url>`, `--no-ccbrowse`, `--no-open`,
-`--no-widget`, `--no-takeaway` (the takeaway is an `agy -p` call on the same
-minute tick, served from memory at `/api/takeaway`).
+`--no-widget`, `--no-takeaway` (the focused, visible page requests the takeaway
+through an `agy -p` call, then it is served from memory at `/api/takeaway`).
 `bin/tally.mjs` is a launcher that works from any directory, so
 `ln -s ~/git/tally/bin/tally.mjs ~/.local/bin/tally` is enough to run it anywhere.
 

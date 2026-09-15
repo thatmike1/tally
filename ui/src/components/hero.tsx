@@ -6,22 +6,35 @@ import { ago, dayClock, hm, pct, until } from '../format'
 export function Hero({ state }: { state: State }) {
   const [takeaway, setTakeaway] = useState<string | null>(null)
 
-  // the server refreshes the text on its own minute tick and the route only
-  // reads memory, so every state poll asks again rather than waiting for a new sample
+  // generating the line spends Gemini quota, so request it only when this is the
+  // visible tab in the focused browser window. returning to Tally refreshes it.
   useEffect(() => {
     let alive = true
-    fetch('/api/takeaway')
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data: { text: string | null; model: string | null } | null) => {
-        if (alive && data?.text) {
-          setTakeaway(data.text)
-        }
-      })
-      .catch(() => {})
+    let loading = false
+
+    const load = () => {
+      if (!alive || loading || document.visibilityState !== 'visible' || !document.hasFocus()) return
+      loading = true
+      fetch('/api/takeaway', { method: 'POST' })
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data: { text: string | null; model: string | null } | null) => {
+          if (alive && data?.text) setTakeaway(data.text)
+        })
+        .catch(() => {})
+        .finally(() => {
+          loading = false
+        })
+    }
+
+    load()
+    document.addEventListener('visibilitychange', load)
+    window.addEventListener('focus', load)
     return () => {
       alive = false
+      document.removeEventListener('visibilitychange', load)
+      window.removeEventListener('focus', load)
     }
-  }, [state.now])
+  }, [])
 
   const five = state.fiveHour
   if (!five || !state.block) return <p className="loading">no api meter sample in the log yet.</p>
