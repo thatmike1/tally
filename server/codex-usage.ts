@@ -3,12 +3,13 @@ import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
-import { formatHm, weekdayName } from './time'
+import { median } from './split'
+import { dayBounds, isWeekend, weekdayName } from './time'
 
 export const CODEX_WEEK_MINUTES = 7 * 24 * 60
 export const CODEX_STALE_SECONDS = 15 * 60
-/** a day's cycle has to be inside the average, or one morning's sitting projects to a false 100% */
-export const CODEX_MIN_PACE_SECONDS = 24 * 3600
+/** a day counts as fully read only with a reading this close to both of its midnights */
+export const CODEX_DAY_EDGE_SECONDS = 3 * 3600
 /** the reader runs every five minutes, so a longer silence is a gap */
 export const CODEX_GAP_SECONDS = 30 * 60
 export const CODEX_HISTORY_STEP = 15 * 60
@@ -47,20 +48,27 @@ interface RateLimitsResponse {
 }
 
 /**
- * the weekly verdict. the meter is cumulative since the window opened, so the
- * latest reading alone gives the week's average burn; history picks the window
- * and draws the line, and a gap in it never biases the rate.
+ * the weekly verdict, counted in workdays: weekends are free, and every Prague
+ * weekday left before the reset is expected to burn a typical day. the typical
+ * day is the median of this window's fully read weekdays; before one exists it
+ * is today so far, and the verdict says it is provisional.
  */
 export interface CodexPace {
   ready: boolean
+  /** true while the typical day is today so far rather than measured full days */
+  provisional: boolean
   /** why there is no projection, null when there is one */
   reason: string | null
-  /** where the meter would sit at the latest reading if the week burned evenly */
-  evenPct: number
-  /** where the meter lands at the reset if the week's average holds */
+  /** points a workday is expected to burn */
+  typicalDay: number | null
+  /** how many full weekdays the typical day is the median of; 0 when provisional */
+  measuredDays: number
+  /** where the meter lands at the reset if every workday burns the typical day */
   pctAtReset: number | null
-  /** when it reaches 100 at that average, null if it does not before the reset */
+  /** when that reaches 100, null if it does not before the reset */
   hitsHundredAt: number | null
+  /** the expected meter from the latest reading to the reset, flat across weekends */
+  path: { t: number; pct: number }[]
   /** the short text the tray, widget and page share */
   phrase: string
 }
@@ -177,11 +185,6 @@ function countdown(seconds: number): string {
   return `${minutes}m`
 }
 
-/** `Thu 14:00` in Europe/Prague */
-function dayClock(t: number): string {
-  return `${weekdayName(t)} ${formatHm(t)}`
-}
-
 /** the readings that belong to the latest reading's window, oldest first */
 export function currentWindowReadings(history: CodexUsageReading[]): CodexUsageReading[] {
   const latest = history.at(-1)
@@ -212,29 +215,96 @@ export function thinHistory(readings: CodexUsageReading[]): CodexHistoryPoint[] 
   return points
 }
 
-/** projects the week from the window's average burn, or says why it cannot yet */
+/** the reading closest before `t` within the day edge, or null */
+function readingBefore(window: CodexUsageReading[], t: number): CodexUsageReading | null {
+  const found = window.filter((reading) => reading.sampledAt <= t).at(-1)
+  return found && t - found.sampledAt <= CODEX_DAY_EDGE_SECONDS ? found : null
+}
+
+/** the reading closest after `t` within the day edge, or null */
+function readingAfter(window: CodexUsageReading[], t: number): CodexUsageReading | null {
+  const found = window.find((reading) => reading.sampledAt >= t)
+  return found && found.sampledAt - t <= CODEX_DAY_EDGE_SECONDS ? found : null
+}
+
+/** points each fully read weekday burned, skipping the day the window opened in and today */
+export function codexWorkdayDeltas(window: CodexUsageReading[]): number[] {
+  const latest = window.at(-1)
+  if (!latest) return []
+  const windowStart = latest.resetsAt - latest.windowDurationMins * 60
+  const [todayStart] = dayBounds(latest.sampledAt)
+  const deltas: number[] = []
+  for (let cursor = dayBounds(windowStart)[1]; cursor < todayStart; cursor = dayBounds(cursor)[1]) {
+    const [start, end] = dayBounds(cursor)
+    if (isWeekend(start)) continue
+    const before = readingBefore(window, start)
+    const after = readingAfter(window, end)
+    if (before && after) deltas.push(Math.max(0, after.usedPercent - before.usedPercent))
+  }
+  return deltas
+}
+
+/** projects the week in workdays, or says why it cannot yet */
 export function codexPace(window: CodexUsageReading[]): CodexPace | null {
   const latest = window.at(-1)
   if (!latest) return null
-  const duration = latest.windowDurationMins * 60
-  const windowStart = latest.resetsAt - duration
-  const elapsed = latest.sampledAt - windowStart
-  const evenPct = Math.min(100, Math.max(0, (elapsed / duration) * 100))
-  const waiting = (reason: string): CodexPace => ({ ready: false, reason, evenPct, pctAtReset: null, hitsHundredAt: null, phrase: 'no pace yet' })
-  if (latest.usedPercent >= 100) {
-    return { ready: true, reason: null, evenPct, pctAtReset: 100, hitsHundredAt: latest.sampledAt, phrase: 'at 100%' }
+  const used = latest.usedPercent
+  const now = latest.sampledAt
+  const windowStart = latest.resetsAt - latest.windowDurationMins * 60
+  const base = { typicalDay: null, measuredDays: 0, pctAtReset: null, hitsHundredAt: null, path: [] }
+  const waiting = (reason: string): CodexPace => ({ ready: false, provisional: false, reason, ...base, phrase: 'no pace yet' })
+  if (used >= 100) {
+    return { ready: true, provisional: false, reason: null, ...base, pctAtReset: 100, hitsHundredAt: now, phrase: 'at 100%' }
   }
-  if (elapsed < CODEX_MIN_PACE_SECONDS) return waiting('under a day into the week')
-  const peak = Math.max(...window.map((reading) => reading.usedPercent))
-  // the average assumes the meter only climbs inside a window; a drop means it was reset early
-  if (latest.usedPercent < peak) return waiting('the meter went down inside this week')
-  const rate = latest.usedPercent / elapsed
-  const projected = latest.usedPercent + rate * (latest.resetsAt - latest.sampledAt)
-  if (projected >= 100) {
-    const hitsHundredAt = latest.sampledAt + (100 - latest.usedPercent) / rate
-    return { ready: true, reason: null, evenPct, pctAtReset: 100, hitsHundredAt, phrase: `100% by ${dayClock(hitsHundredAt)}` }
+  // the workday model assumes the meter only climbs inside a window; a drop means it was reset early
+  if (used < Math.max(...window.map((reading) => reading.usedPercent))) return waiting('the meter went down inside this week')
+
+  const [todayStart, todayEnd] = dayBounds(now)
+  const todayIsWorkday = !isWeekend(todayStart)
+  const midnight = windowStart >= todayStart ? null : readingBefore(window, todayStart)
+  // null when the reader missed the start of today, so today's burn is unknown
+  const todaySoFar = windowStart >= todayStart ? used : midnight ? used - midnight.usedPercent : null
+
+  const deltas = codexWorkdayDeltas(window)
+  const provisional = deltas.length === 0
+  let typicalDay: number
+  if (!provisional) {
+    typicalDay = median(deltas)!
+  } else {
+    if (!todayIsWorkday) return waiting('no workday read yet this week')
+    if (todaySoFar === null) return waiting('the reader missed the start of today')
+    if (todaySoFar <= 0) return waiting('nothing used yet today')
+    typicalDay = todaySoFar
   }
-  return { ready: true, reason: null, evenPct, pctAtReset: projected, hitsHundredAt: null, phrase: `≈ ${Math.round(projected)}% at reset` }
+
+  const path = [{ t: now, pct: used }]
+  let level = used
+  const crossing: { at: number | null } = { at: null }
+  const advance = (from: number, to: number, points: number) => {
+    if (crossing.at === null && points > 0 && level + points >= 100) {
+      crossing.at = from + ((100 - level) / points) * (to - from)
+    }
+    level += points
+    path.push({ t: to, pct: Math.min(100, level) })
+  }
+  // provisional means today is the typical day, so today is already spent; otherwise the rest of a typical day is still to come
+  const restOfToday = provisional || !todayIsWorkday ? 0 : Math.max(0, typicalDay - (todaySoFar ?? 0))
+  advance(now, Math.min(todayEnd, latest.resetsAt), restOfToday)
+  for (let cursor = todayEnd; cursor < latest.resetsAt; cursor = dayBounds(cursor)[1]) {
+    const [start, end] = dayBounds(cursor)
+    const stop = Math.min(end, latest.resetsAt)
+    // the reset day counts for the part of it before the reset
+    advance(start, stop, isWeekend(start) ? 0 : typicalDay * ((stop - start) / (end - start)))
+  }
+
+  const pctAtReset = Math.min(100, level)
+  const suffix = provisional ? ', provisional' : ''
+  const hits = crossing.at
+  const phrase =
+    hits === null
+      ? `≈ ${Math.round(pctAtReset)}% at reset${suffix}`
+      : `100% ${hits < todayEnd ? 'today' : `by ${weekdayName(hits)}`}${suffix}`
+  return { ready: true, provisional, reason: null, typicalDay, measuredDays: deltas.length, pctAtReset, hitsHundredAt: hits, path, phrase }
 }
 
 /** gives both glance surfaces and the page one canonical, honest reading */

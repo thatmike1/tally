@@ -49,26 +49,28 @@ function Verdict({ codex }: { codex: CodexView }) {
       </div>
     )
   }
-  const even = `an even week would be at ${pct(pace.evenPct)} by now`
   if (!pace.ready) {
     return (
       <div className="cx-v">
         <b className="n">no pace yet</b>
-        <span>
-          {pace.reason} · {even}
-        </span>
+        <span>{pace.reason}</span>
       </div>
     )
   }
+  const basis = pace.provisional
+    ? `every workday uses what today has so far (${pct(pace.typicalDay ?? 0)})`
+    : `every workday uses the median of ${pace.measuredDays} full workday${pace.measuredDays === 1 ? '' : 's'} (${pct(pace.typicalDay ?? 0)})`
   return (
     <div className="cx-v">
-      <b className={pace.pctAtReset !== null && pace.pctAtReset >= 100 ? 'over' : ''}>{pace.phrase}</b>
-      <span>at this week's average so far · {even}</span>
+      <b className={pace.hitsHundredAt !== null ? 'over' : ''}>{pace.phrase.replace(/, provisional$/, '')}</b>
+      <span>
+        {pace.provisional ? 'provisional · ' : ''}if {basis} until the reset, weekends free
+      </span>
     </div>
   )
 }
 
-/** the window from open to reset: readings, the even-week diagonal, and the projection */
+/** the window from open to reset: readings, and the expected path to it with weekends flat */
 function WeekChart({ codex }: { codex: CodexView }) {
   const { windowStart, resetsAt, history, pace } = codex
   if (windowStart === null || resetsAt === null) return <div />
@@ -87,11 +89,7 @@ function WeekChart({ codex }: { codex: CodexView }) {
     }
     runs.at(-1)!.push(at)
   }
-  const last = history.at(-1)
-  const projection =
-    last && pace?.ready && pace.pctAtReset !== null && pace.pctAtReset > last.pct
-      ? [x(last.t), y(last.pct), x(pace.hitsHundredAt ?? resetsAt), y(pace.pctAtReset)]
-      : null
+  const projection = pace?.ready && pace.path.length > 1 ? pace.path.map((point) => `${x(point.t)},${y(point.pct)}`).join(' ') : null
 
   return (
     <div className="cx-chart">
@@ -99,7 +97,6 @@ function WeekChart({ codex }: { codex: CodexView }) {
         {[1, 2, 3, 4, 5, 6].map((day) => (
           <line key={day} className="grid" x1={(W / 7) * day} x2={(W / 7) * day} y1={0} y2={H} />
         ))}
-        <line className="cx-even" x1={0} y1={H} x2={W} y2={0} />
         {bridges.map((points) => (
           <polyline key={points} className="cx-gap" points={points} />
         ))}
@@ -107,10 +104,10 @@ function WeekChart({ codex }: { codex: CodexView }) {
           // a lone reading repeats its point so the round cap draws it as a dot
           <polyline key={points[0]} className="cx-line" points={(points.length === 1 ? [points[0], points[0]] : points).join(' ')} />
         ))}
-        {projection ? <line className="cx-proj" x1={projection[0]} y1={projection[1]} x2={projection[2]} y2={projection[3]} /> : null}
+        {projection ? <polyline className="cx-proj" points={projection} /> : null}
       </svg>
       <div className="stripcap">
-        the week since {dayClock(windowStart)} · dashed diagonal is an even week
+        the week since {dayClock(windowStart)}{projection ? ' · dashed is the expected path, flat on weekends' : ''}
         {history.some((point) => point.afterGap) ? ' · dotted where the reader missed a stretch' : ''}
       </div>
     </div>

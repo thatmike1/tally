@@ -589,8 +589,7 @@ svg {
 
 .cx-line,
 .cx-gap,
-.cx-proj,
-.cx-even {
+.cx-proj {
   fill: none;
   vector-effect: non-scaling-stroke;
   stroke-linecap: round;
@@ -613,12 +612,6 @@ svg {
   stroke-width: 2;
   stroke-dasharray: 4 5;
   opacity: 0.6;
-}
-
-.cx-even {
-  stroke: var(--dim);
-  stroke-width: 1;
-  stroke-dasharray: 3 4;
 }
 
 @media (max-width: 820px) {

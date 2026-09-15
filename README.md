@@ -71,10 +71,13 @@ asks `account/rateLimits/read` for the main bucket's seven-day window, with no
 conversation or model turn. Readings go to `~/.cache/tally/codex-usage.jsonl`,
 the last read's outcome to `codex-usage-status.json`; neither holds credentials.
 A reading older than 15 minutes or a failed read shows as stale, never as 0%.
-The pace is the week's average burn: the meter is cumulative since the window
-opened (reset minus seven days), so the latest reading alone gives it and a gap
-in the history does not bias it. No projection until a full day of the week has
-passed, or when the meter went down inside the week. It shares nothing with the
+The pace is counted in Prague workdays, weekends free: each weekday left before
+the reset burns a typical day, and the reset day counts for the part before the
+reset. The typical day is the median of this window's fully read weekdays (a
+reading within three hours of both midnights); until one exists it is today so
+far and the verdict says `provisional`. No verdict on a weekend with no workday
+read, when the reader missed the start of today, or when the meter went down
+inside the week. It shares nothing with the
 Claude cost model and attributes nothing to threads.
 
 **Non-Claude threads** — T3 Code's `~/.t3/userdata/state.sqlite`, opened

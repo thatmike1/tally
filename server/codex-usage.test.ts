@@ -7,6 +7,7 @@ import {
   CODEX_STALE_SECONDS,
   codexBinaryPath,
   codexPace,
+  codexWorkdayDeltas,
   currentWindowReadings,
   thinHistory,
   codexUsageView,
@@ -17,7 +18,7 @@ import {
   type CodexUsagePaths,
   type CodexUsageReading,
 } from './codex-usage'
-import { formatHm, weekdayName } from './time'
+import { startOfDay, weekdayName } from './time'
 
 function paths(): CodexUsagePaths {
   const dir = mkdtempSync(join(tmpdir(), 'tally-codex-'))
@@ -99,48 +100,78 @@ function at(hours: number, usedPercent: number, resetsAt = RESET): CodexUsageRea
   return { sampledAt: resetsAt - WEEK + hours * 3600, usedPercent, resetsAt, windowDurationMins: 10_080 }
 }
 
+// Monday 14 September 2026, Prague; the week opens at 10:00 and resets the next Monday at 10:00
+const MON = startOfDay('2026-09-14')
+const OPEN = MON + 10 * 3600
+const WEEK_RESET = OPEN + WEEK
+
+/** a reading `hours` after Monday midnight in that week */
+function on(hours: number, usedPercent: number): CodexUsageReading {
+  return { sampledAt: MON + hours * 3600, usedPercent, resetsAt: WEEK_RESET, windowDurationMins: 10_080 }
+}
+
 describe('codexPace', () => {
-  it('holds back a projection for the first day of the week', () => {
-    expect(codexPace([at(2, 3), at(23, 30)])).toMatchObject({
-      ready: false,
-      reason: 'under a day into the week',
-      phrase: 'no pace yet',
-      pctAtReset: null,
-    })
+  it('paces provisionally from today when no full workday is read yet', () => {
+    // 10 today, then Tue-Fri at 10 each, a free weekend, and 10/24 of Monday before the reset
+    const pace = codexPace([on(11, 2), on(18, 10)])
+    expect(pace).toMatchObject({ ready: true, provisional: true, typicalDay: 10, measuredDays: 0, hitsHundredAt: null })
+    expect(pace!.pctAtReset).toBeCloseTo(10 + 10 * (4 + 10 / 24))
+    expect(pace!.phrase).toBe('≈ 54% at reset, provisional')
   })
 
-  it('projects the week from the average burn so far', () => {
-    // 20 points in two days is 70 over seven
-    const pace = codexPace([at(1, 2), at(48, 20)])
-    expect(pace).toMatchObject({ ready: true, reason: null, hitsHundredAt: null, phrase: '≈ 70% at reset' })
-    expect(pace!.pctAtReset).toBeCloseTo(70)
-    expect(pace!.evenPct).toBeCloseTo((48 / 168) * 100)
+  it('keeps the weekend flat on the expected path', () => {
+    const path = codexPace([on(18, 10)])!.path
+    const saturday = startOfDay('2026-09-19')
+    const monday = startOfDay('2026-09-21')
+    expect(path.find((point) => point.t === monday)?.pct).toBe(path.find((point) => point.t === saturday)?.pct)
+    expect(path.at(-1)).toEqual({ t: WEEK_RESET, pct: expect.closeTo(54.17, 1) })
   })
 
-  it('names when a fast week reaches 100', () => {
-    // 50 points in two days reaches 100 at hour 96
-    const pace = codexPace([at(48, 50)])
-    const hits = RESET - WEEK + 96 * 3600
-    expect(pace).toMatchObject({ ready: true, pctAtReset: 100, hitsHundredAt: hits })
-    expect(pace!.phrase).toBe(`100% by ${weekdayName(hits)} ${formatHm(hits)}`)
+  it('switches to the median of fully read workdays and adds the rest of today', () => {
+    // Tuesday burned 12, Wednesday has used 4 so far, so 8 more today, then Thu and Fri, then 10/24 of Monday
+    const window = [on(12, 3), on(23.8, 10), on(47.9, 22), on(48.1, 22), on(60, 26)]
+    expect(codexWorkdayDeltas(window)).toEqual([12])
+    const pace = codexPace(window)
+    expect(pace).toMatchObject({ ready: true, provisional: false, typicalDay: 12, measuredDays: 1 })
+    expect(pace!.pctAtReset).toBeCloseTo(26 + 8 + 24 + 12 * (10 / 24))
+    expect(pace!.phrase).toBe('≈ 63% at reset')
   })
 
-  it('projects from one sparse reading, since the meter is cumulative', () => {
-    expect(codexPace([at(84, 10)])?.phrase).toBe('≈ 20% at reset')
+  it('does not count a day the reader missed an edge of', () => {
+    // nothing near Tuesday's midnights, so Tuesday is not a measured day
+    const window = [on(12, 3), on(18, 10), on(60, 30), on(62, 31)]
+    expect(codexWorkdayDeltas(window)).toEqual([])
+    expect(codexPace(window)).toMatchObject({ ready: false, reason: 'the reader missed the start of today' })
   })
 
-  it('gives the same projection whether or not the reader missed a stretch', () => {
-    const dense = Array.from({ length: 49 }, (_, hour) => at(hour, hour / 2))
-    const gappy = [at(0, 0), at(1, 0.5), at(48, 24)]
-    expect(codexPace(gappy)?.pctAtReset).toBeCloseTo(codexPace(dense)!.pctAtReset!)
+  it('names the day a fast week reaches 100', () => {
+    // 30 a day from Monday evening: 60 Tuesday, 90 Wednesday, over on Thursday
+    const pace = codexPace([on(18, 30)])
+    expect(pace).toMatchObject({ ready: true, pctAtReset: 100, phrase: '100% by Thu, provisional' })
+    expect(weekdayName(pace!.hitsHundredAt!)).toBe('Thu')
   })
 
-  it('refuses to average across a meter that went down inside the week', () => {
-    expect(codexPace([at(30, 40), at(40, 5)])).toMatchObject({ ready: false, reason: 'the meter went down inside this week' })
+  it('says today when the rest of a typical day crosses 100', () => {
+    const window = [on(12, 3), on(23.8, 40), on(48.1, 90), on(60, 92)]
+    expect(codexPace(window)?.phrase).toBe('100% today')
+  })
+
+  it('waits on a weekend with no workday read yet', () => {
+    const saturdayOpen = startOfDay('2026-09-19') + 9 * 3600
+    const reading = { sampledAt: saturdayOpen + 3 * 3600, usedPercent: 5, resetsAt: saturdayOpen + WEEK, windowDurationMins: 10_080 }
+    expect(codexPace([reading])).toMatchObject({ ready: false, reason: 'no workday read yet this week', phrase: 'no pace yet' })
+  })
+
+  it('waits when nothing has been used today', () => {
+    expect(codexPace([on(10.5, 0)])).toMatchObject({ ready: false, reason: 'nothing used yet today' })
+  })
+
+  it('refuses to pace a meter that went down inside the week', () => {
+    expect(codexPace([on(30, 40), on(40, 5)])).toMatchObject({ ready: false, reason: 'the meter went down inside this week' })
   })
 
   it('says the week is spent once the meter reads 100', () => {
-    expect(codexPace([at(10, 100)])).toMatchObject({ ready: true, pctAtReset: 100, phrase: 'at 100%' })
+    expect(codexPace([on(30, 100)])).toMatchObject({ ready: true, pctAtReset: 100, phrase: 'at 100%' })
   })
 
   it('has nothing to say without readings', () => {
@@ -172,11 +203,11 @@ describe('thinHistory', () => {
 describe('codexUsageView pace', () => {
   it('carries the verdict into the glance line and the window history to the page', () => {
     const files = paths()
-    for (const reading of [at(1, 2), at(48, 20)]) recordCodexReading(files, reading)
-    const view = codexUsageView(files, at(48, 20).sampledAt + 60)
-    expect(view.line).toBe('Codex · 20% used · resets in 4d 23h · ≈ 70% at reset')
-    expect(view.windowStart).toBe(RESET - WEEK)
-    expect(view.history.map((point) => point.pct)).toEqual([2, 20])
+    for (const reading of [on(11, 2), on(18, 10)]) recordCodexReading(files, reading)
+    const view = codexUsageView(files, on(18, 10).sampledAt + 60)
+    expect(view.line).toBe('Codex · 10% used · resets in 6d 15h · ≈ 54% at reset, provisional')
+    expect(view.windowStart).toBe(OPEN)
+    expect(view.history.map((point) => point.pct)).toEqual([2, 10])
     expect(view.history[1]?.afterGap).toBe(true)
   })
 
