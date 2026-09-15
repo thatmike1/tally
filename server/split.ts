@@ -283,17 +283,23 @@ export interface Projection {
   pace: number
   /** where the meter lands at the reset if the pace holds */
   pctAtReset: number
-  /** when it would reach 100, or null if it does not */
+  /** when it would reach 100, or null if it does not or the span is too short to say */
   hitsHundredAt: number | null
+  /** the samples span `MIN_PACE_SPAN`; before that a single early jump extrapolates to a false 100% */
+  ready: boolean
 }
+
+/** a block opens with a burst, so five minutes of it once projected 12% to 100% by mid-afternoon */
+export const MIN_PACE_SPAN = 20 * 60
 
 export function project(first: Sample, last: Sample, resetsAt: number): Projection {
   const span = last.t - first.t
+  const ready = span >= MIN_PACE_SPAN
   const pace = span > 0 ? (last.pct - first.pct) / span : 0
   const pctAtReset = last.pct + pace * Math.max(0, resetsAt - last.t)
   const hitsHundredAt =
-    pace > 0 && pctAtReset >= 100 ? last.t + (100 - last.pct) / pace : null
-  return { pace, pctAtReset: Math.min(100, pctAtReset), hitsHundredAt }
+    ready && pace > 0 && pctAtReset >= 100 ? last.t + (100 - last.pct) / pace : null
+  return { pace, pctAtReset: Math.min(100, pctAtReset), hitsHundredAt, ready }
 }
 
 export interface DayDelta {

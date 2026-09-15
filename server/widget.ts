@@ -30,11 +30,12 @@ export function fiveHourVerdict(state: State): { phrase: string; resetTime: stri
   if (!state.fiveHour) {
     return { phrase: 'no samples', resetTime: null }
   }
-  const resetTime = formatHm(state.fiveHour.resetsAt)
   if (state.fiveHour.ended) {
-    return { phrase: 'next message opens a block', resetTime }
+    const next = state.fiveHour.nextResetsAt
+    return { phrase: 'fresh block', resetTime: next === null ? null : formatHm(next) }
   }
-  if (!state.block || state.block.to <= state.block.from) {
+  const resetTime = formatHm(state.fiveHour.resetsAt)
+  if (!state.block || !state.block.projection.ready) {
     return { phrase: 'no pace yet', resetTime }
   }
   const projection = state.block.projection
@@ -47,12 +48,8 @@ export function fiveHourVerdict(state: State): { phrase: string; resetTime: stri
 /** computes attention state based on projection and sampler freshness */
 export function computeWidgetState(state: State): 'ok' | 'attention' {
   if (!state.fiveHour) return 'attention'
+  // only a broken sampler turns the sidebar orange; a projected 100% is the row's text, not an alarm
   if (state.fiveHour.expired || state.fiveHour.ageSeconds > 900) return 'attention'
-  // a finished block's projection is history, not a warning
-  if (state.fiveHour.ended) return 'ok'
-  if (state.block?.projection.hitsHundredAt !== null && state.block?.projection.hitsHundredAt !== undefined) {
-    return 'attention'
-  }
   return 'ok'
 }
 
@@ -60,7 +57,7 @@ export function computeWidgetState(state: State): 'ok' | 'attention' {
 export function computeTooltip(state: State): string {
   const { phrase, resetTime } = fiveHourVerdict(state)
   if (!resetTime) return phrase
-  return state.fiveHour?.ended ? `${phrase} · reset ${resetTime}` : `${phrase} · resets ${resetTime}`
+  return state.fiveHour?.ended ? `${phrase} · resets ${resetTime} if you start now` : `${phrase} · resets ${resetTime}`
 }
 
 /**
@@ -78,7 +75,7 @@ export function computeRows(state: State): WidgetRow[] {
       : !resetTime
         ? ''
         : state.fiveHour.ended
-          ? `  ·  reset ${resetTime}`
+          ? `  ·  resets ${resetTime} if you start now`
           : `  ·  resets ${resetTime}`
     rows.push({ label: `5h  ${fivePct}${resetPart}  ·  ${phrase}` })
   }

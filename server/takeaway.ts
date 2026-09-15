@@ -44,7 +44,7 @@ export function buildTakeawaySummary(state: State): string {
     }
   }
 
-  if (state.block?.projection && !state.fiveHour?.ended) {
+  if (state.block?.projection.ready && !state.fiveHour?.ended) {
     const proj = state.block.projection
     if (proj.hitsHundredAt !== null) {
       lines.push('Projection: will hit 100% before reset')

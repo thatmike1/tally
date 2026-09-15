@@ -34,14 +34,20 @@ async function fixtureState(lastLooked?: string) {
 
 describe('renderWidget', () => {
   it('renders expected metadata and meter rows from fixture state', async () => {
-    const state = await fixtureState()
+    const fixture = await fixtureState()
+    // the fixture block spans ten minutes, too short to project from
+    expect(renderWidget(fixture).rows[0]?.label).toMatch(/·  no pace yet$/)
+    const state = {
+      ...fixture,
+      block: { ...fixture.block!, projection: { pace: 0.02, pctAtReset: 100, hitsHundredAt: NOW + 1500, ready: true } },
+    }
     const widget = renderWidget(state)
 
     expect(widget.icon).toBe('activity')
     expect(widget.order).toBe(15)
     expect(widget.label).toBe('70%')
-    // in the fixture, block projection hits 100 before reset
-    expect(widget.state).toBe('attention')
+    // the fixture's projection hits 100 before reset, which is row text, not an orange sidebar
+    expect(widget.state).toBe('ok')
 
     const resetTime = formatHm(state.fiveHour!.resetsAt)
     const hitsTime = formatHm(state.block!.projection.hitsHundredAt!)
@@ -120,7 +126,7 @@ describe('renderWidget', () => {
     expect(labels.some((l) => l.includes('short title') || l.includes('fixture session'))).toBe(false)
   })
 
-  it('sets attention state on saturated projection, expired sampler, or stale sample', async () => {
+  it('sets attention state only for an expired or stale sampler, never for a projection', async () => {
     const base = await fixtureState()
 
     // normal ok state when pace is healthy and fresh
@@ -129,7 +135,7 @@ describe('renderWidget', () => {
       fiveHour: { ...base.fiveHour!, expired: false, ageSeconds: 120 },
       block: {
         ...base.block!,
-        projection: { pace: 0.001, pctAtReset: 80, hitsHundredAt: null },
+        projection: { pace: 0.001, pctAtReset: 80, hitsHundredAt: null, ready: true },
       },
     }
     expect(computeWidgetState(okState)).toBe('ok')
@@ -139,10 +145,10 @@ describe('renderWidget', () => {
       ...okState,
       block: {
         ...okState.block,
-        projection: { pace: 0.01, pctAtReset: 100, hitsHundredAt: NOW + 1000 },
+        projection: { pace: 0.01, pctAtReset: 100, hitsHundredAt: NOW + 1000, ready: true },
       },
     }
-    expect(computeWidgetState(overState)).toBe('attention')
+    expect(computeWidgetState(overState)).toBe('ok')
 
     // sampler expired
     const expiredState = {

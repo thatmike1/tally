@@ -35,6 +35,7 @@ async function fixtureState(lastLooked?: string): Promise<State> {
 describe('buildTakeawaySummary and prompt', () => {
   it('formats compact summary with 5h, projection, verdicts, and sessions', async () => {
     const state = await fixtureState()
+    state.block = { ...state.block!, projection: { pace: 0.02, pctAtReset: 100, hitsHundredAt: NOW + 1500, ready: true } }
     state.split = {
       from: NOW - 3600,
       to: NOW,

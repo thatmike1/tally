@@ -224,9 +224,17 @@ describe('project', () => {
   })
 
   it('says when the meter runs out instead of projecting past 100', () => {
-    const projection = project(sample(0, 50), sample(1000, 70), 10_000)
+    const projection = project(sample(0, 50), sample(1200, 74), 10_000)
+    expect(projection.ready).toBe(true)
     expect(projection.pctAtReset).toBe(100)
-    expect(projection.hitsHundredAt).toBe(1000 + 30 / 0.02)
+    expect(projection.hitsHundredAt).toBe(1200 + 26 / 0.02)
+  })
+
+  it('names no 100% time from under twenty minutes of readings', () => {
+    // the 13:15 to 13:20 opening burst, 7% to 12%, once projected 100% by 14:50
+    const projection = project(sample(0, 7), sample(300, 12), 17_700)
+    expect(projection.ready).toBe(false)
+    expect(projection.hitsHundredAt).toBeNull()
   })
 
   it('has no pace from a single sample', () => {

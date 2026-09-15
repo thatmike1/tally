@@ -6,6 +6,7 @@ import { dayLanes, DEFAULT_CCBROWSE, type Lane } from './ccbrowse'
 import {
   blocks as groupBlocks,
   currentBlock,
+  FIVE_HOURS,
   limitsLogPath,
   readLog,
   type Sample,
@@ -23,6 +24,7 @@ import {
   weeklyVerdict,
   weekWindow,
   type BlockSplit,
+  type Projection,
   type SessionSplit,
   type WeeklyVerdict,
   type WindowSplit,
@@ -81,6 +83,8 @@ export interface State {
     ageSeconds: number
     /** the block's reset has passed; `pct` is 0 and `resetsAt` is when it reset */
     ended: boolean
+    /** when a block opened by a message right now would reset; null while a block runs */
+    nextResetsAt: number | null
     /** the block ended a while ago and nothing has read the account since: the sampler is behind */
     expired: boolean
     saturated: boolean
@@ -100,7 +104,7 @@ export interface State {
     endPct: number
     delta: number | null
     samples: { t: number; pct: number }[]
-    projection: { pctAtReset: number; hitsHundredAt: number | null; pace: number }
+    projection: Projection
   } | null
   split: (Omit<BlockSplit, 'sessions'> & { sessions: SessionRow[] }) | null
   /** which sessions moved the weekly and Fable meters, since the last look or since midnight */
@@ -128,6 +132,14 @@ export interface State {
     t3: string
     ccbrowse: string | null
   }
+}
+
+/**
+ * a block runs five hours from the message that opens it, with the start on a
+ * ten-minute mark: a first sample at 13:15 read a reset of 18:10
+ */
+export function nextReset(now: number): number {
+  return Math.floor(now / 600) * 600 + FIVE_HOURS
 }
 
 function lastLookedFile(home: string): string {
@@ -289,6 +301,7 @@ export async function buildState(options: Options = {}): Promise<State> {
           sampledAt: current.last.t,
           ageSeconds: current.sampleAge,
           ended: current.ended,
+          nextResetsAt: current.ended ? nextReset(now) : null,
           expired: current.expired,
           saturated: current.saturated,
           maxGap: current.maxGap,
