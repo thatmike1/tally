@@ -22,6 +22,20 @@ export function App() {
   const [error, setError] = useState<string | null>(null)
   const [theme, toggleTheme] = useTheme()
 
+  // the minute poll can land up to a minute after a reset; ask again right when it happens
+  const resetsAt = state?.fiveHour && !state.fiveHour.ended ? state.fiveHour.resetsAt : null
+  useEffect(() => {
+    if (resetsAt === null) return
+    const wait = resetsAt * 1000 - Date.now() + 2000
+    if (wait <= 0 || wait > 6 * 3600_000) return
+    const timer = setTimeout(() => {
+      fetchState(true)
+        .then(setState)
+        .catch(() => {})
+    }, wait)
+    return () => clearTimeout(timer)
+  }, [resetsAt])
+
   useEffect(() => {
     let alive = true
     let first = true
@@ -65,8 +79,8 @@ export function App() {
       </div>
       {state.fiveHour?.expired ? (
         <p className="warn">
-          the newest sample belongs to a block that has already reset: the sampler is behind, so this page is stale.
-          check <code>systemctl --user list-timers usage-sample.timer</code>.
+          the block reset over ten minutes ago and nothing has read the account since: the sampler is behind, so this
+          page is stale. check <code>systemctl --user list-timers usage-sample.timer</code>.
         </p>
       ) : null}
       {state.notes.map((note) => (

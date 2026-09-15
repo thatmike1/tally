@@ -20,7 +20,7 @@ export function BlockSplit({ state }: { state: State }) {
   return (
     <>
       <h2>
-        this block · since {hm(block.from)} ·{' '}
+        {state.fiveHour?.ended ? `last block · ${hm(block.from)} to ${hm(block.resetsAt)}` : `this block · since ${hm(block.from)}`} ·{' '}
         {delta === null ? 'movement not measured' : `${Math.round(delta)} points`}
       </h2>
       <div className="strip">
@@ -45,7 +45,9 @@ export function BlockSplit({ state }: { state: State }) {
       ) : null}
       {missingAfter > 0.01 ? (
         <p className="warn">
-          {money(missingAfter)} since the last sample ({hm(block.to)}) is not on the meter yet.
+          {state.fiveHour?.ended
+            ? `${money(missingAfter)} ran between the last sample (${hm(block.to)}) and the reset, so no reading covers it.`
+            : `${money(missingAfter)} since the last sample (${hm(block.to)}) is not on the meter yet.`}
         </p>
       ) : null}
 

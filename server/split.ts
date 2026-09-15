@@ -61,6 +61,8 @@ export function splitBlock(
     to: number
     delta: number | null
     blockStart?: number
+    /** the block's reset; requests after it belong to the next block, not this one's unread tail */
+    blockEnd?: number
     /** what a request weighs in the division; list-price cost unless a meter counts families differently */
     weigh?: ((record: RequestRecord) => number) | undefined
   },
@@ -75,7 +77,7 @@ export function splitBlock(
   let costAfterLastSample = 0
   for (const record of records) {
     if (record.t >= blockStart && record.t < from) costBeforeFirstSample += record.cost
-    if (record.t >= to) costAfterLastSample += record.cost
+    if (record.t >= to && (opts.blockEnd === undefined || record.t < opts.blockEnd)) costAfterLastSample += record.cost
     if (record.t < from || record.t >= to) continue
     let row = byId.get(record.sessionId)
     if (!row) {

@@ -115,6 +115,7 @@ describe('buildState', () => {
         other_limits: [
           { kind: 'session', percent: 20, resets_at: '2026-09-14T22:20:00.000Z' },
           { kind: 'weekly_all', percent: 15 },
+          { kind: 'boost', percent: 50, resets_at: '2026-09-14T22:20:00.000Z' },
           { custom: 'val' },
         ],
         unknown_key: 'something',
@@ -128,8 +129,9 @@ describe('buildState', () => {
       recordLook: false,
     })
     expect(built.notes).toContain('sample carries an extra field: unknown_key')
-    expect(built.notes).toContain('limit: session 20% resets Tue 00:20')
-    expect(built.notes).toContain('limit: weekly_all 15%')
+    // session and weekly_all are the hero's own meters under their newer names
+    expect(built.notes.some((note) => note.includes('session') || note.includes('weekly_all'))).toBe(false)
+    expect(built.notes).toContain('limit: boost 50% resets Tue 00:20')
     expect(built.notes).toContain(JSON.stringify({ custom: 'val' }))
   })
 

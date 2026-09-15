@@ -26,7 +26,7 @@ export function Hero({ state }: { state: State }) {
   const five = state.fiveHour
   if (!five || !state.block) return <p className="loading">no api meter sample in the log yet.</p>
   const projection = state.block.projection
-  const hasPace = state.block.to > state.block.from
+  const hasPace = state.block.to > state.block.from && !five.ended
   const over = projection.hitsHundredAt !== null
 
   return (
@@ -35,11 +35,18 @@ export function Hero({ state }: { state: State }) {
         <div className="big">
           {pct(five.pct)}
           <small>
-            5-hour block · resets {hm(five.resetsAt)}, in {until(five.resetsAt - state.now)} · read {ago(five.ageSeconds)}
+            {five.ended
+              ? `5-hour block · reset at ${hm(five.resetsAt)} · read ${ago(five.ageSeconds)}`
+              : `5-hour block · resets ${hm(five.resetsAt)}, in ${until(five.resetsAt - state.now)} · read ${ago(five.ageSeconds)}`}
           </small>
         </div>
         <div className="verdict">
-          {!hasPace ? (
+          {five.ended ? (
+            <>
+              <b>fresh block</b> · the last one ended at {pct(state.block.endPct)}
+              <span>your next message opens a new 5-hour block</span>
+            </>
+          ) : !hasPace ? (
             <>
               <b>no pace yet</b>
               <span>one sample in this block so far</span>

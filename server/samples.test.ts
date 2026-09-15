@@ -3,7 +3,7 @@ import { mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { blocks, currentBlock, monotonic, readSamples, type Sample } from './samples'
+import { blocks, currentBlock, monotonic, readLog, readSamples, type Sample } from './samples'
 
 function logWith(rows: unknown[]): string {
   const dir = mkdtempSync(join(tmpdir(), 'tally-samples-'))
@@ -113,6 +113,24 @@ describe('currentBlock', () => {
     expect(current.sampleAge).toBe(1000)
     expect(current.expired).toBe(false)
     expect(currentBlock(blocks(readSamples(path)), 20_000)!.expired).toBe(true)
+  })
+
+  it('treats a passed reset as a finished block, not a stale sampler', () => {
+    // right after a reset the endpoint reports 0% with no resets_at until the next message
+    const idle = { t: 18_010, src: 'api', limits: { five_hour: { used_percentage: 0, resets_at: null } } }
+    const log = readLog(logWith([apiRow(1000, 10, 18_000), apiRow(3000, 30, 18_000), idle]))
+    expect(log.samples).toHaveLength(2)
+    expect(log.lastRead).toBe(18_010)
+    const after = currentBlock(blocks(log.samples), 18_070, log.lastRead)!
+    expect(after.ended).toBe(true)
+    expect(after.expired).toBe(false)
+    expect(after.sampleAge).toBe(60)
+  })
+
+  it('gives a reset that was never read ten minutes before calling the sampler behind', () => {
+    const all = blocks(readSamples(path))
+    expect(currentBlock(all, 18_300)!.expired).toBe(false)
+    expect(currentBlock(all, 18_000 + 601)!.expired).toBe(true)
   })
 
   it('flags saturation, because movement after 100% is censored', () => {

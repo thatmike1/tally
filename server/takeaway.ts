@@ -29,7 +29,11 @@ export const defaultExecRunner: CommandRunner = (cmd, args, timeoutMs) =>
 export function buildTakeawaySummary(state: State): string {
   const lines: string[] = []
 
-  if (state.fiveHour) {
+  if (state.fiveHour?.ended) {
+    const minsSinceReset = Math.max(0, Math.round((state.now - state.fiveHour.resetsAt) / 60))
+    lines.push(`5-hour meter: the block reset ${minsSinceReset}m ago and sits at 0% until the next message opens a new one`)
+    lines.push(`Previous block ended at ${state.block ? Math.round(state.block.endPct) : '?'}%`)
+  } else if (state.fiveHour) {
     const minsUntilReset = Math.max(0, Math.round((state.fiveHour.resetsAt - state.now) / 60))
     lines.push(`5-hour meter: ${Math.round(state.fiveHour.pct)}% (resets in ${minsUntilReset}m)`)
     if (state.fiveHour.expired) {
@@ -40,7 +44,7 @@ export function buildTakeawaySummary(state: State): string {
     }
   }
 
-  if (state.block?.projection) {
+  if (state.block?.projection && !state.fiveHour?.ended) {
     const proj = state.block.projection
     if (proj.hitsHundredAt !== null) {
       lines.push('Projection: will hit 100% before reset')
@@ -101,7 +105,7 @@ Write one sentence, under 20 words, plain English, no emoji, that says what ate 
 /** cache key identifying the exact state of the 5-hour block */
 export function takeawayCacheKey(state: State): string | null {
   if (!state.fiveHour || !state.block) return null
-  return `${state.fiveHour.sampledAt}:${state.block.to}`
+  return `${state.fiveHour.sampledAt}:${state.block.to}${state.fiveHour.ended ? ':ended' : ''}`
 }
 
 function cleanText(raw: string): string | null {

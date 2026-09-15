@@ -58,13 +58,23 @@ const KNOWN_KEYS = new Set(['t', 'src', 'limits', 'scoped', 'extra', 'other_limi
 
 /** api-sourced meter readings, oldest first */
 export function readSamples(path = limitsLogPath()): Sample[] {
+  return readLog(path).samples
+}
+
+/**
+ * the samples, plus when the account was last read at all. right after a reset
+ * the endpoint reports the five-hour meter at 0 with no `resets_at` until the
+ * next message opens a block; that row is no sample, but it is a reading.
+ */
+export function readLog(path = limitsLogPath()): { samples: Sample[]; lastRead: number | null } {
   let text: string
   try {
     text = readFileSync(path, 'utf8')
   } catch {
-    return []
+    return { samples: [], lastRead: null }
   }
   const out: Sample[] = []
+  let lastRead: number | null = null
   for (const line of text.split('\n')) {
     if (!line.trim()) continue
     let row: Record<string, any>
@@ -74,6 +84,7 @@ export function readSamples(path = limitsLogPath()): Sample[] {
       continue
     }
     if (row.src !== 'api') continue
+    if (Number.isFinite(Number(row.t))) lastRead = Math.max(lastRead ?? 0, Number(row.t))
     const fiveHour = row.limits?.five_hour
     if (!fiveHour?.resets_at) continue
     const sevenDay = row.limits?.seven_day ?? null
@@ -107,7 +118,7 @@ export function readSamples(path = limitsLogPath()): Sample[] {
     })
   }
   out.sort((a, b) => a.t - b.t)
-  return out
+  return { samples: out, lastRead }
 }
 
 /** samples grouped into five-hour blocks, oldest block first */
@@ -144,9 +155,11 @@ export interface CurrentBlock {
   last: Sample
   /** measured meter movement across the observed span, in points */
   delta: number
-  /** the block's reset is already in the past: the sampler is behind */
+  /** the block's reset is in the past, so the five-hour meter sits at 0 until a message opens the next block */
+  ended: boolean
+  /** the block ended over `EXPIRED_GRACE` ago and nothing has read the account since: the sampler is behind */
   expired: boolean
-  /** seconds since the newest api sample */
+  /** seconds since the account was last read, counting readings that carry no block */
   sampleAge: number
   /** the meter hit 100 inside this block, so later movement is censored */
   saturated: boolean
@@ -154,8 +167,11 @@ export interface CurrentBlock {
   maxGap: number
 }
 
+/** two sampler periods: a reset that recent may simply not have been read yet */
+export const EXPIRED_GRACE = 600
+
 /** the newest block in the log, with everything the page derives from it */
-export function currentBlock(all: Block[], now: number): CurrentBlock | null {
+export function currentBlock(all: Block[], now: number, lastRead: number | null = null): CurrentBlock | null {
   const block = all.at(-1)
   if (!block) return null
   const samples = monotonic(block.samples)
@@ -163,14 +179,17 @@ export function currentBlock(all: Block[], now: number): CurrentBlock | null {
   const last = samples.at(-1)!
   let maxGap = 0
   for (let i = 1; i < samples.length; i++) maxGap = Math.max(maxGap, samples[i]!.t - samples[i - 1]!.t)
+  const read = Math.max(last.t, lastRead ?? 0)
+  const ended = block.resetKey <= now
   return {
     block,
     samples,
     first,
     last,
     delta: last.pct - first.pct,
-    expired: block.resetKey <= now,
-    sampleAge: now - last.t,
+    ended,
+    expired: ended && read < block.resetKey && now - block.resetKey > EXPIRED_GRACE,
+    sampleAge: now - read,
     saturated: last.pct >= 100,
     maxGap,
   }

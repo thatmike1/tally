@@ -112,6 +112,7 @@ def meter_rows(state: dict) -> tuple[str, bool, list[tuple[str, str | None, obje
 
     pct = pct_of(five_hour.get("pct"))
     resets_at = five_hour.get("resetsAt")
+    ended = bool(five_hour.get("ended"))
     expired = bool(five_hour.get("expired"))
     age_seconds = float(five_hour.get("ageSeconds") or 0)
 
@@ -125,10 +126,13 @@ def meter_rows(state: dict) -> tuple[str, bool, list[tuple[str, str | None, obje
         and resets_at is not None
         and hits_hundred_at <= resets_at
     )
-    alert = hits_before_reset or pct >= 100 or expired or age_seconds > 900
+    # a finished block's projection is history, not a warning
+    alert = (not ended and (hits_before_reset or pct >= 100)) or expired or age_seconds > 900
     label = f"{pct}%{'!' if alert else ''}"
 
-    if not has_pace:
+    if ended:
+        verdict = "next message opens a block"
+    elif not has_pace:
         verdict = "no pace yet"
     elif hits_hundred_at is not None:
         verdict = f"100% at {fmt_hm(hits_hundred_at)}"
@@ -137,6 +141,8 @@ def meter_rows(state: dict) -> tuple[str, bool, list[tuple[str, str | None, obje
 
     if expired:
         reset_part = "  ·  expired"
+    elif ended and resets_at:
+        reset_part = f"  ·  reset {fmt_hm(resets_at)}"
     elif resets_at:
         reset_part = f"  ·  resets {fmt_hm(resets_at)}"
     else:

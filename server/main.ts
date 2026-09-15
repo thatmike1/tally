@@ -74,27 +74,32 @@ function main(): void {
   })
 
   const widgetsDir = defaultWidgetsDir()
-  let tickInterval: NodeJS.Timeout | null = null
+  let kickedFor: number | null = null
 
-  // one state build a minute feeds both the widget file and the takeaway, which
-  // runs in the background because agy takes longer than a request should wait
-  if (options.widget || takeaway) {
-    const tick = async () => {
-      try {
-        const state = await buildState({ ccbrowse: options.ccbrowse, recordLook: false })
-        if (options.widget) writeWidget(state, widgetsDir)
-        if (takeaway) void takeaway.refresh(state)
-      } catch (error) {
-        console.error(`tally: minute tick failed: ${error instanceof Error ? error.message : String(error)}`)
+  // one state build a minute feeds the widget file, the takeaway (in the
+  // background, agy takes longer than a request should wait) and the reset kick
+  const tick = async () => {
+    try {
+      const state = await buildState({ ccbrowse: options.ccbrowse, recordLook: false })
+      const five = state.fiveHour
+      // the sampler runs every five minutes; a block that just reset gets read now instead
+      if (five?.ended && state.now - five.ageSeconds < five.resetsAt && kickedFor !== five.resetsAt) {
+        kickedFor = five.resetsAt
+        const child = spawn('systemctl', ['--user', 'start', '--no-block', 'usage-sample.service'], { stdio: 'ignore' })
+        child.on('error', () => console.error('tally: could not start usage-sample.service'))
       }
+      if (options.widget) writeWidget(state, widgetsDir)
+      if (takeaway) void takeaway.refresh(state)
+    } catch (error) {
+      console.error(`tally: minute tick failed: ${error instanceof Error ? error.message : String(error)}`)
     }
-    void tick()
-    tickInterval = setInterval(tick, 60_000)
-    tickInterval.unref()
   }
+  void tick()
+  const tickInterval = setInterval(tick, 60_000)
+  tickInterval.unref()
 
   const stop = () => {
-    if (tickInterval) clearInterval(tickInterval)
+    clearInterval(tickInterval)
     if (options.widget) {
       removeWidget(widgetsDir)
     }

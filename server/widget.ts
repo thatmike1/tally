@@ -31,6 +31,9 @@ export function fiveHourVerdict(state: State): { phrase: string; resetTime: stri
     return { phrase: 'no samples', resetTime: null }
   }
   const resetTime = formatHm(state.fiveHour.resetsAt)
+  if (state.fiveHour.ended) {
+    return { phrase: 'next message opens a block', resetTime }
+  }
   if (!state.block || state.block.to <= state.block.from) {
     return { phrase: 'no pace yet', resetTime }
   }
@@ -45,6 +48,8 @@ export function fiveHourVerdict(state: State): { phrase: string; resetTime: stri
 export function computeWidgetState(state: State): 'ok' | 'attention' {
   if (!state.fiveHour) return 'attention'
   if (state.fiveHour.expired || state.fiveHour.ageSeconds > 900) return 'attention'
+  // a finished block's projection is history, not a warning
+  if (state.fiveHour.ended) return 'ok'
   if (state.block?.projection.hitsHundredAt !== null && state.block?.projection.hitsHundredAt !== undefined) {
     return 'attention'
   }
@@ -54,7 +59,8 @@ export function computeWidgetState(state: State): 'ok' | 'attention' {
 /** formats tooltip with 5h verdict phrase and reset time */
 export function computeTooltip(state: State): string {
   const { phrase, resetTime } = fiveHourVerdict(state)
-  return resetTime ? `${phrase} · resets ${resetTime}` : phrase
+  if (!resetTime) return phrase
+  return state.fiveHour?.ended ? `${phrase} · reset ${resetTime}` : `${phrase} · resets ${resetTime}`
 }
 
 /**
@@ -67,7 +73,13 @@ export function computeRows(state: State): WidgetRow[] {
   if (state.fiveHour) {
     const fivePct = `${Math.round(state.fiveHour.pct)}%`
     const { phrase, resetTime } = fiveHourVerdict(state)
-    const resetPart = state.fiveHour.expired ? '  ·  expired' : resetTime ? `  ·  resets ${resetTime}` : ''
+    const resetPart = state.fiveHour.expired
+      ? '  ·  expired'
+      : !resetTime
+        ? ''
+        : state.fiveHour.ended
+          ? `  ·  reset ${resetTime}`
+          : `  ·  resets ${resetTime}`
     rows.push({ label: `5h  ${fivePct}${resetPart}  ·  ${phrase}` })
   }
 

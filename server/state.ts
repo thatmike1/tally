@@ -7,7 +7,7 @@ import {
   blocks as groupBlocks,
   currentBlock,
   limitsLogPath,
-  readSamples,
+  readLog,
   type Sample,
 } from './samples'
 import {
@@ -79,7 +79,9 @@ export interface State {
     resetsAt: number
     sampledAt: number
     ageSeconds: number
-    /** the newest block's reset has already passed: the sampler is behind */
+    /** the block's reset has passed; `pct` is 0 and `resetsAt` is when it reset */
+    ended: boolean
+    /** the block ended a while ago and nothing has read the account since: the sampler is behind */
     expired: boolean
     saturated: boolean
     maxGap: number
@@ -158,9 +160,9 @@ export async function buildState(options: Options = {}): Promise<State> {
   const lastLooked = readLastLooked(lookPath)
   if (options.recordLook !== false) writeLastLooked(lookPath, now)
 
-  const samples = readSamples(limitsLogPath(home))
+  const { samples, lastRead } = readLog(limitsLogPath(home))
   const all = groupBlocks(samples)
-  const current = currentBlock(all, now)
+  const current = currentBlock(all, now, lastRead)
   const [dayStart, dayEnd] = dayBounds(now)
 
   const weekdayWeekly = dailyDeltas(samples, (s) => s.weeklyPct)
@@ -199,6 +201,8 @@ export async function buildState(options: Options = {}): Promise<State> {
   for (const entry of latest?.otherLimits ?? []) {
     if (typeof entry === 'object' && entry !== null) {
       const { kind, percent, resets_at } = entry as Record<string, unknown>
+      // the five-hour and weekly meters again under their newer names; the hero already shows both
+      if (kind === 'session' || kind === 'weekly_all') continue
       if (kind && percent !== undefined) {
         const time = formatLocalTime(resets_at)
         notes.push(time ? `limit: ${kind} ${percent}% resets ${time}` : `limit: ${kind} ${percent}%`)
@@ -244,7 +248,13 @@ export async function buildState(options: Options = {}): Promise<State> {
     const to = current.last.t
     // no delta to divide means no points at all, per the proof
     const delta = to > from ? current.delta : null
-    const raw = splitBlock(records, sessions, { from, to, delta, blockStart: current.block.start })
+    const raw = splitBlock(records, sessions, {
+      from,
+      to,
+      delta,
+      blockStart: current.block.start,
+      blockEnd: current.block.resetKey,
+    })
     split = { ...raw, sessions: raw.sessions.map(toRow) }
     block = {
       start: current.block.start,
@@ -274,10 +284,11 @@ export async function buildState(options: Options = {}): Promise<State> {
     caveat: CAVEAT,
     fiveHour: current
       ? {
-          pct: current.last.pct,
+          pct: current.ended ? 0 : current.last.pct,
           resetsAt: current.block.resetKey,
           sampledAt: current.last.t,
           ageSeconds: current.sampleAge,
+          ended: current.ended,
           expired: current.expired,
           saturated: current.saturated,
           maxGap: current.maxGap,
