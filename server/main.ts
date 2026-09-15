@@ -6,6 +6,7 @@ import { parseArgs } from 'node:util'
 import { serve } from '@hono/node-server'
 import { createApp } from './app'
 import { DEFAULT_CCBROWSE } from './ccbrowse'
+import { startCodexUsageReader } from './codex-usage'
 import { buildState } from './state'
 import { createTakeawayRefresher } from './takeaway'
 import { defaultWidgetsDir, removeWidget, writeWidget } from './widget'
@@ -94,12 +95,14 @@ function main(): void {
       console.error(`tally: minute tick failed: ${error instanceof Error ? error.message : String(error)}`)
     }
   }
+  const codexUsage = startCodexUsageReader({ onUpdate: tick })
   void tick()
   const tickInterval = setInterval(tick, 60_000)
   tickInterval.unref()
 
   const stop = () => {
     clearInterval(tickInterval)
+    codexUsage.stop()
     if (options.widget) {
       removeWidget(widgetsDir)
     }

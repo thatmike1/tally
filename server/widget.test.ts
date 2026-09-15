@@ -36,7 +36,7 @@ describe('renderWidget', () => {
   it('renders expected metadata and meter rows from fixture state', async () => {
     const fixture = await fixtureState()
     // the fixture block spans ten minutes, too short to project from
-    expect(renderWidget(fixture).rows[0]?.label).toMatch(/·  no pace yet$/)
+    expect(renderWidget(fixture).rows[1]?.label).toMatch(/·  no pace yet$/)
     const state = {
       ...fixture,
       block: { ...fixture.block!, projection: { pace: 0.02, pctAtReset: 100, hitsHundredAt: NOW + 1500, ready: true } },
@@ -54,6 +54,7 @@ describe('renderWidget', () => {
     expect(widget.tooltip).toBe(`100% at ${hitsTime} · resets ${resetTime}`)
 
     expect(widget.rows.map((r) => r.label)).toEqual([
+      'Codex · unavailable',
       `5h  70%  ·  resets ${resetTime}  ·  100% at ${hitsTime}`,
       'week  76%  ·  a full day fits',
       'Fable  87%  ·  one light day left',
@@ -63,7 +64,7 @@ describe('renderWidget', () => {
   it('says expired in place of the reset clock when the sample is past its reset', async () => {
     const state = await fixtureState()
     const expired = { ...state, fiveHour: { ...state.fiveHour!, expired: true } }
-    expect(renderWidget(expired).rows[0]?.label).toMatch(/^5h {2}70% {2}· {2}expired {2}· {2}/)
+    expect(renderWidget(expired).rows[1]?.label).toMatch(/^5h {2}70% {2}· {2}expired {2}· {2}/)
   })
 
   it('leaves block and Fable sessions to the page', async () => {
@@ -122,7 +123,7 @@ describe('renderWidget', () => {
     const labels = widget.rows.map((r) => r.label)
 
     expect(state.week.fable?.sessions.length).toBeGreaterThan(0)
-    expect(labels).toHaveLength(3)
+    expect(labels).toHaveLength(4)
     expect(labels.some((l) => l.includes('short title') || l.includes('fixture session'))).toBe(false)
   })
 

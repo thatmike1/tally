@@ -65,7 +65,7 @@ export function computeTooltip(state: State): string {
  * the block is the page's job, not a glance surface's.
  */
 export function computeRows(state: State): WidgetRow[] {
-  const rows: WidgetRow[] = []
+  const rows: WidgetRow[] = [{ label: state.codex.line }]
 
   if (state.fiveHour) {
     const fivePct = `${Math.round(state.fiveHour.pct)}%`

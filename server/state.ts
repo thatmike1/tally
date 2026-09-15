@@ -3,6 +3,7 @@ import { readFileSync, mkdirSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { dayLanes, DEFAULT_CCBROWSE, type Lane } from './ccbrowse'
+import { codexUsagePaths, codexUsageView, type CodexUsageView } from './codex-usage'
 import {
   blocks as groupBlocks,
   currentBlock,
@@ -48,6 +49,7 @@ export interface Options {
   lastLookedPath?: string
   /** false while assembling a state for a test */
   recordLook?: boolean
+  codexPaths?: { history: string; status: string }
 }
 
 export interface MeterView {
@@ -75,6 +77,7 @@ export interface OtherRow extends Thread {
 export interface State {
   now: number
   lastLooked: number | null
+  codex: CodexUsageView
   caveat: string
   fiveHour: {
     pct: number
@@ -170,6 +173,7 @@ export async function buildState(options: Options = {}): Promise<State> {
   const ccbrowseBase = options.ccbrowse === undefined ? DEFAULT_CCBROWSE : options.ccbrowse
   const lookPath = options.lastLookedPath ?? lastLookedFile(home)
   const lastLooked = readLastLooked(lookPath)
+  const codex = codexUsageView(options.codexPaths ?? codexUsagePaths(home), now)
   if (options.recordLook !== false) writeLastLooked(lookPath, now)
 
   const { samples, lastRead } = readLog(limitsLogPath(home))
@@ -293,6 +297,7 @@ export async function buildState(options: Options = {}): Promise<State> {
   return {
     now,
     lastLooked,
+    codex,
     caveat: CAVEAT,
     fiveHour: current
       ? {

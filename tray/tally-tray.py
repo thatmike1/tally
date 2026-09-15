@@ -106,9 +106,11 @@ def meter_rows(state: dict) -> tuple[str, bool, list[tuple[str, str | None, obje
     the lines are the same text the T3 widget shows (`server/widget.ts`
     `computeRows`), so the two glance faces never disagree.
     """
+    codex = state.get("codex") or {}
+    codex_line = codex.get("line") or "Codex · unavailable"
     five_hour = state.get("fiveHour")
     if not five_hour:
-        return "–", False, [("5h", "5h  no samples yet", None)]
+        return "–", False, [("codex", codex_line, None), ("5h", "5h  no samples yet", None)]
 
     pct = pct_of(five_hour.get("pct"))
     resets_at = five_hour.get("resetsAt")
@@ -149,7 +151,8 @@ def meter_rows(state: dict) -> tuple[str, bool, list[tuple[str, str | None, obje
     else:
         reset_part = ""
 
-    rows: list[tuple[str, str | None, object]] = [("5h", f"5h  {pct}%{reset_part}  ·  {verdict}", None)]
+    rows: list[tuple[str, str | None, object]] = [("codex", codex_line, None)]
+    rows.append(("5h", f"5h  {pct}%{reset_part}  ·  {verdict}", None))
 
     weekly = state.get("weekly")
     if weekly:
