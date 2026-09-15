@@ -66,6 +66,17 @@ into the parent session. The price table is cc-browse's, to the cent.
 Fold it in later, or accept that the lanes section is empty when cc-browse is
 down (it says so rather than disappearing). `--no-ccbrowse` turns the lookup off.
 
+**Codex weekly** — the server spawns `codex app-server` every five minutes and
+asks `account/rateLimits/read` for the main bucket's seven-day window, with no
+conversation or model turn. Readings go to `~/.cache/tally/codex-usage.jsonl`,
+the last read's outcome to `codex-usage-status.json`; neither holds credentials.
+A reading older than 15 minutes or a failed read shows as stale, never as 0%.
+The pace is the week's average burn: the meter is cumulative since the window
+opened (reset minus seven days), so the latest reading alone gives it and a gap
+in the history does not bias it. No projection until a full day of the week has
+passed, or when the meter went down inside the week. It shares nothing with the
+Claude cost model and attributes nothing to threads.
+
 **Non-Claude threads** — T3 Code's `~/.t3/userdata/state.sqlite`, opened
 read-only because T3 is running and writing to it. Antigravity, Codex and
 opencode threads get a title, a span and a live tag. They never get points: there

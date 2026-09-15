@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { fetchState, type State } from './api'
 import { Day } from './components/day'
 import { Hero } from './components/hero'
+import { Codex } from './components/codex'
 import { BlockSplit } from './components/split'
 import { Week } from './components/week'
 import { ago } from './format'
@@ -89,6 +90,7 @@ export function App() {
         </p>
       ))}
       <Hero state={state} />
+      <Codex state={state} />
       <BlockSplit state={state} />
       <Week state={state} />
       <Day state={state} />

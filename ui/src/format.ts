@@ -74,3 +74,14 @@ export function projectName(path: string): string {
   const cut = path.replace(/\/+$/, '').lastIndexOf('/')
   return cut >= 0 ? path.slice(cut + 1) : path
 }
+
+/** `6d 19h`, `5h 12m`, `8m` — how long until something days away */
+export function days(seconds: number): string {
+  const total = Math.max(0, Math.ceil(seconds / 60))
+  const d = Math.floor(total / 1440)
+  const h = Math.floor((total % 1440) / 60)
+  const m = total % 60
+  if (d > 0) return h > 0 ? `${d}d ${h}h` : `${d}d`
+  if (h > 0) return m > 0 ? `${h}h ${m}m` : `${h}h`
+  return `${m}m`
+}
