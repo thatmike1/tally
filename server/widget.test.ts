@@ -47,15 +47,22 @@ describe('renderWidget', () => {
     const hitsTime = formatHm(state.block!.projection.hitsHundredAt!)
     expect(widget.tooltip).toBe(`100% at ${hitsTime} · resets ${resetTime}`)
 
-    expect(widget.rows.length).toBeGreaterThanOrEqual(3)
-    expect(widget.rows[0]?.label).toBe(`5h  70%  ·  resets ${resetTime}  ·  100% at ${hitsTime}`)
-    expect(widget.rows[1]?.label).toBe('week  76%  ·  a full day fits')
-    expect(widget.rows[2]?.label).toBe('Fable  87%  ·  one light day left')
+    expect(widget.rows.map((r) => r.label)).toEqual([
+      `5h  70%  ·  resets ${resetTime}  ·  100% at ${hitsTime}`,
+      'week  76%  ·  a full day fits',
+      'Fable  87%  ·  one light day left',
+    ])
   })
 
-  it('renders top block sessions and top week Fable session when present', async () => {
+  it('says expired in place of the reset clock when the sample is past its reset', async () => {
+    const state = await fixtureState()
+    const expired = { ...state, fiveHour: { ...state.fiveHour!, expired: true } }
+    expect(renderWidget(expired).rows[0]?.label).toMatch(/^5h {2}70% {2}· {2}expired {2}· {2}/)
+  })
+
+  it('leaves block and Fable sessions to the page', async () => {
     const state = await fixtureState('1789000000')
-    // inject two mock block sessions to verify formatting and 36 char truncate
+    // sessions in the block and in the week must not reach the widget rows
     state.split = {
       from: NOW - 3600,
       to: NOW,
@@ -108,9 +115,9 @@ describe('renderWidget', () => {
     const widget = renderWidget(state)
     const labels = widget.rows.map((r) => r.label)
 
-    expect(labels).toContain('45%  a very long task title that exceeds ')
-    expect(labels).toContain('25%  short title')
-    expect(labels).toContain('Fable  100%  fixture session e286acd1')
+    expect(state.week.fable?.sessions.length).toBeGreaterThan(0)
+    expect(labels).toHaveLength(3)
+    expect(labels.some((l) => l.includes('short title') || l.includes('fixture session'))).toBe(false)
   })
 
   it('sets attention state on saturated projection, expired sampler, or stale sample', async () => {

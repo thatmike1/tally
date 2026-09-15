@@ -57,14 +57,17 @@ export function computeTooltip(state: State): string {
   return resetTime ? `${phrase} · resets ${resetTime}` : phrase
 }
 
-/** formats the widget rows per the spec */
+/**
+ * the three meter lines, the same text the tray menu shows. which sessions ate
+ * the block is the page's job, not a glance surface's.
+ */
 export function computeRows(state: State): WidgetRow[] {
   const rows: WidgetRow[] = []
 
   if (state.fiveHour) {
     const fivePct = `${Math.round(state.fiveHour.pct)}%`
     const { phrase, resetTime } = fiveHourVerdict(state)
-    const resetPart = resetTime ? `  ·  resets ${resetTime}` : ''
+    const resetPart = state.fiveHour.expired ? '  ·  expired' : resetTime ? `  ·  resets ${resetTime}` : ''
     rows.push({ label: `5h  ${fivePct}${resetPart}  ·  ${phrase}` })
   }
 
@@ -79,21 +82,6 @@ export function computeRows(state: State): WidgetRow[] {
     const fablePct = `${Math.round(state.fable.pct)}%`
     const fablePhrase = state.fable.verdict?.phrase ?? 'on pace'
     rows.push({ label: `${fableModel}  ${fablePct}  ·  ${fablePhrase}` })
-  }
-
-  const blockSessions = (state.split?.sessions ?? []).filter((s) => s.share > 0).slice(0, 2)
-  for (const s of blockSessions) {
-    const pct = `${Math.round(s.share * 100)}%`
-    const title = (s.title?.trim() || s.sessionId.slice(0, 8)).slice(0, 36)
-    rows.push({ label: `${pct}  ${title}` })
-  }
-
-  const fableSessions = (state.week.fable?.sessions ?? []).filter((s) => s.share > 0)
-  const topFable = fableSessions[0]
-  if (topFable) {
-    const pct = `${Math.round(topFable.share * 100)}%`
-    const title = (topFable.title?.trim() || topFable.sessionId.slice(0, 8)).slice(0, 36)
-    rows.push({ label: `Fable  ${pct}  ${title}` })
   }
 
   return rows

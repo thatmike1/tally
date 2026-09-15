@@ -1,11 +1,12 @@
 #!/usr/bin/python3
-"""GNOME tray icon for tally: 5-hour limit, weekly pace, and session attribution."""
+"""GNOME tray icon for tally: the three meters, plus the local pages and units the menu opens."""
 
 from __future__ import annotations
 
 import argparse
 import json
 import os
+import socket
 import subprocess
 import sys
 import threading
@@ -32,30 +33,33 @@ API_STATE_URL = f"{URL}/api/state?peek"
 SERVICE = "tally.service"
 SAMPLER_SERVICE = "usage-sample.service"
 POLL_SECS = 60
-TITLE_CHARS = 40
 HERE = Path(__file__).resolve().parent
 
+# the rows below came over from cc-browse-tray when it was retired. ports are
+# ours, not framework defaults: 4173 cc-browse, 1338 bd-board
+CCBROWSE_PORT = int(os.environ.get("CCBROWSE_PORT", "4173"))
+CCBROWSE_URL = f"http://localhost:{CCBROWSE_PORT}"
+CCBROWSE_SERVICE = "cc-browse.service"
 
-def ellipsis(text: str, cap: int = TITLE_CHARS) -> str:
-    """cut to `cap` on a word boundary where one is close enough to the cut."""
-    text = " ".join(text.split())
-    if len(text) <= cap:
-        return text
-    head = text[: cap - 1]
-    cut = head.rfind(" ")
-    return (head[:cut] if cut > cap - 12 else head).rstrip(" ,.;:") + "…"
+# the other local pages the menu opens, each a user unit that autostarts
+PAGES = (
+    ("bd-board", "bd-board.service", "http://127.0.0.1:1338"),
+)
+
+# agentsview is too heavy to leave running (~7% of a core while sessions write),
+# so its unit is linked but not enabled and the menu toggles it
+AGENTSVIEW_UNIT = "agentsview.service"
+AGENTSVIEW_URL = "http://127.0.0.1:8080"
 
 
-def fmt_secs(secs: float) -> str:
-    """a countdown short enough to sit on a menu line: `4d`, `3h10m`, `12m`."""
-    secs = int(secs)
-    if secs <= 0:
-        return "now"
-    if secs >= 86400:
-        return f"{secs // 86400}d{(secs % 86400) // 3600}h".removesuffix("0h")
-    if secs >= 3600:
-        return f"{secs // 3600}h{(secs % 3600) // 60:02d}m"
-    return f"{max(1, secs // 60)}m"
+def fmt_hm(t: float) -> str:
+    """a unix time as a local `13:10`, the way the server's widget prints it."""
+    return datetime.fromtimestamp(t).astimezone().strftime("%H:%M")
+
+
+def pct_of(value) -> int:
+    """a meter percentage rounded half up, matching the widget's Math.round."""
+    return int(float(value or 0) + 0.5)
 
 
 def fetch_state() -> dict | None:
@@ -70,110 +74,141 @@ def fetch_state() -> dict | None:
     return None
 
 
-def build_plan(
-    state: dict | None,
-    callbacks: dict | None = None,
-) -> tuple[str, bool, list[tuple[str, str | None, object]]]:
-    """generate (label, alert, plan_rows) from tally state."""
-    cbs = callbacks or {}
-    if state is None:
-        label = "–"
-        alert = False
-        plan = [
-            ("down", "tally server is down", None),
-            ("start", "Start tally", cbs.get("start")),
-            ("sep-down", None, None),
-            ("quit", "Quit", cbs.get("quit")),
-        ]
-        return label, alert, plan
+def port_open(url: str) -> bool:
+    """whether something listens behind a local url; a bare connect, no request."""
+    host, port = url.rsplit("/", 1)[-1].rsplit(":", 1)
+    try:
+        socket.create_connection((host, int(port)), timeout=0.2).close()
+        return True
+    except OSError:
+        return False
 
+
+def service_running(unit: str = CCBROWSE_SERVICE) -> bool:
+    r = subprocess.run(
+        ["systemctl", "--user", "is-active", "--quiet", unit], check=False
+    )
+    return r.returncode == 0
+
+
+def local_status() -> dict:
+    """what the action rows depend on: whether cc-browse and AgentsView are up."""
+    return {
+        "ccbrowse": service_running(CCBROWSE_SERVICE),
+        # judged by the port, so an `agentsview serve` started by hand counts too
+        "agentsview": port_open(AGENTSVIEW_URL),
+    }
+
+
+def meter_rows(state: dict) -> tuple[str, bool, list[tuple[str, str | None, object]]]:
+    """the label, the alert flag and the three meter lines.
+
+    the lines are the same text the T3 widget shows (`server/widget.ts`
+    `computeRows`), so the two glance faces never disagree.
+    """
     five_hour = state.get("fiveHour")
     if not five_hour:
-        label = "–"
-        alert = False
-        line_5h = "5h  no samples yet"
+        return "–", False, [("5h", "5h  no samples yet", None)]
+
+    pct = pct_of(five_hour.get("pct"))
+    resets_at = five_hour.get("resetsAt")
+    expired = bool(five_hour.get("expired"))
+    age_seconds = float(five_hour.get("ageSeconds") or 0)
+
+    block = state.get("block") or {}
+    proj = block.get("projection") or {}
+    hits_hundred_at = proj.get("hitsHundredAt")
+    has_pace = bool(block) and block.get("to", 0) > block.get("from", 0)
+
+    hits_before_reset = (
+        hits_hundred_at is not None
+        and resets_at is not None
+        and hits_hundred_at <= resets_at
+    )
+    alert = hits_before_reset or pct >= 100 or expired or age_seconds > 900
+    label = f"{pct}%{'!' if alert else ''}"
+
+    if not has_pace:
+        verdict = "no pace yet"
+    elif hits_hundred_at is not None:
+        verdict = f"100% at {fmt_hm(hits_hundred_at)}"
     else:
-        pct = int(five_hour.get("pct", 0))
-        resets_at = five_hour.get("resetsAt")
-        expired = bool(five_hour.get("expired"))
-        age_seconds = float(five_hour.get("ageSeconds") or 0)
-        now = state.get("now", time.time())
+        verdict = "you make it"
 
-        block = state.get("block") or {}
-        proj = block.get("projection") or {}
-        hits_hundred_at = proj.get("hitsHundredAt")
-        to_t = block.get("to", 0)
-        from_t = block.get("from", 0)
-        has_pace = to_t > from_t
+    if expired:
+        reset_part = "  ·  expired"
+    elif resets_at:
+        reset_part = f"  ·  resets {fmt_hm(resets_at)}"
+    else:
+        reset_part = ""
 
-        hits_before_reset = (
-            hits_hundred_at is not None
-            and resets_at is not None
-            and hits_hundred_at <= resets_at
-        )
-        alert = hits_before_reset or pct >= 100 or expired or age_seconds > 900
-        label = f"{pct}%{'!' if alert else ''}"
-
-        countdown = fmt_secs(resets_at - now) if resets_at else "now"
-        reset_part = "expired" if expired else f"resets in {countdown}"
-
-        if not has_pace:
-            verdict = "no pace yet"
-        elif hits_hundred_at is not None:
-            dt = datetime.fromtimestamp(hits_hundred_at).astimezone()
-            verdict = f"100% at {dt.strftime('%H:%M')}"
-        else:
-            verdict = "you make it"
-
-        line_5h = f"5h  {reset_part}  ·  {verdict}"
-
-    plan = [("5h", line_5h, None)]
+    rows: list[tuple[str, str | None, object]] = [("5h", f"5h  {pct}%{reset_part}  ·  {verdict}", None)]
 
     weekly = state.get("weekly")
     if weekly:
-        w_pct = weekly.get("pct", 0)
-        w_phrase = (weekly.get("verdict") or {}).get("phrase")
-        line_weekly = f"weekly  {w_pct}%  ·  {w_phrase}" if w_phrase else f"weekly  {w_pct}%"
-        plan.append(("weekly", line_weekly, None))
+        w_phrase = (weekly.get("verdict") or {}).get("phrase") or "on pace"
+        rows.append(("weekly", f"week  {pct_of(weekly.get('pct'))}%  ·  {w_phrase}", None))
 
     fable = state.get("fable")
     if fable:
         f_model = fable.get("model") or "Fable"
-        f_pct = fable.get("pct", 0)
-        f_phrase = (fable.get("verdict") or {}).get("phrase")
-        line_fable = f"{f_model}  {f_pct}%  ·  {f_phrase}" if f_phrase else f"{f_model}  {f_pct}%"
-        plan.append(("fable", line_fable, None))
+        f_phrase = (fable.get("verdict") or {}).get("phrase") or "on pace"
+        rows.append(("fable", f"{f_model}  {pct_of(fable.get('pct'))}%  ·  {f_phrase}", None))
 
-    plan.append(("sep-1", None, None))
+    return label, alert, rows
 
-    split = state.get("split") or {}
-    block_sessions = split.get("sessions") or []
-    if block_sessions:
-        for i, s in enumerate(block_sessions[:3]):
-            share_pct = round(s.get("share", 0) * 100)
-            title = ellipsis(s.get("title") or s.get("sessionId") or "untitled", 40)
-            plan.append((f"b-{i}-{s.get('sessionId')}", f"{share_pct}%  {title}", None))
+
+def action_rows(cbs: dict, status: dict) -> list[tuple[str, str | None, object]]:
+    """the pages the menu opens and the units it toggles.
+
+    a row whose label and action flip together carries the state in its key, so
+    the shape changes and the menu re-binds the callback.
+    """
+    rows: list[tuple[str, str | None, object]] = [
+        ("open", "Open tally", cbs.get("open")),
+        ("open-cc-browse", f"Open cc-browse ({CCBROWSE_PORT})", cbs.get("open-cc-browse")),
+    ]
+    for name, _unit, url in PAGES:
+        port = url.rsplit(":", 1)[1]
+        rows.append((f"open-{name}", f"Open {name} ({port})", cbs.get(f"open-{name}")))
+    if status.get("agentsview"):
+        rows.append(("av-open", "Open AgentsView (8080)", cbs.get("av-open")))
+        rows.append(("av-stop", "Stop AgentsView", cbs.get("av-stop")))
     else:
-        plan.append(("b-empty", "no sessions in block", None))
+        rows.append(("av-start", "Start AgentsView", cbs.get("av-start")))
+    rows.append(("sep-actions", None, None))
+    rows.append(("refresh", "Refresh", cbs.get("refresh")))
+    running = bool(status.get("ccbrowse"))
+    rows.append((
+        f"ccbrowse-{running}",
+        "Stop cc-browse server" if running else "Start cc-browse server",
+        cbs.get("ccbrowse-stop") if running else cbs.get("ccbrowse-start"),
+    ))
+    rows.append(("quit", "Quit", cbs.get("quit")))
+    return rows
 
-    plan.append(("sep-2", None, None))
 
-    week = state.get("week") or {}
-    fable_split = week.get("fable") or {}
-    fable_sessions = fable_split.get("sessions") or []
-    if fable_sessions:
-        for i, s in enumerate(fable_sessions[:3]):
-            share_pct = round(s.get("share", 0) * 100)
-            title = ellipsis(s.get("title") or s.get("sessionId") or "untitled", 40)
-            plan.append((f"f-{i}-{s.get('sessionId')}", f"{share_pct}%  {title}", None))
-    else:
-        plan.append(("f-empty", "no Fable sessions", None))
+def build_plan(
+    state: dict | None,
+    callbacks: dict | None = None,
+    status: dict | None = None,
+) -> tuple[str, bool, list[tuple[str, str | None, object]]]:
+    """generate (label, alert, plan_rows) from tally state and the local units' status."""
+    cbs = callbacks or {}
+    stat = status or {}
+    if state is None:
+        plan = [
+            ("down", "tally server is down", None),
+            ("start", "Start tally", cbs.get("start")),
+            ("sep-down", None, None),
+        ]
+        # the pages and units do not depend on tally, so they stay reachable
+        plan += [row for row in action_rows(cbs, stat) if row[0] not in ("open", "refresh")]
+        return "–", False, plan
 
-    plan.append(("sep-3", None, None))
-    plan.append(("open", "Open tally", cbs.get("open")))
-    plan.append(("refresh", "Refresh", cbs.get("refresh")))
-    plan.append(("quit", "Quit", cbs.get("quit")))
-
+    label, alert, plan = meter_rows(state)
+    plan.append(("sep-meters", None, None))
+    plan += action_rows(cbs, stat)
     return label, alert, plan
 
 
@@ -195,6 +230,21 @@ class Tray:
         self.refresh_busy = False
         self.plan: list = []
 
+        self.callbacks = {
+            "open": self.on_open,
+            "refresh": self.on_refresh,
+            "quit": self.on_quit,
+            "start": self.on_start_tally,
+            "open-cc-browse": self.page_opener(CCBROWSE_SERVICE, CCBROWSE_URL),
+            "av-open": lambda _w: subprocess.Popen(["xdg-open", AGENTSVIEW_URL], start_new_session=True),
+            "av-stop": self.on_agentsview_stop,
+            "av-start": self.page_opener(AGENTSVIEW_UNIT, AGENTSVIEW_URL),
+            "ccbrowse-start": self.unit_action("start", CCBROWSE_SERVICE),
+            "ccbrowse-stop": self.unit_action("stop", CCBROWSE_SERVICE),
+        }
+        for name, unit, url in PAGES:
+            self.callbacks[f"open-{name}"] = self.page_opener(unit, url)
+
         self.poll()
         GLib.timeout_add_seconds(POLL_SECS, self.poll)
 
@@ -204,13 +254,7 @@ class Tray:
         return True
 
     def update_with_state(self, state: dict | None) -> None:
-        callbacks = {
-            "open": self.on_open,
-            "refresh": self.on_refresh,
-            "quit": self.on_quit,
-            "start": self.on_start_tally,
-        }
-        label, alert, plan = build_plan(state, callbacks)
+        label, alert, plan = build_plan(state, self.callbacks, local_status())
         self.ind.set_label(label, "100%!")
         self.ind.set_status(
             AppIndicator.IndicatorStatus.ATTENTION
@@ -276,13 +320,58 @@ class Tray:
 
         threading.Thread(target=work, daemon=True).start()
 
+    def page_opener(self, unit: str, url: str):
+        """open a page served by a user unit, starting the unit first if it is down.
+
+        a node server needs a moment to bind after `systemctl start`, so the wait
+        for the port runs off the main loop and the browser opens once it answers.
+        """
+
+        def work() -> None:
+            if not service_running(unit):
+                subprocess.run(["systemctl", "--user", "start", unit], check=False)
+                for _ in range(20):
+                    try:
+                        urllib.request.urlopen(url, timeout=1).close()
+                        break
+                    except OSError:
+                        time.sleep(0.25)
+                GLib.idle_add(self.poll)
+            subprocess.Popen(["xdg-open", url], start_new_session=True)
+
+        return lambda _w: threading.Thread(target=work, daemon=True).start()
+
+    def unit_action(self, verb: str, unit: str):
+        """start or stop a user unit off the main loop, then redraw the menu.
+
+        the menu polls once a minute, so without the redraw a toggle row would
+        keep offering the action just taken.
+        """
+
+        def work() -> None:
+            subprocess.run(["systemctl", "--user", verb, unit], check=False)
+            GLib.idle_add(self.poll)
+
+        return lambda _w: threading.Thread(target=work, daemon=True).start()
+
+    def on_agentsview_stop(self, _w=None) -> None:
+        """stop the unit, and a hand-started server if the port still answers."""
+
+        def work() -> None:
+            subprocess.run(["systemctl", "--user", "stop", AGENTSVIEW_UNIT], check=False)
+            if port_open(AGENTSVIEW_URL):
+                subprocess.run([str(Path.home() / ".local/bin/agentsview"), "serve", "stop"], check=False)
+            GLib.idle_add(self.poll)
+
+        threading.Thread(target=work, daemon=True).start()
+
     def on_quit(self, _w=None) -> None:
         Gtk.main_quit()
 
 
 def print_menu_rows() -> int:
     state = fetch_state()
-    label, alert, plan = build_plan(state)
+    label, alert, plan = build_plan(state, status=local_status())
     print(f"Label: {label}")
     print("Menu rows:")
     for key, text, _cb in plan:

@@ -29,9 +29,18 @@ Other scripts:
 `systemd/install.sh` builds the ui and enables `systemd/tally.service` as a user
 unit (linked from this repo, so edits apply after `systemctl --user daemon-reload`).
 It serves the built `ui/dist`, so after ui changes run `npm run build` and
-`systemctl --user restart tally`. The cc-browse tray has an `Open tally` row.
+`systemctl --user restart tally`.
 
-Flags: `--port <n>`, `--ccbrowse <url>`, `--no-ccbrowse`, `--no-open`.
+`systemd/tally-tray.service` runs `tray/tally-tray.py`, a GNOME tray icon with
+the three meter lines (the same text the server writes to the T3 widget at
+`~/.t3/userdata/widgets/tally.json` every minute), then rows that open tally,
+cc-browse, bd-board and AgentsView and start or stop cc-browse and AgentsView.
+`tray/tally-tray.py --print` dumps the label and rows. Which sessions ate the
+block stays on the page.
+
+Flags: `--port <n>`, `--ccbrowse <url>`, `--no-ccbrowse`, `--no-open`,
+`--no-widget`, `--no-takeaway` (the takeaway is an `agy -p` call on the same
+minute tick, served from memory at `/api/takeaway`).
 `bin/tally.mjs` is a launcher that works from any directory, so
 `ln -s ~/git/tally/bin/tally.mjs ~/.local/bin/tally` is enough to run it anywhere.
 
