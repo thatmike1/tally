@@ -9,8 +9,7 @@ import { buildState, type State } from './state'
 import {
   buildTakeawayPrompt,
   buildTakeawaySummary,
-  getTakeaway,
-  resetTakeawayCache,
+  createTakeawayRefresher,
   takeawayCacheKey,
   type CommandRunner,
 } from './takeaway'
@@ -100,7 +99,7 @@ describe('buildTakeawaySummary and prompt', () => {
   })
 })
 
-describe('takeawayCacheKey and getTakeaway', () => {
+describe('takeawayCacheKey and createTakeawayRefresher', () => {
   it('keys cache on fiveHour.sampledAt and block.to', async () => {
     const state = await fixtureState()
     const key = takeawayCacheKey(state)
@@ -110,8 +109,7 @@ describe('takeawayCacheKey and getTakeaway', () => {
     expect(takeawayCacheKey(emptyState)).toBeNull()
   })
 
-  it('runs command with gemini-3.8-flash-low and caches result', async () => {
-    resetTakeawayCache()
+  it('runs agy with gemini-3.8-flash-low and a 45 s timeout, and skips an unchanged block', async () => {
     const state = await fixtureState()
 
     let callCount = 0
@@ -126,9 +124,11 @@ describe('takeawayCacheKey and getTakeaway', () => {
       recordedTimeout = timeoutMs
       return { stdout: 'The heavy session consumed the block, but the reset is safe.\n', stderr: '' }
     }
+    const refresher = createTakeawayRefresher({ runner: mockRunner })
+    expect(refresher.current()).toEqual({ text: null, model: null })
 
-    const res1 = await getTakeaway(state, { runner: mockRunner })
-    expect(res1).toEqual({
+    await refresher.refresh(state)
+    expect(refresher.current()).toEqual({
       text: 'The heavy session consumed the block, but the reset is safe.',
       model: 'gemini-3.8-flash-low',
     })
@@ -138,44 +138,65 @@ describe('takeawayCacheKey and getTakeaway', () => {
     expect(recordedArgs).toContain('gemini-3.8-flash-low')
     expect(recordedArgs).toContain('--output-format')
     expect(recordedArgs).toContain('text')
-    expect(recordedTimeout).toBe(20000)
+    expect(recordedTimeout).toBe(45000)
 
-    // second call with exact same state must return cached result and not call runner
-    const res2 = await getTakeaway(state, { runner: mockRunner })
-    expect(res2).toEqual(res1)
+    // the same block state already has text, so the runner is not called again
+    await refresher.refresh(state)
     expect(callCount).toBe(1)
 
-    // updated state with different sampledAt must call runner again
+    // a new sample moves the key and runs again
     const updatedState = {
       ...state,
       fiveHour: { ...state.fiveHour!, sampledAt: state.fiveHour!.sampledAt + 300 },
     }
-    const res3 = await getTakeaway(updatedState, { runner: mockRunner })
-    expect(res3).toEqual(res1)
+    await refresher.refresh(updatedState)
     expect(callCount).toBe(2)
   })
 
-  it('returns null on runner failure (non-zero exit, timeout, no agy)', async () => {
-    resetTakeawayCache()
+  it('keeps the last good text through a failure and retries the same block next tick', async () => {
     const state = await fixtureState()
+    const outputs: Array<{ stdout: string; stderr: string } | null> = [
+      { stdout: 'First good line.', stderr: '' },
+      null,
+      { stdout: 'Second good line.', stderr: '' },
+    ]
+    let callCount = 0
+    const runner: CommandRunner = async () => outputs[callCount++] ?? null
+    const refresher = createTakeawayRefresher({ runner })
 
-    const failingRunner: CommandRunner = async () => null
-    const res = await getTakeaway(state, { runner: failingRunner })
-    expect(res).toEqual({ text: null, model: null })
+    await refresher.refresh(state)
+    const next = { ...state, fiveHour: { ...state.fiveHour!, sampledAt: state.fiveHour!.sampledAt + 300 } }
+
+    // a timed-out run leaves the previous text in place
+    await refresher.refresh(next)
+    expect(refresher.current().text).toBe('First good line.')
+
+    // and the failed block is not cached, so the next tick tries it again
+    await refresher.refresh(next)
+    expect(callCount).toBe(3)
+    expect(refresher.current().text).toBe('Second good line.')
   })
 
-  it('returns null when options.enabled is false', async () => {
-    resetTakeawayCache()
+  it('runs one call at a time', async () => {
     const state = await fixtureState()
-
-    let called = false
+    let callCount = 0
+    let release: () => void = () => {}
     const runner: CommandRunner = async () => {
-      called = true
-      return { stdout: 'hello', stderr: '' }
+      callCount++
+      await new Promise<void>((resolve) => {
+        release = resolve
+      })
+      return { stdout: 'Slow line.', stderr: '' }
     }
-    const res = await getTakeaway(state, { runner, enabled: false })
-    expect(res).toEqual({ text: null, model: null })
-    expect(called).toBe(false)
+    const refresher = createTakeawayRefresher({ runner })
+
+    const first = refresher.refresh(state)
+    const next = { ...state, fiveHour: { ...state.fiveHour!, sampledAt: state.fiveHour!.sampledAt + 300 } }
+    const second = refresher.refresh(next)
+    release()
+    await Promise.all([first, second])
+    expect(callCount).toBe(1)
+    expect(refresher.current().text).toBe('Slow line.')
   })
 })
 
@@ -187,30 +208,36 @@ describe('parseOptions --no-takeaway', () => {
 })
 
 describe('GET /api/takeaway endpoint', () => {
-  it('returns takeaway JSON payload', async () => {
-    resetTakeawayCache()
+  it('serves the refresher text without running the model', async () => {
+    let callCount = 0
+    const runner: CommandRunner = async () => {
+      callCount++
+      return { stdout: 'Short block run, reset is safe.', stderr: '' }
+    }
+    const refresher = createTakeawayRefresher({ runner })
     const app = createApp({
       home: FIXTURE_HOME,
       now: NOW,
       ccbrowse: null,
       recordLook: false,
+      takeaway: refresher,
     })
 
-    // with a mock runner injected through options if possible, or by pre-populating the cache
+    // before the first tick the route answers null straight away
+    const empty = await app.request('/api/takeaway')
+    expect(await empty.json()).toEqual({ text: null, model: null })
+    expect(callCount).toBe(0)
+
     const state = await buildState({
       home: FIXTURE_HOME,
       now: NOW,
       ccbrowse: null,
       recordLook: false,
     })
-    const runner: CommandRunner = async () => ({
-      stdout: 'Short block run, reset is safe.',
-      stderr: '',
-    })
-    // populate cache for this state
-    await getTakeaway(state, { runner })
+    await refresher.refresh(state)
 
     const res = await app.request('/api/takeaway')
+    expect(callCount).toBe(1)
     expect(res.status).toBe(200)
     const json = (await res.json()) as { text: string | null; model: string | null }
     expect(json).toEqual({
@@ -225,7 +252,7 @@ describe('GET /api/takeaway endpoint', () => {
       now: NOW,
       ccbrowse: null,
       recordLook: false,
-      takeaway: false,
+      takeaway: null,
     })
 
     const res = await app.request('/api/takeaway')

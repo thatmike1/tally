@@ -7,6 +7,7 @@ import { serve } from '@hono/node-server'
 import { createApp } from './app'
 import { DEFAULT_CCBROWSE } from './ccbrowse'
 import { buildState } from './state'
+import { createTakeawayRefresher } from './takeaway'
 import { defaultWidgetsDir, removeWidget, writeWidget } from './widget'
 
 const DEFAULT_PORT = 1337
@@ -57,7 +58,8 @@ function main(): void {
   }
 
   const uiDist = resolve(dirname(fileURLToPath(import.meta.url)), '../ui/dist')
-  const app = createApp({ uiDist, ccbrowse: options.ccbrowse, takeaway: options.takeaway })
+  const takeaway = options.takeaway ? createTakeawayRefresher() : null
+  const app = createApp({ uiDist, ccbrowse: options.ccbrowse, takeaway })
 
   const server = serve({ fetch: app.fetch, hostname: '127.0.0.1', port: options.port }, (info) => {
     const url = `http://127.0.0.1:${info.port}/`
@@ -72,24 +74,27 @@ function main(): void {
   })
 
   const widgetsDir = defaultWidgetsDir()
-  let widgetInterval: NodeJS.Timeout | null = null
+  let tickInterval: NodeJS.Timeout | null = null
 
-  if (options.widget) {
-    const updateWidget = async () => {
+  // one state build a minute feeds both the widget file and the takeaway, which
+  // runs in the background because agy takes longer than a request should wait
+  if (options.widget || takeaway) {
+    const tick = async () => {
       try {
         const state = await buildState({ ccbrowse: options.ccbrowse, recordLook: false })
-        writeWidget(state, widgetsDir)
+        if (options.widget) writeWidget(state, widgetsDir)
+        if (takeaway) void takeaway.refresh(state)
       } catch (error) {
-        console.error(`tally: widget update failed: ${error instanceof Error ? error.message : String(error)}`)
+        console.error(`tally: minute tick failed: ${error instanceof Error ? error.message : String(error)}`)
       }
     }
-    void updateWidget()
-    widgetInterval = setInterval(updateWidget, 60_000)
-    widgetInterval.unref()
+    void tick()
+    tickInterval = setInterval(tick, 60_000)
+    tickInterval.unref()
   }
 
   const stop = () => {
-    if (widgetInterval) clearInterval(widgetInterval)
+    if (tickInterval) clearInterval(tickInterval)
     if (options.widget) {
       removeWidget(widgetsDir)
     }

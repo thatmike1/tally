@@ -1,5 +1,5 @@
 // generates an optional one-line takeaway of what ate the 5-hour block and
-// whether the reset is safe, using a cheap model via agy.
+// whether the reset is safe, using a cheap model via agy on a background tick.
 import { execFile } from 'node:child_process'
 import type { State } from './state'
 
@@ -113,60 +113,55 @@ export interface TakeawayOptions {
   runner?: CommandRunner
   model?: string
   timeoutMs?: number
-  enabled?: boolean
 }
 
-const cache = new Map<string, Promise<TakeawayResult>>()
-
-/** clears in-memory cached takeaway promises, used in tests */
-export function resetTakeawayCache(): void {
-  cache.clear()
+export interface TakeawayRefresher {
+  /** runs the model for this state unless the same block state already has text or a run is in flight */
+  refresh(state: State): Promise<void>
+  /** the last text the model produced, or nulls before the first success */
+  current(): TakeawayResult
 }
 
 /**
- * fetches or returns cached one-line takeaway for the given state.
+ * keeps the last good one-line takeaway in memory. `agy -p` takes 17 to 29 s,
+ * so the server calls `refresh` from its minute tick and the route only reads
+ * `current`. only a success moves the cache key, so a failed or timed-out run
+ * is retried on the next tick.
  * runs `agy -p <prompt> --model gemini-3.8-flash-low --output-format text`.
  */
-export async function getTakeaway(
-  state: State,
-  options: TakeawayOptions = {},
-): Promise<TakeawayResult> {
-  if (options.enabled === false) {
-    return { text: null, model: null }
+export function createTakeawayRefresher(options: TakeawayOptions = {}): TakeawayRefresher {
+  const runner = options.runner ?? defaultExecRunner
+  const model = options.model ?? 'gemini-3.8-flash-low'
+  // nothing waits on the call any more, so the timeout only bounds a hung agy
+  const timeoutMs = options.timeoutMs ?? 45_000
+
+  let latest: TakeawayResult = { text: null, model: null }
+  let latestKey: string | null = null
+  let inFlight: Promise<void> | null = null
+
+  return {
+    current: () => latest,
+    refresh(state) {
+      if (inFlight) return inFlight
+      const key = takeawayCacheKey(state)
+      if (!key || key === latestKey) return Promise.resolve()
+
+      inFlight = (async () => {
+        try {
+          const prompt = buildTakeawayPrompt(buildTakeawaySummary(state))
+          const res = await runner('agy', ['-p', prompt, '--model', model, '--output-format', 'text'], timeoutMs)
+          const text = res ? cleanText(res.stdout) : null
+          if (text) {
+            latest = { text, model }
+            latestKey = key
+          }
+        } catch {
+          // a failed run keeps the last good text and is retried on the next tick
+        } finally {
+          inFlight = null
+        }
+      })()
+      return inFlight
+    },
   }
-
-  const key = takeawayCacheKey(state)
-  if (!key) {
-    return { text: null, model: null }
-  }
-
-  const cached = cache.get(key)
-  if (cached) {
-    return cached
-  }
-
-  const promise = (async (): Promise<TakeawayResult> => {
-    try {
-      const summary = buildTakeawaySummary(state)
-      const prompt = buildTakeawayPrompt(summary)
-      const model = options.model ?? 'gemini-3.8-flash-low'
-      const timeoutMs = options.timeoutMs ?? 20_000
-      const runner = options.runner ?? defaultExecRunner
-
-      const res = await runner('agy', ['-p', prompt, '--model', model, '--output-format', 'text'], timeoutMs)
-      if (!res) {
-        return { text: null, model: null }
-      }
-      const text = cleanText(res.stdout)
-      if (!text) {
-        return { text: null, model: null }
-      }
-      return { text, model }
-    } catch {
-      return { text: null, model: null }
-    }
-  })()
-
-  cache.set(key, promise)
-  return promise
 }
