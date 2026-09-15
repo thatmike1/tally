@@ -1,4 +1,4 @@
-import { agentsview, type SessionRow, type State } from '../api'
+import { agentsview, type SessionRow, type State, type WeekMode } from '../api'
 import { dayClock, hm, labelOn, money, pct } from '../format'
 
 type WeekSplit = NonNullable<State['week']['weekly']>
@@ -13,11 +13,16 @@ const QUIET_ROWS = 8
  * session that owns the block strip is absent from it; the list puts the Fable
  * movers first and draws a line under them to make that absence read as an answer.
  */
-export function Week({ state }: { state: State }) {
+export function Week({ state, mode, onMode }: { state: State; mode: WeekMode; onMode: (mode: WeekMode) => void }) {
   const week = state.week
   const fableName = state.fable?.model ?? 'Fable'
   const clock = (t: number) => (t < state.day.start ? dayClock(t) : hm(t))
-  const title = week.since === 'lastLooked' ? `since you last looked · ${clock(week.from)}` : 'today'
+  const title =
+    week.since === 'week'
+      ? `this week · since ${dayClock(week.from)}`
+      : week.since === 'lastLooked'
+        ? `since you last looked · ${clock(week.from)}`
+        : 'today'
   const { weekly, fable } = week
   const first = weekly ?? fable
   const before = (weekly ?? fable)?.costBeforeFirstSample ?? 0
@@ -25,7 +30,17 @@ export function Week({ state }: { state: State }) {
 
   return (
     <>
-      <h2 style={{ marginTop: 44 }}>{title}</h2>
+      <h2 style={{ marginTop: 44 }}>
+        {title}
+        <span className="modes">
+          <button aria-pressed={mode === 'recent'} onClick={() => onMode('recent')}>
+            recent
+          </button>
+          <button aria-pressed={mode === 'whole'} onClick={() => onMode('whole')}>
+            whole week
+          </button>
+        </span>
+      </h2>
       <p className="calc">
         {movement(weekly, fable, fableName, clock)}
         <small>computed, no model</small>
@@ -52,7 +67,7 @@ export function Week({ state }: { state: State }) {
         </p>
       ) : null}
 
-      <List weekly={weekly} fable={fable} fableName={fableName} since={week.since === 'today' ? 'today' : `since ${clock(week.from)}`} />
+      <List weekly={weekly} fable={fable} fableName={fableName} clock={clock} since={week.since === 'today' ? 'today' : week.since === 'week' ? 'this week' : `since ${clock(week.from)}`} />
       <p className="caveat">{week.caveat}</p>
     </>
   )
@@ -150,11 +165,13 @@ function List({
   fable,
   fableName,
   since,
+  clock,
 }: {
   weekly: WeekSplit | null
   fable: WeekSplit | null
   fableName: string
   since: string
+  clock: (t: number) => string
 }) {
   const byId = new Map<string, ListRow>()
   for (const row of fable?.sessions ?? []) {
@@ -184,7 +201,7 @@ function List({
         <div>weekly</div>
       </div>
       {movers.map((item) => (
-        <Row key={item.row.sessionId} item={item} fableName={fableName} />
+        <Row key={item.row.sessionId} item={item} fableName={fableName} clock={clock} />
       ))}
       {fableSplit && quiet.length ? (
         <div className="wsep">
@@ -194,7 +211,7 @@ function List({
         </div>
       ) : null}
       {shown.map((item) => (
-        <Row key={item.row.sessionId} item={item} fableName={fableName} />
+        <Row key={item.row.sessionId} item={item} fableName={fableName} clock={clock} />
       ))}
       {quiet.length > shown.length ? (
         <span className="more">
@@ -205,7 +222,7 @@ function List({
   )
 }
 
-function Row({ item, fableName }: { item: ListRow; fableName: string }) {
+function Row({ item, fableName, clock }: { item: ListRow; fableName: string; clock: (t: number) => string }) {
   const { row, fable, weekly } = item
   return (
     <div className="wrow">
@@ -228,7 +245,7 @@ function Row({ item, fableName }: { item: ListRow; fableName: string }) {
           ) : null}
           {row.subagents ? ` · ${row.subagents} subagent${row.subagents === 1 ? '' : 's'}` : ''}
           {row.live ? <> · <b className="lv">live</b></> : ''}
-          {` · ${hm(row.start)}–${hm(row.end)}`}
+          {` · ${clock(row.start)}–${hm(row.end)}`}
         </span>
       </div>
       <div className="wk2">

@@ -1,0 +1,205 @@
+// tests for reading Codex rollouts and splitting the Codex weekly meter across threads.
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { describe, expect, it } from 'vitest'
+import {
+  codexCredits,
+  codexRate,
+  parseRolloutLines,
+  pointSteps,
+  scanRollouts,
+  splitCodexWeek,
+  type CodexRollout,
+} from './codex-sessions'
+
+const RESET = 2_000_000_000
+const FROM = RESET - 7 * 86_400
+
+const iso = (t: number) => new Date(t * 1000).toISOString()
+
+function meta(id: string, extra: Record<string, unknown> = {}) {
+  return JSON.stringify({ timestamp: iso(FROM), type: 'session_meta', payload: { id, session_id: id, cwd: '/home/m/git/tally', originator: 't3code_desktop', model_provider: 'openai', ...extra } })
+}
+
+function turn(model: string, t = FROM) {
+  return JSON.stringify({ timestamp: iso(t), type: 'turn_context', payload: { model } })
+}
+
+function usage(thread: string, response: string, t: number, tokens: { input: number; cached?: number; output: number }) {
+  return JSON.stringify({
+    timestamp: iso(t),
+    type: 'token_usage_record',
+    payload: { thread_id: thread, response_id: response, usage: { input_tokens: tokens.input, cached_input_tokens: tokens.cached ?? 0, output_tokens: tokens.output } },
+  })
+}
+
+function reading(t: number, pct: number, resetsAt = RESET) {
+  return JSON.stringify({
+    timestamp: iso(t),
+    type: 'event_msg',
+    payload: { type: 'token_count', rate_limits: { limit_id: 'codex', primary: { used_percent: pct, window_minutes: 10_080, resets_at: resetsAt }, secondary: null } },
+  })
+}
+
+function user(text: string, t = FROM) {
+  return JSON.stringify({ timestamp: iso(t), type: 'response_item', payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text }] } })
+}
+
+/** a rollout whose every call costs exactly `credits` at Sol rates (100 per million input) */
+function rollout(id: string, calls: [response: string, t: number, credits: number][], extra: Record<string, unknown> = {}): CodexRollout {
+  return parseRolloutLines(`/r/${id}.jsonl`, [
+    meta(id, extra),
+    turn('gpt-5.6-sol'),
+    ...calls.map(([response, t, credits]) => usage(id, response, t, { input: credits * 10_000, output: 0 })),
+  ])!
+}
+
+describe('codexRate', () => {
+  it('prices a dated or spaced model name by its rate-card row', () => {
+    expect(codexRate('GPT-6 Astra')).toMatchObject({ priced: true, rate: { input: 250 } })
+    expect(codexRate('gpt-5.6-luna-2026-08-01')).toMatchObject({ priced: true, rate: { output: 30 } })
+  })
+
+  it('prices an unknown model like Sol and flags it', () => {
+    expect(codexRate('gpt-7-nova')).toMatchObject({ priced: false, rate: { input: 100 } })
+  })
+
+  it('charges cached input at its own rate', () => {
+    expect(codexCredits('gpt-6-astra', 1_000_000, 2_000_000, 100_000).credits).toBeCloseTo(250 + 50 + 125)
+  })
+})
+
+describe('parseRolloutLines', () => {
+  it('reads calls with the model in force, the meter readings and the first typed prompt', () => {
+    const parsed = parseRolloutLines('/r/a.jsonl', [
+      meta('a'),
+      user('<environment_context>cwd</environment_context>'),
+      user('# AGENTS.md instructions'),
+      user('fix the   left align issue'),
+      turn('gpt-6-astra'),
+      usage('a', 'resp_1', FROM + 60, { input: 1_000_000, cached: 400_000, output: 10_000 }),
+      reading(FROM + 61, 3),
+      turn('gpt-5.6-luna', FROM + 100),
+      usage('a', 'resp_2', FROM + 120, { input: 1_000_000, output: 0 }),
+    ])!
+    expect(parsed).toMatchObject({ id: 'a', rootId: 'a', subagent: false, openai: true, firstPrompt: 'fix the left align issue', lastT: FROM + 120 })
+    expect(parsed.calls.map((call) => [call.model, call.input, call.cached])).toEqual([
+      ['gpt-6-astra', 600_000, 400_000],
+      ['gpt-5.6-luna', 1_000_000, 0],
+    ])
+    expect(parsed.calls[0]!.credits).toBeCloseTo(0.6 * 250 + 0.4 * 25 + 0.01 * 1250)
+    expect(parsed.readings).toEqual([{ t: FROM + 61, pct: 3, resetsAt: RESET }])
+  })
+
+  it('folds a subagent into its root and leaves the copied parent history to the parent', () => {
+    const parsed = parseRolloutLines('/r/child.jsonl', [
+      meta('child', { session_id: 'root', parent_thread_id: 'root' }),
+      turn('gpt-5.6-sol'),
+      usage('root', 'resp_parent', FROM + 10, { input: 100, output: 0 }),
+      usage('child', 'resp_child', FROM + 20, { input: 100, output: 0 }),
+    ])!
+    expect(parsed).toMatchObject({ id: 'child', rootId: 'root', subagent: true })
+    expect(parsed.calls.map((call) => call.responseId)).toEqual(['resp_child'])
+  })
+
+  it('marks a thread routed to another provider', () => {
+    expect(parseRolloutLines('/r/x.jsonl', [meta('x', { model_provider: 'AgentRouter' })])?.openai).toBe(false)
+  })
+
+  it('ignores a file with no session header', () => {
+    expect(parseRolloutLines('/r/y.jsonl', [turn('gpt-5.6-sol')])).toBeNull()
+  })
+})
+
+describe('scanRollouts', () => {
+  it('walks the dated folders and skips files not written since the window opened', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'tally-codex-sessions-'))
+    const dir = join(root, '2026', '09', '15')
+    mkdirSync(dir, { recursive: true })
+    writeFileSync(join(dir, 'rollout-2026-09-15T10-00-00-a.jsonl'), `${meta('a')}\n${turn('gpt-5.6-sol')}\n${usage('a', 'r1', FROM + 5, { input: 10, output: 1 })}\n`)
+    writeFileSync(join(dir, 'notes.txt'), 'not a rollout')
+    expect((await scanRollouts(0, root)).map((r) => r.id)).toEqual(['a'])
+    expect(await scanRollouts(Date.now() / 1000 + 3600, root)).toEqual([])
+  })
+})
+
+describe('splitCodexWeek', () => {
+  const window = { from: FROM, resetsAt: RESET }
+
+  it('splits the meter by credits and puts the biggest thread first', () => {
+    const split = splitCodexWeek(
+      [rollout('small', [['s1', FROM + 100, 10]]), rollout('big', [['b1', FROM + 200, 30]])],
+      window,
+      { t: FROM + 300, pct: 8 },
+      new Map([['big', { title: 'Fix Left-Aligned Layout', live: true }]]),
+      FROM + 10_000,
+    )!
+    expect(split.threads.map((row) => [row.id, row.title, row.share, row.points])).toEqual([
+      ['big', 'Fix Left-Aligned Layout', 0.75, 6],
+      ['small', 'tally · small', 0.25, 2],
+    ])
+    expect(split.threads[0]).toMatchObject({ live: true, via: 't3', project: 'tally' })
+    expect(split.creditsPerPoint).toBeCloseTo(5)
+  })
+
+  it('folds subagents into the root, counts them, and counts a copied call once', () => {
+    const root = rollout('root', [['r1', FROM + 100, 10]])
+    const child = rollout('child', [['c1', FROM + 150, 10]], { session_id: 'root', parent_thread_id: 'root' })
+    const duplicate = rollout('root', [['r1', FROM + 100, 10]])
+    const split = splitCodexWeek([root, child, duplicate], window, { t: FROM + 300, pct: 4 }, new Map(), FROM + 10_000)!
+    expect(split.threads).toHaveLength(1)
+    expect(split.threads[0]).toMatchObject({ id: 'root', credits: 20, calls: 2, subagents: 1, share: 1 })
+  })
+
+  it('leaves calls before the window out and calls after the reading pending', () => {
+    const split = splitCodexWeek(
+      [rollout('a', [['old', FROM - 60, 50], ['in', FROM + 100, 10], ['late', FROM + 400, 7]])],
+      window,
+      { t: FROM + 300, pct: 2 },
+      new Map(),
+      FROM + 10_000,
+    )!
+    expect(split.totalCredits).toBe(10)
+    expect(split.pendingCredits).toBe(7)
+  })
+
+  it('anchors on a rollout reading fresher than the reader, ignoring last week', () => {
+    const lines = [meta('a'), turn('gpt-5.6-sol'), usage('a', 'r1', FROM + 100, { input: 100_000, output: 0 }), reading(FROM + 500, 6), reading(FROM - 10, 90, FROM)]
+    const split = splitCodexWeek([parseRolloutLines('/r/a.jsonl', lines)!], window, { t: FROM + 300, pct: 5 }, new Map(), FROM + 10_000)!
+    expect(split).toMatchObject({ to: FROM + 500, pct: 6 })
+  })
+
+  it('has nothing to split without any reading', () => {
+    expect(splitCodexWeek([rollout('a', [['r1', FROM + 100, 10]])], window, null, new Map(), FROM + 10_000)).toBeNull()
+  })
+
+  it('leaves threads routed elsewhere off the list', () => {
+    const routed = rollout('routed', [['x1', FROM + 100, 99]], { model_provider: 'AgentRouter' })
+    const split = splitCodexWeek([routed, rollout('a', [['a1', FROM + 100, 1]])], window, { t: FROM + 300, pct: 1 }, new Map(), FROM + 10_000)!
+    expect(split.threads.map((row) => row.id)).toEqual(['a'])
+  })
+})
+
+describe('pointSteps', () => {
+  it('prices each point from the calls between its first sighting and the next', () => {
+    const lines = [
+      meta('a'),
+      turn('gpt-5.6-sol'),
+      usage('a', 'r1', FROM + 10, { input: 800_000, output: 0 }),
+      reading(FROM + 20, 1),
+      usage('a', 'r2', FROM + 30, { input: 1_000_000, output: 0 }),
+      reading(FROM + 40, 2),
+      // a lagging reading of an older level is ignored
+      reading(FROM + 45, 1),
+      usage('a', 'r3', FROM + 50, { input: 2_400_000, output: 0 }),
+      reading(FROM + 60, 4),
+    ]
+    expect(pointSteps([parseRolloutLines('/r/a.jsonl', lines)!], { from: FROM, resetsAt: RESET }, FROM + 100)).toEqual({ min: 80, max: 120, count: 3 })
+  })
+
+  it('says nothing under three steps', () => {
+    const lines = [meta('a'), turn('gpt-5.6-sol'), usage('a', 'r1', FROM + 10, { input: 100, output: 0 }), reading(FROM + 20, 1)]
+    expect(pointSteps([parseRolloutLines('/r/a.jsonl', lines)!], { from: FROM, resetsAt: RESET }, FROM + 100)).toBeNull()
+  })
+})

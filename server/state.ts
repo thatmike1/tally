@@ -3,6 +3,7 @@ import { readFileSync, mkdirSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { dayLanes, DEFAULT_CCBROWSE, type Lane } from './ccbrowse'
+import { codexSessionsRoot, scanRollouts, splitCodexWeek, t3CodexThreads, type CodexWeekSplit } from './codex-sessions'
 import { codexUsagePaths, codexUsageView, type CodexUsageView } from './codex-usage'
 import {
   blocks as groupBlocks,
@@ -15,11 +16,13 @@ import {
 import {
   CAVEAT,
   dailyDeltas,
+  openedAtZero,
   project,
   scopedReadings,
   splitBlock,
   splitFable,
   splitWeekly,
+  WEEK,
   WEEK_CAVEAT,
   weeklyReadings,
   weeklyVerdict,
@@ -28,6 +31,7 @@ import {
   type Projection,
   type SessionSplit,
   type WeeklyVerdict,
+  type WeekWindow,
   type WindowSplit,
 } from './split'
 import { otherThreads, statePath, type Thread } from './t3'
@@ -50,6 +54,10 @@ export interface Options {
   /** false while assembling a state for a test */
   recordLook?: boolean
   codexPaths?: { history: string; status: string }
+  /** `whole` splits the weekly meters over the full week since their reset, not since the last look */
+  weekMode?: 'recent' | 'whole'
+  /** `~/.codex/sessions` unless a test points elsewhere */
+  codexSessions?: string
 }
 
 export interface MeterView {
@@ -77,7 +85,10 @@ export interface OtherRow extends Thread {
 export interface State {
   now: number
   lastLooked: number | null
-  codex: CodexUsageView
+  codex: CodexUsageView & {
+    /** which Codex threads moved the weekly meter since the window opened */
+    split: CodexWeekSplit | null
+  }
   caveat: string
   fiveHour: {
     pct: number
@@ -115,7 +126,7 @@ export interface State {
     /** the window asked for; each split snaps inside it to the samples it has */
     from: number
     to: number
-    since: 'lastLooked' | 'today'
+    since: 'lastLooked' | 'today' | 'week'
     lastLooked: number | null
     caveat: string
     weekly: WeekSplit | null
@@ -173,7 +184,16 @@ export async function buildState(options: Options = {}): Promise<State> {
   const ccbrowseBase = options.ccbrowse === undefined ? DEFAULT_CCBROWSE : options.ccbrowse
   const lookPath = options.lastLookedPath ?? lastLookedFile(home)
   const lastLooked = readLastLooked(lookPath)
-  const codex = codexUsageView(options.codexPaths ?? codexUsagePaths(home), now)
+  const codexView = codexUsageView(options.codexPaths ?? codexUsagePaths(home), now)
+  let codexSplit: CodexWeekSplit | null = null
+  if (codexView.windowStart !== null && codexView.resetsAt !== null) {
+    const rollouts = await scanRollouts(codexView.windowStart, options.codexSessions ?? codexSessionsRoot(home))
+    const anchor = codexView.status === 'fresh' && codexView.sampledAt !== null && codexView.usedPercent !== null
+      ? { t: codexView.sampledAt, pct: codexView.usedPercent }
+      : null
+    codexSplit = splitCodexWeek(rollouts, { from: codexView.windowStart, resetsAt: codexView.resetsAt }, anchor, t3CodexThreads(statePath(home)), now)
+  }
+  const codex = { ...codexView, split: codexSplit }
   if (options.recordLook !== false) writeLastLooked(lookPath, now)
 
   const { samples, lastRead } = readLog(limitsLogPath(home))
@@ -229,12 +249,20 @@ export async function buildState(options: Options = {}): Promise<State> {
   }
 
   const weeklyRows = weeklyReadings(samples)
-  const window = weekWindow(now, lastLooked, latest?.weeklyResetsAt ?? null, weeklyRows, dayStart)
+  const weekStart = latest?.weeklyResetsAt ? latest.weeklyResetsAt - WEEK : null
+  const window: WeekWindow =
+    options.weekMode === 'whole' && weekStart !== null
+      ? { from: Math.max(weekStart, 0), to: now, since: 'week' }
+      : weekWindow(now, lastLooked, latest?.weeklyResetsAt ?? null, weeklyRows, dayStart)
   const scanStart = Math.min(window.from, current?.block.start ?? window.from)
   const { records, sessions } = await scan(scanStart, now, projectsRoot(home))
 
-  const rawWeekly = splitWeekly(records, sessions, weeklyRows, window)
-  const rawFable = fableName ? splitFable(records, sessions, scopedReadings(samples, fableName), window) : null
+  const whole = window.since === 'week'
+  const fableRows = fableName ? scopedReadings(samples, fableName) : []
+  const rawWeekly = splitWeekly(records, sessions, whole ? openedAtZero(weeklyRows, latest?.weeklyResetsAt ?? null) : weeklyRows, window)
+  const rawFable = fableName
+    ? splitFable(records, sessions, whole ? openedAtZero(fableRows, fableRows.at(-1)?.resetsAt ?? null) : fableRows, window)
+    : null
   const fableById = new Map((rawFable?.sessions ?? []).map((row) => [row.sessionId, row]))
 
   // the week section ranks by Fable share, then weekly share, so the top Fable
@@ -289,7 +317,10 @@ export async function buildState(options: Options = {}): Promise<State> {
     ? await dayLanes(dayStart, dayEnd, ccbrowseBase)
     : { lanes: [], error: 'cc-browse lookup is turned off (--no-ccbrowse)' }
 
-  const others = otherThreads(block?.start ?? dayStart, now, statePath(home)).map((thread) => ({
+  // Codex threads have their own list under the Codex meter, with real shares on them
+  const others = otherThreads(block?.start ?? dayStart, now, statePath(home))
+    .filter((thread) => thread.kind !== 'codex')
+    .map((thread) => ({
     ...thread,
     color: OTHER_COLOR,
   }))

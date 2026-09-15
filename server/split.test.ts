@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import type { Family } from './prices'
 import type { Sample } from './samples'
 import {
+  openedAtZero,
   dailyDeltas,
   median,
   project,
@@ -305,5 +306,23 @@ describe('median', () => {
     expect(median([4, 1, 3, 2])).toBe(2.5)
     expect(median([5, 1, 3])).toBe(3)
     expect(median([])).toBeNull()
+  })
+})
+
+describe('openedAtZero', () => {
+  const reset = 1_790_000_000
+  const opens = reset - 7 * 24 * 3600
+
+  it('adds a zero reading where the period opened', () => {
+    const readings = [{ t: opens - 60, pct: 90, resetsAt: opens }, { t: opens + 3600, pct: 2, resetsAt: reset + 1 }]
+    expect(openedAtZero(readings, reset)).toEqual([readings[0], { t: opens, pct: 0, resetsAt: reset }, readings[1]])
+  })
+
+  it('leaves readings alone when none belongs to the period or one already sits at its opening', () => {
+    const old = [{ t: opens - 60, pct: 90, resetsAt: opens }]
+    expect(openedAtZero(old, reset)).toEqual(old)
+    const atOpen = [{ t: opens, pct: 0, resetsAt: reset }]
+    expect(openedAtZero(atOpen, reset)).toEqual(atOpen)
+    expect(openedAtZero(atOpen, null)).toEqual(atOpen)
   })
 })

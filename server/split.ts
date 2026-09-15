@@ -148,12 +148,12 @@ export function weeklyWeight(family: Family): number {
   return WEEKLY_POINTS_PER_DOLLAR.other
 }
 
-const WEEK = 7 * 24 * 3600
+export const WEEK = 7 * 24 * 3600
 
 export interface WeekWindow {
   from: number
   to: number
-  since: 'lastLooked' | 'today'
+  since: 'lastLooked' | 'today' | 'week'
 }
 
 /** one reading of a weekly meter */
@@ -172,6 +172,18 @@ export function scopedReadings(samples: Sample[], model: string): Reading[] {
     const meter = s.scoped.find((m) => m.model === model)
     return meter ? [{ t: s.t, pct: meter.pct, resetsAt: meter.resetsAt }] : []
   })
+}
+
+/**
+ * a weekly meter reads 0 the moment its period opens, so the whole-week split can
+ * start there instead of at the sampler's first reading after the reset
+ */
+export function openedAtZero(readings: Reading[], resetsAt: number | null): Reading[] {
+  if (resetsAt === null) return readings
+  const opens = resetsAt - WEEK
+  const inPeriod = readings.filter((r) => r.resetsAt !== null && Math.abs(r.resetsAt - resetsAt) <= 3600)
+  if (!inPeriod.length || inPeriod.some((r) => r.t <= opens)) return readings
+  return [...readings.filter((r) => r.t < opens), { t: opens, pct: 0, resetsAt }, ...readings.filter((r) => r.t >= opens)]
 }
 
 /**

@@ -10,8 +10,11 @@ export type Lane = State['day']['lanes'][number]
  * of a page marks the look; the polls after it must not, or the marker would
  * always sit on now and say nothing.
  */
-export async function fetchState(peek: boolean): Promise<State> {
-  const response = await fetch(peek ? '/api/state?peek' : '/api/state')
+export type WeekMode = 'recent' | 'whole'
+
+export async function fetchState(peek: boolean, week: WeekMode = 'recent'): Promise<State> {
+  const query = [peek ? 'peek' : '', week === 'whole' ? 'week=whole' : ''].filter(Boolean).join('&')
+  const response = await fetch(query ? `/api/state?${query}` : '/api/state')
   if (!response.ok) throw new Error(`tally server answered ${response.status}`)
   return (await response.json()) as State
 }

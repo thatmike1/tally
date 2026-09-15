@@ -27,7 +27,8 @@ export function createApp(config: AppConfig = {}) {
     // `?peek` reads the page without moving the "last looked" marker, which is
     // what the tray face will want
     const peek = c.req.query('peek') !== undefined
-    return c.json(await buildState({ ...stateOptions, recordLook: !peek }))
+    const weekMode = c.req.query('week') === 'whole' ? 'whole' : 'recent'
+    return c.json(await buildState({ ...stateOptions, recordLook: !peek, weekMode }))
   })
 
   // reads the last generated line without spending tokens

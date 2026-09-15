@@ -1,8 +1,8 @@
-import { useEffect, useState } from 'react'
-import { fetchState, type State } from './api'
+import { useEffect, useRef, useState } from 'react'
+import { fetchState, type State, type WeekMode } from './api'
 import { Day } from './components/day'
 import { Hero } from './components/hero'
-import { Codex } from './components/codex'
+import { Codex, CodexThreads } from './components/codex'
 import { BlockSplit } from './components/split'
 import { Week } from './components/week'
 import { ago } from './format'
@@ -22,6 +22,9 @@ export function App() {
   const [state, setState] = useState<State | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [theme, toggleTheme] = useTheme()
+  const [weekMode, setWeekMode] = useState<WeekMode>(() => (localStorage.getItem('tally-week') === 'whole' ? 'whole' : 'recent'))
+  // the minute poll reads the mode through a ref so it keeps one timer
+  const weekModeRef = useRef(weekMode)
 
   // the minute poll can land up to a minute after a reset; ask again right when it happens
   const resetsAt = state?.fiveHour && !state.fiveHour.ended ? state.fiveHour.resetsAt : null
@@ -30,7 +33,7 @@ export function App() {
     const wait = resetsAt * 1000 - Date.now() + 2000
     if (wait <= 0 || wait > 6 * 3600_000) return
     const timer = setTimeout(() => {
-      fetchState(true)
+      fetchState(true, weekModeRef.current)
         .then(setState)
         .catch(() => {})
     }, wait)
@@ -43,7 +46,7 @@ export function App() {
     const load = async () => {
       try {
         // only the first load moves the "last looked" marker
-        const next = await fetchState(!first)
+        const next = await fetchState(!first, weekModeRef.current)
         first = false
         if (alive) {
           setState(next)
@@ -60,6 +63,15 @@ export function App() {
       clearInterval(timer)
     }
   }, [])
+
+  const changeWeekMode = (mode: WeekMode) => {
+    weekModeRef.current = mode
+    localStorage.setItem('tally-week', mode)
+    setWeekMode(mode)
+    fetchState(true, mode)
+      .then(setState)
+      .catch(() => {})
+  }
 
   if (error && !state) return <p className="warn">tally: {error}</p>
   if (!state) return <p className="loading">reading the meters…</p>
@@ -92,7 +104,8 @@ export function App() {
       <Hero state={state} />
       <Codex state={state} />
       <BlockSplit state={state} />
-      <Week state={state} />
+      <Week state={state} mode={weekMode} onMode={changeWeekMode} />
+      <CodexThreads state={state} />
       <Day state={state} />
     </>
   )

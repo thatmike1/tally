@@ -80,8 +80,22 @@ read, when the reader missed the start of today, or when the meter went down
 inside the week. It shares nothing with the
 Claude cost model and attributes nothing to threads.
 
+**Codex threads** — `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl`. Every model
+call writes a `token_usage_record` (tokens and a response id) and a `token_count`
+event with the weekly reading OpenAI returned for it. The week's movement is
+split across root threads by credits, priced per model from the Codex rate card
+(`CODEX_RATES` in `server/codex-sessions.ts`, read 15 Sep 2026). Subagent
+rollouts fold into their root, a forked subagent's copied history is left to its
+parent, and threads routed to another provider are dropped. Titles come from T3
+(`provider_session_runtime.resume_cursor_json.threadId`), else the first typed
+prompt. The caption shows how many credits single points actually took this week.
+
+**Whole week** — the week section's toggle (`/api/state?week=whole`) splits the
+weekly and Fable meters since their reset instead of since the last look, with
+a zero reading at the reset since both meters open at 0.
+
 **Non-Claude threads** — T3 Code's `~/.t3/userdata/state.sqlite`, opened
-read-only because T3 is running and writing to it. Antigravity, Codex and
+read-only because T3 is running and writing to it. Antigravity and
 opencode threads get a title, a span and a live tag. They never get points: there
 is no usage data for them and none is invented, and the page says the split is
 Claude only.

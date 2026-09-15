@@ -1,5 +1,5 @@
 import type { State } from '../api'
-import { ago, dayClock, days, pct } from '../format'
+import { ago, dayClock, days, hm, labelOn, pct } from '../format'
 
 type CodexView = State['codex']
 
@@ -36,6 +36,83 @@ export function Codex({ state }: { state: State }) {
       <Verdict codex={codex} />
       <WeekChart codex={codex} />
     </section>
+  )
+}
+
+/** rows past this fold into a count */
+const THREAD_ROWS = 10
+
+/** `1,240 credits` */
+function credits(value: number): string {
+  return `${Math.round(value).toLocaleString('en-US')} credits`
+}
+
+/** which Codex threads moved the weekly meter, split by credits off the rollout files */
+export function CodexThreads({ state }: { state: State }) {
+  const split = state.codex.split
+  if (!split) return null
+  const rows = split.threads.filter((row) => row.credits > 0)
+  if (!rows.length) {
+    return (
+      <div className="cx-threads">
+        <h2>codex this week</h2>
+        <p className="stripcap">no Codex calls in this week's rollouts yet</p>
+      </div>
+    )
+  }
+  const shown = rows.slice(0, THREAD_ROWS)
+  const clock = (t: number) => (t < state.day.start ? dayClock(t) : hm(t))
+  return (
+    <div className="cx-threads">
+      <h2>
+        codex this week · since {dayClock(split.from)} · {Math.round(split.pct)} points
+      </h2>
+      <div className="strip">
+        {rows.map((row) => (
+          <i key={row.id} style={{ width: `${row.share * 100}%`, background: row.color, color: labelOn(row.color) }}>
+            {row.share >= 0.06 && row.points !== null ? row.points.toFixed(1) : ''}
+          </i>
+        ))}
+      </div>
+      <div className="stripcap">
+        the {Math.round(split.pct)} points, split by credits from OpenAI's Codex rate card
+        {split.creditsPerPoint === null ? '' : ` · this week a point is about ${credits(split.creditsPerPoint)}`}
+      </div>
+      {split.pendingCredits > 1 ? (
+        <p className="warn">{credits(split.pendingCredits)} since the last reading ({hm(split.to)}) is not on the meter yet.</p>
+      ) : null}
+      {shown.map((row) => (
+        <div className="row" key={row.id}>
+          <div className="pts">
+            <s style={{ background: row.color }} />
+            <span className="share">{pct(row.share * 100)}</span>
+          </div>
+          <div className="name">
+            <a href={`http://127.0.0.1:8080/sessions/codex:${row.id}?msg=last`} title={`${row.calls} calls · ${row.models.join(', ')}`}>
+              {row.title}
+            </a>
+            <span className="meta">
+              codex · {row.via}
+              {row.points === null ? '' : <> · <span className="approx">~{row.points.toFixed(1)} pts</span></>}
+              {` · ${credits(row.credits)}`}
+              {row.unpriced ? ' (a model is not on the rate card, priced as Sol)' : ''}
+              {row.subagents ? ` · ${row.subagents} subagent${row.subagents === 1 ? '' : 's'}` : ''}
+              {row.live ? <> · <b className="lv">live</b></> : ''}
+              {` · ${clock(row.start)}–${hm(row.end)}`}
+            </span>
+          </div>
+        </div>
+      ))}
+      {rows.length > shown.length ? (
+        <span className="more">… {rows.length - shown.length} more with a smaller share</span>
+      ) : null}
+      <p className="caveat">
+        Split by credits across the meter's movement since the week opened, priced per model from the rate card.
+        {split.pointSteps
+          ? ` Single points ran ${Math.round(split.pointSteps.min)} to ${Math.round(split.pointSteps.max)} credits across ${split.pointSteps.count} steps this week, so each thread's points are approximate.`
+          : ' Too few point steps yet to say how steady a point is.'}
+      </p>
+    </div>
   )
 }
 

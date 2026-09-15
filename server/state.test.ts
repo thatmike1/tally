@@ -59,6 +59,19 @@ describe('buildState', () => {
     expect(built.others).toEqual([])
   })
 
+  it('splits the weekly meters over the whole week when asked', async () => {
+    const newest = readSamples(limitsLogPath(FIXTURE_HOME)).at(-1)!
+    const built = await buildState({
+      home: FIXTURE_HOME,
+      now: NOW,
+      ccbrowse: null,
+      recordLook: false,
+      weekMode: 'whole',
+      lastLookedPath: join(mkdtempSync(join(tmpdir(), 'tally-look-')), 'last-looked'),
+    })
+    expect(built.week).toMatchObject({ since: 'week', from: newest.weeklyResetsAt! - 7 * 24 * 3600, to: NOW })
+  })
+
   it('reports both weekly meters with a verdict each', async () => {
     const built = await state()
     expect(built.weekly!.verdict!.phrase.length).toBeGreaterThan(0)
