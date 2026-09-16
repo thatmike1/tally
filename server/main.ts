@@ -5,31 +5,27 @@ import { fileURLToPath } from 'node:url'
 import { parseArgs } from 'node:util'
 import { serve } from '@hono/node-server'
 import { createApp } from './app'
-import { DEFAULT_CCBROWSE } from './ccbrowse'
 import { startCodexUsageReader } from './codex-usage'
 import { buildState } from './state'
 import { createTakeawayRefresher } from './takeaway'
+import { TranscriptIndex, type RefreshCounts } from './transcript-index'
 import { defaultWidgetsDir, removeWidget, writeWidget } from './widget'
 
 const DEFAULT_PORT = 1337
 
 export interface Options {
   port: number
-  /** cc-browse's base url, or null to skip the day lanes */
-  ccbrowse: string | null
   open: boolean
   widget: boolean
   takeaway: boolean
 }
 
-/** parses `tally [--port <n>] [--ccbrowse <url>|--no-ccbrowse] [--no-open] [--no-widget] [--no-takeaway]` */
+/** parses `tally [--port <n>] [--no-open] [--no-widget] [--no-takeaway]` */
 export function parseOptions(argv: string[]): Options {
   const { values } = parseArgs({
     args: argv,
     options: {
       port: { type: 'string' },
-      ccbrowse: { type: 'string' },
-      'no-ccbrowse': { type: 'boolean' },
       'no-open': { type: 'boolean' },
       'no-widget': { type: 'boolean' },
       'no-takeaway': { type: 'boolean' },
@@ -42,11 +38,18 @@ export function parseOptions(argv: string[]): Options {
 
   return {
     port,
-    ccbrowse: values['no-ccbrowse'] ? null : (values.ccbrowse ?? DEFAULT_CCBROWSE),
     open: !values['no-open'],
     widget: !values['no-widget'],
     takeaway: !values['no-takeaway'],
   }
+}
+
+/** the counts one index pass did, as one line in the server log */
+function logPass(counts: RefreshCounts): void {
+  console.log(
+    `tally: index pass in ${counts.seconds.toFixed(1)}s — ${counts.seen} files seen, ${counts.parsed} parsed, ` +
+      `${counts.skipped} skipped, ${counts.dropped} dropped, ${counts.records} records written`,
+  )
 }
 
 function main(): void {
@@ -60,12 +63,25 @@ function main(): void {
 
   const uiDist = resolve(dirname(fileURLToPath(import.meta.url)), '../ui/dist')
   const takeaway = options.takeaway ? createTakeawayRefresher() : null
-  const app = createApp({ uiDist, ccbrowse: options.ccbrowse, takeaway })
+  const index = new TranscriptIndex()
+  const app = createApp({ uiDist, index, takeaway })
+
+  // the first build reads the whole tree, so it runs in the background and the
+  // page says it is building; every window falls back to a live scan until the
+  // build has reached back far enough
+  const indexPass = () => {
+    // a pass already running will pick up anything written since it started
+    if (index.progress().building) return
+    index
+      .refresh()
+      .then(logPass)
+      .catch((error) => console.error(`tally: index pass failed: ${error instanceof Error ? error.message : error}`))
+  }
+  indexPass()
 
   const server = serve({ fetch: app.fetch, hostname: '127.0.0.1', port: options.port }, (info) => {
     const url = `http://127.0.0.1:${info.port}/`
     console.log(`tally: ${url}`)
-    if (options.ccbrowse) console.log(`day lanes from cc-browse: ${options.ccbrowse}`)
     console.log('press Ctrl-C to stop')
     if (options.open) {
       const child = spawn('xdg-open', [url], { stdio: 'ignore', detached: true })
@@ -81,7 +97,7 @@ function main(): void {
   // browser requests the Gemini takeaway only while Tally is visible and focused
   const tick = async () => {
     try {
-      const state = await buildState({ ccbrowse: options.ccbrowse, recordLook: false })
+      const state = await buildState({ index, recordLook: false })
       const five = state.fiveHour
       // the sampler runs every five minutes; a block that just reset gets read now instead
       if (five?.ended && state.now - five.ageSeconds < five.resetsAt && kickedFor !== five.resetsAt) {
@@ -90,6 +106,8 @@ function main(): void {
         child.on('error', () => console.error('tally: could not start usage-sample.service'))
       }
       if (options.widget) writeWidget(state, widgetsDir)
+      // pick up whatever was written since the last pass; an unchanged file is a stat
+      indexPass()
     } catch (error) {
       console.error(`tally: minute tick failed: ${error instanceof Error ? error.message : String(error)}`)
     }
@@ -102,6 +120,7 @@ function main(): void {
   const stop = () => {
     clearInterval(tickInterval)
     codexUsage.stop()
+    index.close()
     if (options.widget) {
       removeWidget(widgetsDir)
     }

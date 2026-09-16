@@ -5,18 +5,34 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { limitsLogPath, readSamples } from './samples'
 import { buildState } from './state'
+import { TranscriptIndex } from './transcript-index'
 import { projectsRoot, scan } from './transcripts'
 
 const FIXTURE_HOME = join(import.meta.dirname, '..', 'test', 'fixtures', 'home')
 const NOW = 1789138000
+/** the fixture's transcripts are all on 10 Sep 2026, so the day lanes are read from there */
+const LANES_NOW = 1789062400
+
+function tempLook(): string {
+  return join(mkdtempSync(join(tmpdir(), 'tally-look-')), 'last-looked')
+}
+
+async function stateAt(now: number, index?: TranscriptIndex) {
+  return buildState({
+    home: FIXTURE_HOME,
+    now,
+    index,
+    // no T3 db and no index in a fixture home: both must degrade, not throw
+    recordLook: false,
+    lastLookedPath: tempLook(),
+  })
+}
 
 async function state() {
   return buildState({
     home: FIXTURE_HOME,
     now: NOW,
-    // no cc-browse and no T3 db in a fixture home; both must degrade, not throw
-    ccbrowse: null,
-    lastLookedPath: join(mkdtempSync(join(tmpdir(), 'tally-look-')), 'last-looked'),
+    lastLookedPath: tempLook(),
   })
 }
 
@@ -48,10 +64,46 @@ describe('buildState', () => {
     expect(built.caveat).toMatch(/quarter/)
   })
 
-  it('says why the lanes are missing instead of dropping the section', async () => {
+  it('draws the day lanes off the transcripts, as activity and not as span', async () => {
+    const built = await stateAt(LANES_NOW)
+    expect(built.day.lanes.length).toBeGreaterThan(0)
+    for (const lane of built.day.lanes) {
+      expect(lane.kind).toBe('claude')
+      expect(lane.segments.length).toBeGreaterThan(0)
+      expect(lane.requests).toBeGreaterThan(0)
+      // a lane never claims time outside the day it is drawn on
+      expect(lane.start).toBeGreaterThanOrEqual(built.day.start)
+      expect(lane.end).toBeLessThan(built.day.end)
+      // segments are the requests, so they can only cover part of the span
+      const covered = lane.segments.reduce((sum, s) => sum + (s.end - s.start), 0)
+      expect(covered).toBeLessThanOrEqual(lane.end - lane.start)
+      expect(lane.segments.reduce((sum, s) => sum + s.requests, 0)).toBe(lane.requests)
+    }
+    // the fan-out shows up as a thicker part of the lane, not a row of its own
+    expect(built.day.lanes.some((lane) => lane.agents > 0)).toBe(true)
+    expect(built.day.lanes.some((lane) => lane.segments.some((s) => s.agents > 0))).toBe(true)
+  })
+
+  it('reports no index at all as cold and never building', async () => {
     const built = await state()
-    expect(built.day.lanes).toEqual([])
-    expect(built.day.lanesError).toMatch(/cc-browse/)
+    expect(built.index).toEqual({ building: false, done: 0, total: 0, builtAt: null, cold: true })
+    expect(built.sources.index).toContain('transcripts.sqlite')
+  })
+
+  it('answers the same page out of a built index as off the tree', async () => {
+    const index = new TranscriptIndex({ root: projectsRoot(FIXTURE_HOME), path: ':memory:' })
+    const counts = await index.refresh()
+    expect(counts.parsed).toBe(counts.seen)
+    const indexed = await stateAt(LANES_NOW, index)
+    const live = await stateAt(LANES_NOW)
+    expect(indexed.day.lanes.length).toBeGreaterThan(0)
+    expect(indexed.index.cold).toBe(false)
+    expect(indexed.index.builtAt).not.toBeNull()
+    expect(indexed.sources.index).toBe(':memory:')
+    expect(indexed.day.lanes).toEqual(live.day.lanes)
+    expect(indexed.split!.sessions).toEqual(live.split!.sessions)
+    expect(indexed.week.weekly!.sessions).toEqual(live.week.weekly!.sessions)
+    index.close()
   })
 
   it('finds no other-agent threads without a T3 db, rather than throwing', async () => {
@@ -64,7 +116,6 @@ describe('buildState', () => {
     const built = await buildState({
       home: FIXTURE_HOME,
       now: NOW,
-      ccbrowse: null,
       recordLook: false,
       weekMode: 'whole',
       lastLookedPath: join(mkdtempSync(join(tmpdir(), 'tally-look-')), 'last-looked'),
@@ -81,9 +132,9 @@ describe('buildState', () => {
 
   it('remembers the previous look and not this one', async () => {
     const path = join(mkdtempSync(join(tmpdir(), 'tally-look-')), 'last-looked')
-    const first = await buildState({ home: FIXTURE_HOME, now: NOW, ccbrowse: null, lastLookedPath: path })
+    const first = await buildState({ home: FIXTURE_HOME, now: NOW, lastLookedPath: path })
     expect(first.lastLooked).toBeNull()
-    const second = await buildState({ home: FIXTURE_HOME, now: NOW + 600, ccbrowse: null, lastLookedPath: path })
+    const second = await buildState({ home: FIXTURE_HOME, now: NOW + 600, lastLookedPath: path })
     expect(second.lastLooked).toBe(NOW)
   })
 
@@ -98,7 +149,7 @@ describe('buildState', () => {
     const path = join(mkdtempSync(join(tmpdir(), 'tally-look-')), 'last-looked')
     // 10 Sep 2026 02:26 Prague, inside the fixture's weekly period
     writeFileSync(path, '1789000000')
-    const built = await buildState({ home: FIXTURE_HOME, now: NOW, ccbrowse: null, lastLookedPath: path, recordLook: false })
+    const built = await buildState({ home: FIXTURE_HOME, now: NOW, lastLookedPath: path, recordLook: false })
     const { fable, weekly } = built.week
     expect(built.week.since).toBe('lastLooked')
     expect(fable!.delta).toBeGreaterThan(0)
@@ -137,7 +188,6 @@ describe('buildState', () => {
     const built = await buildState({
       home: dir,
       now: NOW,
-      ccbrowse: null,
       lastLookedPath: join(dir, 'last-looked'),
       recordLook: false,
     })

@@ -9,7 +9,7 @@ const BASELINE = 120
 const TOP = 8
 const MAX_ROWS = 42
 
-/** the meter line and cc-browse's day lanes, on one day axis */
+/** the meter line and the day lanes, on one day axis */
 export function Day({ state }: { state: State }) {
   const box = useRef<HTMLDivElement>(null)
   const [width, setWidth] = useState(1300)
@@ -145,9 +145,56 @@ function Chart({
   )
 }
 
+/** the thin parent line, in px; every subagent transcript inside a segment adds to it */
+const LANE_THIN = 4
+const LANE_STEP = 3
+const LANE_FAT = 14
+
+/** a stretch too short to see still has to be clickable */
+const MIN_SEGMENT_PCT = 0.25
+
+function segmentHeight(agents: number): number {
+  return Math.min(LANE_FAT, LANE_THIN + agents * LANE_STEP)
+}
+
+/** seconds this lane was actually working, which is the sum of its segments */
+function activeSeconds(lane: Lane): number {
+  return lane.segments.reduce((sum, segment) => sum + (segment.end - segment.start), 0)
+}
+
+function laneTitle(lane: Lane): string {
+  if (lane.cost === null) {
+    return `${lane.kind} · ${duration(lane.end - lane.start)}${lane.live ? ' · live' : ''}`
+  }
+  const bits = [
+    `${tokens(lane.tokens ?? 0)} tokens`,
+    money(lane.cost),
+    `${lane.requests} request${lane.requests === 1 ? '' : 's'}`,
+    `${duration(activeSeconds(lane))} active`,
+  ]
+  if (lane.agents) bits.push(`${lane.agents} agent${lane.agents === 1 ? '' : 's'}`)
+  return bits.join(' · ')
+}
+
+function laneLabel(lane: Lane): string {
+  if (lane.cost === null) return `${duration(lane.end - lane.start)} · ${lane.kind}`
+  return [
+    duration(activeSeconds(lane)),
+    lane.agents ? `${lane.agents} agent${lane.agents === 1 ? '' : 's'}` : null,
+    money(lane.cost),
+  ]
+    .filter(Boolean)
+    .join(' · ')
+}
+
+/**
+ * the day's sessions as activity: one segment per stretch of requests, thicker
+ * where subagent transcripts were writing inside it, and never a bar from the
+ * first message to the last with three idle hours in the middle.
+ */
 function Lanes({ state }: { state: State }) {
-  const { lanes, lanesError, start, end } = state.day
-  if (lanesError) return <p className="warn">{lanesError}</p>
+  const { lanes, start, end } = state.day
+  if (!lanes.length) return <p className="more">no sessions on the clock today yet.</p>
   const span = end - start
   const groups = new Map<string, Lane[]>()
   for (const lane of lanes) {
@@ -159,7 +206,7 @@ function Lanes({ state }: { state: State }) {
   const ordered = [...groups.entries()]
     .map(([name, rows]) => ({
       name,
-      rows: [...rows].sort((a, b) => Date.parse(a.created) - Date.parse(b.created)),
+      rows: [...rows].sort((a, b) => a.start - b.start),
       cost: rows.reduce((sum, row) => sum + (row.cost ?? 0), 0),
     }))
     .sort((a, b) => b.cost - a.cost)
@@ -182,34 +229,66 @@ function Lanes({ state }: { state: State }) {
               </span>
             </div>
             {rows.map((lane) => {
-              const from = Date.parse(lane.created) / 1000
-              const to = Date.parse(lane.modified) / 1000
-              const left = ((Math.max(from, start) - start) / span) * 100
-              const right = ((Math.min(to, end) - start) / span) * 100
-              const width = Math.max(0.3, right - left)
-              const opacity = 0.4 + 0.36 * Math.sqrt(Math.min(1, (lane.cost ?? 0) / maxCost))
-              const label = [
-                duration(to - from),
-                lane.n_agents ? `${lane.n_agents} agent${lane.n_agents === 1 ? '' : 's'}` : null,
-                money(lane.cost),
-              ]
-                .filter(Boolean)
-                .join(' · ')
+              const other = lane.cost === null
+              // brightness by cost, as in v1; a thread with no cost stays flat
+              const opacity = other ? 0.55 : 0.4 + 0.36 * Math.sqrt(Math.min(1, (lane.cost ?? 0) / maxCost))
+              const href = other ? null : `#/session/${lane.id}`
+              const title = laneTitle(lane)
+              const last = lane.segments.at(-1)!
+              const labelLeft = Math.min(97, ((Math.min(last.end, end) - start) / span) * 100)
+              const bar = (
+                <>
+                  {lane.segments.map((segment) => {
+                    const left = ((Math.max(segment.start, start) - start) / span) * 100
+                    const right = ((Math.min(segment.end, end) - start) / span) * 100
+                    const width = Math.max(MIN_SEGMENT_PCT, right - left)
+                    const height = other ? LANE_THIN : segmentHeight(segment.agents)
+                    return (
+                      <i
+                        key={segment.start}
+                        className={other ? 'other' : undefined}
+                        style={{
+                          left: `${left}%`,
+                          width: `${width}%`,
+                          opacity,
+                          height,
+                          top: (LANE_FAT - height) / 2,
+                        }}
+                      />
+                    )
+                  })}
+                  <em style={{ left: `calc(${labelLeft}% + 6px)` }}>{laneLabel(lane)}</em>
+                </>
+              )
               return (
-                <div className="lr" key={lane.id}>
+                <div className="lr" key={`${lane.kind}-${lane.id}`}>
                   <div className="lt">
-                    <a href={agentsview(lane.id)} title={`${tokens(lane.tokens)} tokens · ${money(lane.cost)}`}>
-                      {lane.title}
+                    {href ? (
+                      <a href={href} title={title}>
+                        {lane.title}
+                      </a>
+                    ) : (
+                      <span title={title}>{lane.title}</span>
+                    )}
+                    {other ? null : (
+                      <a className="av" href={agentsview(lane.id)} title="open the transcript in AgentsView">
+                        ↗
+                      </a>
+                    )}
+                  </div>
+                  {href ? (
+                    <a className="lb" href={href} title={title}>
+                      {bar}
                     </a>
-                  </div>
-                  <div className="lb">
-                    <i style={{ left: `${left}%`, width: `${width}%`, opacity }} />
-                    <em style={{ left: `calc(${left + width}% + 6px)` }}>{label}</em>
-                  </div>
+                  ) : (
+                    <div className="lb" title={title}>
+                      {bar}
+                    </div>
+                  )}
                 </div>
               )
             })}
-            {hidden > 0 ? <span className="more">… {hidden} more rows, as in cc-browse</span> : null}
+            {hidden > 0 ? <span className="more">… {hidden} more, past the rows this page draws</span> : null}
           </div>
         )
       })}

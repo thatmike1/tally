@@ -23,6 +23,17 @@ function useWide(): boolean {
   return wide
 }
 
+/** the one hash route so far: `#/session/<id>`, whose view phase two draws */
+function useHash(): string {
+  const [hash, setHash] = useState(() => window.location.hash)
+  useEffect(() => {
+    const update = () => setHash(window.location.hash)
+    window.addEventListener('hashchange', update)
+    return () => window.removeEventListener('hashchange', update)
+  }, [])
+  return hash
+}
+
 function useTheme(): [string, () => void] {
   const [theme, setTheme] = useState(() => localStorage.getItem('tally-theme') ?? 'light')
   useEffect(() => {
@@ -37,6 +48,8 @@ export function App() {
   const [error, setError] = useState<string | null>(null)
   const [theme, toggleTheme] = useTheme()
   const wide = useWide()
+  const hash = useHash()
+  const openSession = hash.startsWith('#/session/') ? decodeURIComponent(hash.slice('#/session/'.length)) : null
   const [weekMode, setWeekMode] = useState<WeekMode>(() => (localStorage.getItem('tally-week') === 'whole' ? 'whole' : 'recent'))
   // the minute poll reads the mode through a ref so it keeps one timer
   const weekModeRef = useRef(weekMode)
@@ -100,11 +113,23 @@ export function App() {
         </button>
       </div>
       <div className="legend">
-        <b>Real:</b> the meters, the day's meter line, every reset time, the lanes (cc-browse), the other agents'
-        titles. <b>Computed from real:</b> the splits, the projection, the weekly verdicts.{' '}
+        <b>Real:</b> the meters, the day's meter line, every reset time, the lanes, the other agents' titles.{' '}
+        <b>Computed from real:</b> the splits, the projection, the weekly verdicts.{' '}
         <b>Not shown:</b> points for any stretch the sampler did not measure.
         {state.fiveHour ? ` Meter read ${ago(state.fiveHour.ageSeconds)}.` : ''}
       </div>
+      {openSession ? (
+        <p className="warn">
+          session <code>{openSession}</code>: the detail view comes in phase two. <a href="#">close</a>
+        </p>
+      ) : null}
+      {state.index.building ? (
+        <p className="warn">
+          the transcript index is building ({state.index.done} of {state.index.total} files
+          {state.index.cold ? ', first run' : ''}). the lanes and the split read the tree directly until it catches
+          up.
+        </p>
+      ) : null}
       {state.fiveHour?.expired ? (
         <p className="warn">
           the block reset over ten minutes ago and nothing has read the account since: the sampler is behind, so this

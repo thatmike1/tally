@@ -2,9 +2,10 @@
 import { readFileSync, mkdirSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
-import { dayLanes, DEFAULT_CCBROWSE, type Lane } from './ccbrowse'
 import { codexSessionsRoot, scanRollouts, splitCodexWeek, t3CodexThreads, type CodexWeekSplit } from './codex-sessions'
 import { codexUsagePaths, codexUsageView, type CodexUsageView } from './codex-usage'
+import type { IndexProgress, Lane } from './history-types'
+import { buildLanes, LIVE_WINDOW } from './lanes'
 import {
   blocks as groupBlocks,
   currentBlock,
@@ -36,19 +37,18 @@ import {
 } from './split'
 import { otherThreads, statePath, type Thread } from './t3'
 import { dayBounds, formatLocalTime } from './time'
-import { projectsRoot, scan } from './transcripts'
+import { indexPath, type TranscriptIndex } from './transcript-index'
+import { projectsRoot, scan, type RequestRecord, type SessionMeta } from './transcripts'
 
 /** the strip and the list share these, in rank order, so the two always match */
 export const PALETTE = ['#d94f2a', '#b5836a', '#8f8a82', '#a9a49b', '#c2bdb4', '#cfcac1', '#dcd8d0']
 export const OTHER_COLOR = '#3c6e9e'
 
-/** a lead transcript written this recently is a session that is still running */
-const LIVE_WINDOW = 120
-
 export interface Options {
   home?: string
-  ccbrowse?: string | null
   now?: number
+  /** the transcript index; without one every window is read with a live `scan()` */
+  index?: TranscriptIndex | null
   /** file that remembers when the page was last opened */
   lastLookedPath?: string
   /** false while assembling a state for a test */
@@ -84,6 +84,8 @@ export interface OtherRow extends Thread {
 
 export interface State {
   now: number
+  /** how far the transcript index has got; the page says so while it builds */
+  index: IndexProgress
   lastLooked: number | null
   codex: CodexUsageView & {
     /** which Codex threads moved the weekly meter since the window opened */
@@ -138,13 +140,12 @@ export interface State {
     end: number
     meter: { t: number; pct: number; resetKey: number; weeklyPct: number | null; scopedPct: number | null }[]
     lanes: Lane[]
-    lanesError: string | null
   }
   sources: {
     limits: string
     transcripts: string
     t3: string
-    ccbrowse: string | null
+    index: string
   }
 }
 
@@ -181,7 +182,7 @@ function writeLastLooked(path: string, now: number): void {
 export async function buildState(options: Options = {}): Promise<State> {
   const home = options.home ?? homedir()
   const now = options.now ?? Date.now() / 1000
-  const ccbrowseBase = options.ccbrowse === undefined ? DEFAULT_CCBROWSE : options.ccbrowse
+  const index = options.index ?? null
   const lookPath = options.lastLookedPath ?? lastLookedFile(home)
   const lastLooked = readLastLooked(lookPath)
   const codexView = codexUsageView(options.codexPaths ?? codexUsagePaths(home), now)
@@ -254,8 +255,17 @@ export async function buildState(options: Options = {}): Promise<State> {
     options.weekMode === 'whole' && weekStart !== null
       ? { from: Math.max(weekStart, 0), to: now, since: 'week' }
       : weekWindow(now, lastLooked, latest?.weeklyResetsAt ?? null, weeklyRows, dayStart)
-  const scanStart = Math.min(window.from, current?.block.start ?? window.from)
-  const { records, sessions } = await scan(scanStart, now, projectsRoot(home))
+  // the lanes cover the whole day, so the read starts at whichever of the three
+  // windows opens first
+  const scanStart = Math.min(window.from, current?.block.start ?? window.from, dayStart)
+  let records: RequestRecord[]
+  let sessions: Map<string, SessionMeta>
+  if (index && index.covers(scanStart)) {
+    ;({ records, sessions } = index.query(scanStart, now))
+  } else {
+    // the index has not reached this far back yet: read the tree, as v1 did
+    ;({ records, sessions } = await scan(scanStart, now, projectsRoot(home)))
+  }
 
   const whole = window.since === 'week'
   const fableRows = fableName ? scopedReadings(samples, fableName) : []
@@ -313,9 +323,8 @@ export async function buildState(options: Options = {}): Promise<State> {
     }
   }
 
-  const lanes = ccbrowseBase
-    ? await dayLanes(dayStart, dayEnd, ccbrowseBase)
-    : { lanes: [], error: 'cc-browse lookup is turned off (--no-ccbrowse)' }
+  const threads = otherThreads(dayStart, dayEnd, statePath(home))
+  const lanes = buildLanes({ records, sessions, threads, from: dayStart, to: dayEnd, now })
 
   // Codex threads have their own list under the Codex meter, with real shares on them
   const others = otherThreads(block?.start ?? dayStart, now, statePath(home))
@@ -327,6 +336,7 @@ export async function buildState(options: Options = {}): Promise<State> {
 
   return {
     now,
+    index: index?.progress() ?? { building: false, done: 0, total: 0, builtAt: null, cold: true },
     lastLooked,
     codex,
     caveat: CAVEAT,
@@ -369,14 +379,13 @@ export async function buildState(options: Options = {}): Promise<State> {
           weeklyPct: s.weeklyPct,
           scopedPct: fableName ? (s.scoped.find((m) => m.model === fableName)?.pct ?? null) : null,
         })),
-      lanes: lanes.lanes,
-      lanesError: lanes.error,
+      lanes,
     },
     sources: {
       limits: limitsLogPath(home),
       transcripts: projectsRoot(home),
       t3: statePath(home),
-      ccbrowse: ccbrowseBase,
+      index: index?.path ?? indexPath(home),
     },
   }
 }

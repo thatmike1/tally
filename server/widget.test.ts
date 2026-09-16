@@ -26,7 +26,6 @@ async function fixtureState(lastLooked?: string) {
   return buildState({
     home: FIXTURE_HOME,
     now: NOW,
-    ccbrowse: null,
     lastLookedPath: lookPath,
     recordLook: false,
   })

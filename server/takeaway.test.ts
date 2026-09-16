@@ -26,7 +26,6 @@ async function fixtureState(lastLooked?: string): Promise<State> {
   return buildState({
     home: FIXTURE_HOME,
     now: NOW,
-    ccbrowse: null,
     lastLookedPath: lookPath,
     recordLook: false,
   })
@@ -219,7 +218,6 @@ describe('/api/takeaway endpoint', () => {
     const app = createApp({
       home: FIXTURE_HOME,
       now: NOW,
-      ccbrowse: null,
       recordLook: false,
       takeaway: refresher,
     })
@@ -232,7 +230,6 @@ describe('/api/takeaway endpoint', () => {
     const state = await buildState({
       home: FIXTURE_HOME,
       now: NOW,
-      ccbrowse: null,
       recordLook: false,
     })
     await refresher.refresh(state)
@@ -257,7 +254,6 @@ describe('/api/takeaway endpoint', () => {
     const app = createApp({
       home: FIXTURE_HOME,
       now: NOW,
-      ccbrowse: null,
       recordLook: false,
       takeaway: refresher,
     })
@@ -282,7 +278,6 @@ describe('/api/takeaway endpoint', () => {
     const app = createApp({
       home: FIXTURE_HOME,
       now: NOW,
-      ccbrowse: null,
       recordLook: false,
       takeaway: null,
     })

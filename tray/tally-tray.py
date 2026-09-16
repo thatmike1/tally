@@ -36,11 +36,8 @@ POLL_SECS = 60
 HERE = Path(__file__).resolve().parent
 
 # the rows below came over from cc-browse-tray when it was retired. ports are
-# ours, not framework defaults: 4173 cc-browse, 1338 bd-board
-CCBROWSE_PORT = int(os.environ.get("CCBROWSE_PORT", "4173"))
-CCBROWSE_URL = f"http://localhost:{CCBROWSE_PORT}"
-CCBROWSE_SERVICE = "cc-browse.service"
-
+# ours, not framework defaults: 1338 bd-board
+#
 # the other local pages the menu opens, each a user unit that autostarts
 PAGES = (
     ("bd-board", "bd-board.service", "http://127.0.0.1:1338"),
@@ -84,7 +81,7 @@ def port_open(url: str) -> bool:
         return False
 
 
-def service_running(unit: str = CCBROWSE_SERVICE) -> bool:
+def service_running(unit: str) -> bool:
     r = subprocess.run(
         ["systemctl", "--user", "is-active", "--quiet", unit], check=False
     )
@@ -92,9 +89,8 @@ def service_running(unit: str = CCBROWSE_SERVICE) -> bool:
 
 
 def local_status() -> dict:
-    """what the action rows depend on: whether cc-browse and AgentsView are up."""
+    """what the action rows depend on: whether AgentsView is up."""
     return {
-        "ccbrowse": service_running(CCBROWSE_SERVICE),
         # judged by the port, so an `agentsview serve` started by hand counts too
         "agentsview": port_open(AGENTSVIEW_URL),
     }
@@ -176,7 +172,6 @@ def action_rows(cbs: dict, status: dict) -> list[tuple[str, str | None, object]]
     """
     rows: list[tuple[str, str | None, object]] = [
         ("open", "Open tally", cbs.get("open")),
-        ("open-cc-browse", f"Open cc-browse ({CCBROWSE_PORT})", cbs.get("open-cc-browse")),
     ]
     for name, _unit, url in PAGES:
         port = url.rsplit(":", 1)[1]
@@ -188,12 +183,6 @@ def action_rows(cbs: dict, status: dict) -> list[tuple[str, str | None, object]]
         rows.append(("av-start", "Start AgentsView", cbs.get("av-start")))
     rows.append(("sep-actions", None, None))
     rows.append(("refresh", "Refresh", cbs.get("refresh")))
-    running = bool(status.get("ccbrowse"))
-    rows.append((
-        f"ccbrowse-{running}",
-        "Stop cc-browse server" if running else "Start cc-browse server",
-        cbs.get("ccbrowse-stop") if running else cbs.get("ccbrowse-start"),
-    ))
     rows.append(("quit", "Quit", cbs.get("quit")))
     return rows
 
@@ -245,12 +234,9 @@ class Tray:
             "refresh": self.on_refresh,
             "quit": self.on_quit,
             "start": self.on_start_tally,
-            "open-cc-browse": self.page_opener(CCBROWSE_SERVICE, CCBROWSE_URL),
             "av-open": lambda _w: subprocess.Popen(["xdg-open", AGENTSVIEW_URL], start_new_session=True),
             "av-stop": self.on_agentsview_stop,
             "av-start": self.page_opener(AGENTSVIEW_UNIT, AGENTSVIEW_URL),
-            "ccbrowse-start": self.unit_action("start", CCBROWSE_SERVICE),
-            "ccbrowse-stop": self.unit_action("stop", CCBROWSE_SERVICE),
         }
         for name, unit, url in PAGES:
             self.callbacks[f"open-{name}"] = self.page_opener(unit, url)
@@ -348,19 +334,6 @@ class Tray:
                         time.sleep(0.25)
                 GLib.idle_add(self.poll)
             subprocess.Popen(["xdg-open", url], start_new_session=True)
-
-        return lambda _w: threading.Thread(target=work, daemon=True).start()
-
-    def unit_action(self, verb: str, unit: str):
-        """start or stop a user unit off the main loop, then redraw the menu.
-
-        the menu polls once a minute, so without the redraw a toggle row would
-        keep offering the action just taken.
-        """
-
-        def work() -> None:
-            subprocess.run(["systemctl", "--user", verb, unit], check=False)
-            GLib.idle_add(self.poll)
 
         return lambda _w: threading.Thread(target=work, daemon=True).start()
 

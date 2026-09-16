@@ -33,14 +33,13 @@ It serves the built `ui/dist`, so after ui changes run `npm run build` and
 
 `systemd/tally-tray.service` runs `tray/tally-tray.py`, a GNOME tray icon with
 the three meter lines (the same text the server writes to the T3 widget at
-`~/.t3/userdata/widgets/tally.json` every minute), then rows that open tally,
-cc-browse, bd-board and AgentsView and start or stop cc-browse and AgentsView.
-`tray/tally-tray.py --print` dumps the label and rows. Which sessions ate the
-block stays on the page.
+`~/.t3/userdata/widgets/tally.json` every minute), then rows that open tally and
+bd-board, and open, start or stop AgentsView. `tray/tally-tray.py --print` dumps
+the label and rows. Which sessions ate the block stays on the page.
 
-Flags: `--port <n>`, `--ccbrowse <url>`, `--no-ccbrowse`, `--no-open`,
-`--no-widget`, `--no-takeaway` (the focused, visible page requests the takeaway
-through an `agy -p` call, then it is served from memory at `/api/takeaway`).
+Flags: `--port <n>`, `--no-open`, `--no-widget`, `--no-takeaway` (the focused,
+visible page requests the takeaway through an `agy -p` call, then it is served
+from memory at `/api/takeaway`).
 `bin/tally.mjs` is a launcher that works from any directory, so
 `ln -s ~/git/tally/bin/tally.mjs ~/.local/bin/tally` is enough to run it anywhere.
 
@@ -61,10 +60,24 @@ If the page says the sampler is behind, check
 `*/subagents/*.jsonl`, last line per (file, message id), subagent files folded
 into the parent session. The price table is cc-browse's, to the cent.
 
-**The day lanes** — cc-browse's running server, `GET /api/timeline`, at
-`http://127.0.0.1:4173` by default. **This is a dependency on another process.**
-Fold it in later, or accept that the lanes section is empty when cc-browse is
-down (it says so rather than disappearing). `--no-ccbrowse` turns the lookup off.
+**The transcript index** — `~/.cache/tally/transcripts.sqlite`, one row per
+transcript file keyed on its path with the mtime and size that were parsed, plus
+one row per request. A file whose mtime and size still match is never reread, so
+every pass after the first costs a stat per file. The first build reads the whole
+tree (9.8 GB, 6531 files on 16 Sep 2026) in the background, newest file first, so
+the block the page is showing is indexed within seconds; `index` in `/api/state`
+carries its progress and the page says it is building. Until the build has
+reached back past a window's start, that window is read with a live `scan()`
+instead, exactly as v1 read every window. Deleting the file costs a rebuild and
+nothing else.
+
+**The day lanes** — the same index. A lane is activity, not span: requests
+closer than five minutes merge into one segment, and a segment is drawn thicker
+where subagent transcripts were writing inside it, so a session that idled three
+hours no longer looks like a three-hour eater. Rows are grouped by project,
+brightness is the session's cost, and a click opens `#/session/<id>`, whose data
+comes from `GET /api/session/:id` (the lead transcript and one lane per subagent
+file, with every request on it).
 
 **Codex weekly** — the server spawns `codex app-server` every five minutes and
 asks `account/rateLimits/read` for the main bucket's seven-day window, with no
