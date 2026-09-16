@@ -737,3 +737,380 @@ a.lb:hover i {
     grid-template-columns: 1fr;
   }
 }
+
+/* the top-bar routes */
+.nav {
+  display: flex;
+  gap: 14px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.nav a {
+  color: var(--muted);
+  text-decoration: none;
+}
+
+.nav a:hover {
+  color: var(--fg);
+}
+
+.nav a[aria-current='page'] {
+  color: var(--fg);
+  border-bottom: 1px solid var(--dim);
+}
+
+.nav .here {
+  color: var(--faint);
+}
+
+/* the quieter second target beside a session title, wherever a list draws one */
+a.av {
+  color: var(--faint);
+  font-size: 11px;
+  border-bottom: none;
+  margin-left: 6px;
+  text-decoration: none;
+}
+
+a.av:hover {
+  color: var(--accent);
+}
+
+/* history: the block and week strips */
+.hday {
+  display: grid;
+  grid-template-columns: 96px 1fr;
+  align-items: start;
+  border-top: 1px solid var(--line-soft);
+  padding: 8px 0;
+}
+
+.hd {
+  font-size: 12px;
+  color: var(--muted);
+  padding-top: 14px;
+}
+
+.htiles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.tile {
+  position: relative;
+  display: block;
+  width: 104px;
+  padding: 7px 9px 12px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  color: inherit;
+  text-decoration: none;
+}
+
+.tile:hover {
+  border-color: var(--dim);
+}
+
+/* a block with no dollars-per-point figure is drawn as unfinished, never as a zero */
+.tile.un {
+  border-style: dashed;
+}
+
+.tile.wide {
+  width: 210px;
+}
+
+.tile em {
+  display: block;
+  font-style: normal;
+  font-size: 11px;
+  color: var(--faint);
+}
+
+.tile b {
+  display: block;
+  font-size: 21px;
+  font-weight: 600;
+  line-height: 1.25;
+  font-variant-numeric: tabular-nums;
+}
+
+.tile span {
+  display: block;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.tile .nd {
+  font-style: normal;
+  font-size: 11px;
+}
+
+.tfill {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 4px;
+  display: block;
+  background: var(--track);
+  border-radius: 0 0 4px 4px;
+  overflow: hidden;
+  text-decoration: none;
+}
+
+.tfill i {
+  display: block;
+  height: 100%;
+  background: var(--lane);
+}
+
+/* history charts */
+.ch-sub {
+  font-size: 12px;
+  color: var(--faint);
+  margin: 16px 0 2px;
+}
+
+.ch-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20px;
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 10px;
+}
+
+.ch-legend span {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ch-mk.c1 {
+  fill: var(--accent);
+}
+
+.ch-mk.c2 {
+  fill: var(--soft);
+}
+
+.ch-mk.cx {
+  fill: var(--codex);
+}
+
+.ch-line {
+  fill: none;
+  stroke-width: 2;
+  opacity: 0.4;
+}
+
+.ch-line.c1 {
+  stroke: var(--accent);
+}
+
+.ch-line.c2 {
+  stroke: var(--soft);
+}
+
+.ch-line.cx {
+  stroke: var(--codex);
+}
+
+/* the mark for a window nothing measured: a cross on the axis, on no y value */
+.ch-none {
+  stroke: var(--dim);
+  stroke-width: 1.5;
+  fill: none;
+}
+
+.ch-cols {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 26px;
+  align-items: flex-end;
+  margin-top: 8px;
+}
+
+.ch-col {
+  width: 170px;
+}
+
+.ch-bar {
+  height: 110px;
+  display: flex;
+  align-items: flex-end;
+  border-bottom: 1px solid var(--line);
+}
+
+.ch-bar i {
+  display: block;
+  width: 54px;
+  min-height: 2px;
+  background: var(--accent);
+  opacity: 0.85;
+  border-radius: 3px 3px 0 0;
+}
+
+/* a week with no breakdown gets a stub at the baseline, never a full column */
+.ch-bar u {
+  display: block;
+  width: 54px;
+  height: 8px;
+  border: 1px dashed var(--dim);
+  border-bottom: none;
+  border-radius: 3px 3px 0 0;
+  text-decoration: none;
+}
+
+.ch-col b {
+  display: block;
+  font-size: 18px;
+  font-weight: 600;
+  margin-top: 6px;
+  font-variant-numeric: tabular-nums;
+}
+
+.ch-col em {
+  display: block;
+  font-style: normal;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.ch-col span {
+  display: block;
+  font-size: 11px;
+  color: var(--faint);
+}
+
+/* the sub-value bar: one month against one price */
+.meter.sub {
+  height: 10px;
+  max-width: 520px;
+  margin-bottom: 8px;
+}
+
+.meter.sub i {
+  opacity: 0.85;
+}
+
+/* the drill-in banner */
+.frozen {
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--accent);
+  border-radius: 5px;
+  padding: 12px 16px;
+  margin-bottom: 24px;
+}
+
+.fz-title {
+  display: flex;
+  gap: 16px;
+  align-items: baseline;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.fz-title a {
+  margin-left: auto;
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--muted);
+}
+
+.fz-line {
+  font-size: 13px;
+  color: var(--soft);
+  margin-top: 8px;
+}
+
+.fz-line b {
+  color: var(--fg);
+  font-weight: 600;
+}
+
+.fz-cache,
+.fz-note {
+  font-size: 12px;
+  color: var(--faint);
+  margin-top: 6px;
+}
+
+.fz-note.warn {
+  color: var(--accent);
+  margin-bottom: 0;
+}
+
+/* session detail: the lanes one zoom level in */
+.sd-head {
+  margin-bottom: 26px;
+}
+
+.sd-title {
+  font-size: 22px;
+  font-weight: 600;
+  margin: 0 0 4px;
+}
+
+.sd-meta {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.sd-nums {
+  display: flex;
+  gap: 32px;
+  margin: 16px 0 12px;
+}
+
+.sd-nums span {
+  display: flex;
+  flex-direction: column;
+  font-size: 12px;
+  color: var(--faint);
+}
+
+.sd-nums b {
+  font-size: 26px;
+  font-weight: 600;
+  color: var(--fg);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
+.sd-links {
+  display: flex;
+  gap: 18px;
+  font-size: 13px;
+}
+
+.sd-links a {
+  color: var(--muted);
+}
+
+.sd-base {
+  stroke: var(--line);
+}
+
+.sd-row {
+  font-size: 12px;
+  fill: var(--soft);
+}
+
+.sd-mk {
+  fill: var(--lane);
+}
+
+.sd-cost {
+  font-size: 11px;
+  fill: var(--faint);
+}
+
+.sd-fam {
+  font-size: 10px;
+  fill: var(--faint);
+  letter-spacing: 0.04em;
+}

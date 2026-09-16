@@ -1,5 +1,5 @@
 // the assembled page state, over the frozen fixture home.
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -202,5 +202,43 @@ describe('buildState', () => {
     const built = await state()
     expect(built.sources.limits).toContain('limits.jsonl')
     expect(built.sources.transcripts).toContain('.claude/projects')
+  })
+})
+
+describe('buildState frozen at a past instant', () => {
+  const samples = readSamples(limitsLogPath(FIXTURE_HOME))
+  /** the middle reading of the fixture's last block: the meter climbs 63 -> 70 after it */
+  const AT = samples.at(-2)!.t
+
+  it('freezes the five-hour meter at the reading of that moment', async () => {
+    const built = await buildState({ home: FIXTURE_HOME, at: AT, lastLookedPath: tempLook() })
+    const frozen = samples.filter((s) => s.t <= AT).at(-1)!
+    expect(built.now).toBe(AT)
+    expect(built.fiveHour!.pct).toBe(frozen.pct)
+    expect(built.fiveHour!.sampledAt).toBe(AT)
+    expect(built.fiveHour!.ended).toBe(false)
+    // the page really is frozen: the log's newest reading is a different number
+    expect(frozen.pct).not.toBe(samples.at(-1)!.pct)
+    expect(built.block!.resetsAt).toBe(frozen.resetKey)
+    expect(built.block!.to).toBe(AT)
+    expect(built.block!.samples.every((s) => s.t <= AT)).toBe(true)
+    expect(built.day.meter.every((m) => m.t <= AT)).toBe(true)
+    // a drill-in is not a look: no marker is read and none is written
+    expect(built.lastLooked).toBeNull()
+  })
+
+  it('never picks a block that had not opened yet', async () => {
+    // before the last block's first sample, the current block is the one before it
+    const earlier = await buildState({ home: FIXTURE_HOME, at: samples.at(-3)!.t - 1, lastLookedPath: tempLook() })
+    expect(earlier.block!.resetsAt).toBe(samples.at(-4)!.resetKey)
+    expect(earlier.fiveHour!.sampledAt).toBe(samples.at(-4)!.t)
+  })
+
+  it('leaves the last-looked marker untouched', async () => {
+    const path = tempLook()
+    writeFileSync(path, '1789000000')
+    const built = await buildState({ home: FIXTURE_HOME, at: AT, lastLookedPath: path })
+    expect(built.lastLooked).toBeNull()
+    expect(readFileSync(path, 'utf8')).toBe('1789000000')
   })
 })

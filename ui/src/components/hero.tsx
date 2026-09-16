@@ -3,12 +3,14 @@ import type { State } from '../api'
 import { ago, dayClock, hm, pct, until } from '../format'
 
 /** the one big number, its reset, the projection verdict, and the two weekly bars */
-export function Hero({ state }: { state: State }) {
+export function Hero({ state, frozen = false }: { state: State; frozen?: boolean }) {
   const [takeaway, setTakeaway] = useState<string | null>(null)
 
   // generating the line spends Gemini quota, so request it only when this is the
   // visible tab in the focused browser window. returning to Tally refreshes it.
+  // a frozen history page asks for nothing: the line would describe right now.
   useEffect(() => {
+    if (frozen) return
     let alive = true
     let loading = false
 
@@ -34,7 +36,7 @@ export function Hero({ state }: { state: State }) {
       document.removeEventListener('visibilitychange', load)
       window.removeEventListener('focus', load)
     }
-  }, [])
+  }, [frozen])
 
   const five = state.fiveHour
   if (!five || !state.block) return <p className="loading">no api meter sample in the log yet.</p>

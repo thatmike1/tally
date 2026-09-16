@@ -172,7 +172,10 @@ export const EXPIRED_GRACE = 600
 
 /** the newest block in the log, with everything the page derives from it */
 export function currentBlock(all: Block[], now: number, lastRead: number | null = null): CurrentBlock | null {
-  const block = all.at(-1)
+  // blocks are keyed by their reset, so the newest key is the newest block. a
+  // page frozen at an earlier instant (`?at=`) must never pick a block that had
+  // not opened yet, so a block whose first sample is in the future is skipped.
+  const block = all.filter((candidate) => (candidate.samples[0]?.t ?? Infinity) <= now).at(-1)
   if (!block) return null
   const samples = monotonic(block.samples)
   const first = samples[0]!

@@ -93,3 +93,8 @@ export function workdaysBetween(from: number, to: number): number {
   }
   return count
 }
+
+/** unix seconds of Prague midnight on the first of the month containing `t` */
+export function startOfMonth(t: number): number {
+  return startOfDay(`${dayKey(t).slice(0, 7)}-01`)
+}

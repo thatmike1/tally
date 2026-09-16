@@ -152,6 +152,12 @@ export interface CodexWindow {
   creditsPerPercent: number | null
   /** api list price, usd, of the same calls; null when any model is unknown to the price table */
   costUsd: number | null
+  /**
+   * the part of `costUsd` the price table could answer: the known models alone.
+   * lets the ui draw a window that has an unknown model in it, flagged as short
+   * of the truth, instead of drawing nothing
+   */
+  pricedCostUsd: number
   byModel: Record<string, { calls: number; input: number; cached: number; output: number; credits: number; costUsd: number | null }>
   /** models seen in the window with no list-price row; never silently priced */
   unknownModels: string[]
@@ -170,7 +176,8 @@ export interface CodexHistory {
   now: number
   /** oldest first */
   windows: CodexWindow[]
-  subValue: { monthCostUsd: number | null; monthStart: number; planUsd: number; unknownModels: string[] }
+  /** `pricedMonthCostUsd` is `monthCostUsd` over the known models alone, always a number */
+  subValue: { monthCostUsd: number | null; pricedMonthCostUsd: number; monthStart: number; planUsd: number; unknownModels: string[] }
   prices: { source: string; readAt: string; models: Record<string, OpenAiPrice> }
   sources: { usage: string; rollouts: string }
 }

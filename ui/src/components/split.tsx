@@ -1,5 +1,6 @@
 import { agentsview, type State } from '../api'
 import { hm, labelOn, money, pct, tokens } from '../format'
+import { sessionHref } from '../route'
 
 /**
  * the block's measured jump, divided by list-price cost.
@@ -58,8 +59,11 @@ export function BlockSplit({ state }: { state: State }) {
             <span className="share">{pct(row.share * 100)}</span>
           </div>
           <div className="name">
-            <a href={agentsview(row.sessionId)} title={`${tokens(row.tokens)} tokens · ${money(row.cost)} list price`}>
+            <a href={sessionHref(row.sessionId)} title={`${tokens(row.tokens)} tokens · ${money(row.cost)} list price`}>
               {row.title ?? row.sessionId.slice(0, 8)}
+            </a>
+            <a className="av" href={agentsview(row.sessionId)} title="open the transcript in AgentsView">
+              ↗
             </a>
             <span className="meta">
               claude

@@ -98,3 +98,43 @@ export function days(seconds: number): string {
   if (h > 0) return m > 0 ? `${h}h ${m}m` : `${h}h`
   return `${m}m`
 }
+
+const dateParts = new Intl.DateTimeFormat('en-GB', {
+  timeZone: TZ,
+  weekday: 'short',
+  day: 'numeric',
+  month: 'short',
+})
+
+const isoDay = new Intl.DateTimeFormat('en-CA', { timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit' })
+
+/** `Mon 8 Sep` — the day a window belongs to, never hand-typed */
+export function dayDate(t: number): string {
+  return dateParts
+    .formatToParts(new Date(t * 1000))
+    .filter((part) => part.type !== 'literal')
+    .map((part) => part.value)
+    .join(' ')
+}
+
+/** `2026-09-08` in Europe/Prague, for grouping windows into days */
+export function dayKey(t: number): string {
+  return isoDay.format(new Date(t * 1000))
+}
+
+/**
+ * a rate in dollars, which `money` rounds too hard: `$0.84`, `$1.20`, `$12.4`.
+ * null is the caller's problem — it means "not measured" and never prints as 0.
+ */
+export function rate(value: number): string {
+  if (value >= 10) return `$${value.toFixed(1)}`
+  if (value >= 1) return `$${value.toFixed(2)}`
+  return `$${value.toFixed(3)}`
+}
+
+/** `4.2×`, `0.31×` — a ratio of two token counts */
+export function ratio(value: number | null): string {
+  if (value === null) return 'not measured'
+  if (value >= 10) return `${Math.round(value)}×`
+  return value >= 1 ? `${value.toFixed(1)}×` : `${value.toFixed(2)}×`
+}

@@ -1,5 +1,6 @@
 import { agentsview, type SessionRow, type State, type WeekMode } from '../api'
 import { dayClock, hm, labelOn, money, pct } from '../format'
+import { sessionHref } from '../route'
 
 type WeekSplit = NonNullable<State['week']['weekly']>
 
@@ -13,7 +14,16 @@ const QUIET_ROWS = 8
  * session that owns the block strip is absent from it; the list puts the Fable
  * movers first and draws a line under them to make that absence read as an answer.
  */
-export function Week({ state, mode, onMode }: { state: State; mode: WeekMode; onMode: (mode: WeekMode) => void }) {
+export function Week({
+  state,
+  mode,
+  onMode,
+}: {
+  state: State
+  mode: WeekMode
+  /** absent on a frozen history page, where the window is fixed and the buttons would lie */
+  onMode?: (mode: WeekMode) => void
+}) {
   const week = state.week
   const fableName = state.fable?.model ?? 'Fable'
   const clock = (t: number) => (t < state.day.start ? dayClock(t) : hm(t))
@@ -32,14 +42,16 @@ export function Week({ state, mode, onMode }: { state: State; mode: WeekMode; on
     <>
       <h2 style={{ marginTop: 44 }}>
         {title}
-        <span className="modes">
-          <button aria-pressed={mode === 'recent'} onClick={() => onMode('recent')}>
-            recent
-          </button>
-          <button aria-pressed={mode === 'whole'} onClick={() => onMode('whole')}>
-            whole week
-          </button>
-        </span>
+        {onMode ? (
+          <span className="modes">
+            <button aria-pressed={mode === 'recent'} onClick={() => onMode('recent')}>
+              recent
+            </button>
+            <button aria-pressed={mode === 'whole'} onClick={() => onMode('whole')}>
+              whole week
+            </button>
+          </span>
+        ) : null}
       </h2>
       <p className="calc">
         {movement(weekly, fable, fableName, clock)}
@@ -231,8 +243,11 @@ function Row({ item, fableName, clock }: { item: ListRow; fableName: string; clo
         {fable ? <span className="share">{pct(fable.share * 100)}</span> : <span className="nd">—</span>}
       </div>
       <div className="name">
-        <a href={agentsview(row.sessionId)} title={`${money(row.cost)} list price since the window opened`}>
+        <a href={sessionHref(row.sessionId)} title={`${money(row.cost)} list price since the window opened`}>
           {row.title ?? row.sessionId.slice(0, 8)}
+        </a>
+        <a className="av" href={agentsview(row.sessionId)} title="open the transcript in AgentsView">
+          ↗
         </a>
         <span className="meta">
           claude

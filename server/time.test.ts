@@ -1,6 +1,6 @@
 // the Prague clock, including the two DST days it has to survive.
 import { describe, expect, it } from 'vitest'
-import { dayBounds, dayKey, formatLocalTime, isWeekend, startOfDay, weekdayName, workdaysBetween } from './time'
+import { dayBounds, dayKey, formatLocalTime, isWeekend, startOfDay, startOfMonth, weekdayName, workdaysBetween } from './time'
 
 const at = (iso: string) => Date.parse(iso) / 1000
 
@@ -62,5 +62,15 @@ describe('formatLocalTime', () => {
     expect(formatLocalTime(at('2026-09-19T21:00:00Z'))).toBe('Sat 23:00')
     expect(formatLocalTime(null)).toBeNull()
     expect(formatLocalTime('invalid')).toBeNull()
+  })
+})
+
+describe('startOfMonth', () => {
+  it('gives Prague midnight on the first, not UTC midnight', () => {
+    // 1 Sep 2026 00:00 in Prague is 31 Aug 22:00 UTC
+    expect(startOfMonth(at('2026-09-16T10:00:00Z'))).toBe(at('2026-08-31T22:00:00Z'))
+    expect(startOfMonth(at('2026-09-01T00:30:00+02:00'))).toBe(at('2026-08-31T22:00:00Z'))
+    // and it survives the winter offset
+    expect(startOfMonth(at('2026-12-20T10:00:00Z'))).toBe(at('2026-11-30T23:00:00Z'))
   })
 })

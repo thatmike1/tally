@@ -60,8 +60,8 @@ export interface Options {
   codexSessions?: string
   /**
    * freeze the page at this instant (unix seconds): samples and requests after
-   * it are ignored and `now` is `at`. phase two implements it; until then it
-   * only moves `now`.
+   * it are ignored, `now` is `at`, and the "last looked" marker is neither read
+   * nor written, because a frozen page is a drill-in, not a look.
    */
   at?: number
 }
@@ -190,7 +190,9 @@ export async function buildState(options: Options = {}): Promise<State> {
   const now = options.at ?? options.now ?? Date.now() / 1000
   const index = options.index ?? null
   const lookPath = options.lastLookedPath ?? lastLookedFile(home)
-  const lastLooked = readLastLooked(lookPath)
+  // a page frozen at a past instant has no "since you last looked" to draw
+  const frozen = options.at !== undefined
+  const lastLooked = frozen ? null : readLastLooked(lookPath)
   const codexView = codexUsageView(options.codexPaths ?? codexUsagePaths(home), now)
   let codexSplit: CodexWeekSplit | null = null
   if (codexView.windowStart !== null && codexView.resetsAt !== null) {
@@ -201,9 +203,18 @@ export async function buildState(options: Options = {}): Promise<State> {
     codexSplit = splitCodexWeek(rollouts, { from: codexView.windowStart, resetsAt: codexView.resetsAt }, anchor, t3CodexThreads(statePath(home)), now)
   }
   const codex = { ...codexView, split: codexSplit }
-  if (options.recordLook !== false) writeLastLooked(lookPath, now)
+  if (options.recordLook !== false && !frozen) writeLastLooked(lookPath, now)
 
-  const { samples, lastRead } = readLog(limitsLogPath(home))
+  const log = readLog(limitsLogPath(home))
+  // frozen: only what the sampler had read by `at` exists. `readLog` reports the
+  // newest reading of the whole log, block or no block, so past `at` it falls
+  // back to the newest sample, which can date a frozen page a few minutes early
+  const samples = frozen ? log.samples.filter((s) => s.t <= now) : log.samples
+  const lastRead = frozen
+    ? log.lastRead !== null && log.lastRead <= now
+      ? log.lastRead
+      : (samples.at(-1)?.t ?? null)
+    : log.lastRead
   const all = groupBlocks(samples)
   const current = currentBlock(all, now, lastRead)
   const [dayStart, dayEnd] = dayBounds(now)

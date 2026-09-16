@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { agentsview, type Lane, type State } from '../api'
 import { duration, hm, money, projectName, tokens } from '../format'
+import { sessionHref } from '../route'
 
 const HEIGHT = 140
 const LABELS = 230
@@ -232,7 +233,7 @@ function Lanes({ state }: { state: State }) {
               const other = lane.cost === null
               // brightness by cost, as in v1; a thread with no cost stays flat
               const opacity = other ? 0.55 : 0.4 + 0.36 * Math.sqrt(Math.min(1, (lane.cost ?? 0) / maxCost))
-              const href = other ? null : `#/session/${lane.id}`
+              const href = other ? null : sessionHref(lane.id)
               const title = laneTitle(lane)
               const last = lane.segments.at(-1)!
               const labelLeft = Math.min(97, ((Math.min(last.end, end) - start) / span) * 100)
