@@ -58,6 +58,12 @@ export interface Options {
   weekMode?: 'recent' | 'whole'
   /** `~/.codex/sessions` unless a test points elsewhere */
   codexSessions?: string
+  /**
+   * freeze the page at this instant (unix seconds): samples and requests after
+   * it are ignored and `now` is `at`. phase two implements it; until then it
+   * only moves `now`.
+   */
+  at?: number
 }
 
 export interface MeterView {
@@ -181,7 +187,7 @@ function writeLastLooked(path: string, now: number): void {
 
 export async function buildState(options: Options = {}): Promise<State> {
   const home = options.home ?? homedir()
-  const now = options.now ?? Date.now() / 1000
+  const now = options.at ?? options.now ?? Date.now() / 1000
   const index = options.index ?? null
   const lookPath = options.lastLookedPath ?? lastLookedFile(home)
   const lastLooked = readLastLooked(lookPath)

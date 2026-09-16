@@ -6,6 +6,8 @@ import { homedir } from 'node:os'
 import { serveStatic } from '@hono/node-server/serve-static'
 import { Hono } from 'hono'
 import { sessionDetail } from './session-detail'
+import { codexHistoryRoutes } from './history-codex'
+import { historyRoutes } from './history-claude'
 import { buildState, type Options } from './state'
 import type { TakeawayRefresher } from './takeaway'
 import { projectsRoot } from './transcripts'
@@ -31,6 +33,11 @@ export function createApp(config: AppConfig = {}) {
     // what the tray face will want
     const peek = c.req.query('peek') !== undefined
     const weekMode = c.req.query('week') === 'whole' ? 'whole' : 'recent'
+    // `?at=<unix seconds>` freezes the page at that instant for the history drill-in
+    const atRaw = c.req.query('at')
+    const at = atRaw === undefined ? undefined : Number(atRaw)
+    if (at !== undefined && !Number.isFinite(at)) return c.json({ error: 'at must be unix seconds' }, 400)
+    if (at !== undefined) return c.json(await buildState({ ...stateOptions, recordLook: false, weekMode: 'whole', at }))
     return c.json(await buildState({ ...stateOptions, recordLook: !peek, weekMode }))
   })
 
@@ -46,6 +53,10 @@ export function createApp(config: AppConfig = {}) {
     if (!detail) return c.json({ error: `no transcript for session ${id}` }, 404)
     return c.json(detail)
   })
+
+  // the codex routes mount first so `/api/history/codex` is not swallowed by `/api/history`
+  app.route('/api/history/codex', codexHistoryRoutes({ home: stateOptions.home, now: stateOptions.now }))
+  app.route('/api/history', historyRoutes({ home: stateOptions.home, index: stateOptions.index, now: stateOptions.now }))
 
   // reads the last generated line without spending tokens
   app.get('/api/takeaway', (c) => c.json(takeaway?.current() ?? { text: null, model: null }))
