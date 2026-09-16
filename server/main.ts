@@ -46,9 +46,11 @@ export function parseOptions(argv: string[]): Options {
 
 /** the counts one index pass did, as one line in the server log */
 function logPass(counts: RefreshCounts): void {
+  // the failed count is silent at zero, so a line that mentions it means something
+  const failed = counts.failed > 0 ? `, ${counts.failed} failed` : ''
   console.log(
     `tally: index pass in ${counts.seconds.toFixed(1)}s — ${counts.seen} files seen, ${counts.parsed} parsed, ` +
-      `${counts.skipped} skipped, ${counts.dropped} dropped, ${counts.records} records written`,
+      `${counts.skipped} skipped, ${counts.dropped} dropped${failed}, ${counts.records} records written`,
   )
 }
 

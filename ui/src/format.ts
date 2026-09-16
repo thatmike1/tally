@@ -69,10 +69,23 @@ export function pct(value: number): string {
   return `${Math.round(value)}%`
 }
 
-/** `/home/thatmike1/git/ccChat-general` reads as `ccChat-general` */
+/**
+ * the group label for a lane's project.
+ *
+ * `/home/thatmike1/git/ccChat-general` reads as `ccChat-general`. a project the
+ * server could not resolve against the filesystem arrives as Claude's encoded
+ * name (`-home-thatmike1-git-old-thing`), which has no slash in it: the piece
+ * after the last dash is the closest thing to a directory name it carries.
+ */
 export function projectName(path: string): string {
-  const cut = path.replace(/\/+$/, '').lastIndexOf('/')
-  return cut >= 0 ? path.slice(cut + 1) : path
+  const trimmed = path.replace(/\/+$/, '')
+  const cut = trimmed.lastIndexOf('/')
+  if (cut >= 0) return trimmed.slice(cut + 1)
+  if (trimmed.startsWith('-')) {
+    const dash = trimmed.lastIndexOf('-')
+    if (dash > 0) return trimmed.slice(dash + 1)
+  }
+  return trimmed
 }
 
 /** `6d 19h`, `5h 12m`, `8m` — how long until something days away */

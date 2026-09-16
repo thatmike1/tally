@@ -130,6 +130,12 @@ export function App() {
           up.
         </p>
       ) : null}
+      {state.index.failed > 0 ? (
+        <p className="warn">
+          {state.index.failed} {state.index.failed === 1 ? 'file' : 'files'} could not be read, so the index is
+          missing them; every pass tries again.
+        </p>
+      ) : null}
       {state.fiveHour?.expired ? (
         <p className="warn">
           the block reset over ten minutes ago and nothing has read the account since: the sampler is behind, so this

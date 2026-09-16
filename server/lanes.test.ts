@@ -1,5 +1,8 @@
 // the lanes: activity, not span.
-import { describe, expect, it } from 'vitest'
+import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { afterAll, describe, expect, it } from 'vitest'
 import { LANE_GAP } from './history-types'
 import { buildLanes, projectPath, segmentsOf } from './lanes'
 import type { Thread } from './t3'
@@ -36,6 +39,49 @@ function meta(over: Partial<SessionMeta> = {}): Map<string, SessionMeta> {
     ['s1', { sessionId: 's1', project: PROJECT, title: 'the session', modified: 1000, cwd: null, ...over }],
   ])
 }
+
+/** a stand-in filesystem: only these directories exist */
+function onDisk(paths: string[]): (path: string) => boolean {
+  const set = new Set(paths)
+  return (path) => set.has(path)
+}
+
+describe('projectPath', () => {
+  const temps: string[] = []
+  afterAll(() => {
+    for (const dir of temps.splice(0)) rmSync(dir, { recursive: true, force: true })
+  })
+
+  it('takes the cwd a transcript line carried, whatever the encoded name says', () => {
+    expect(projectPath('-home-thatmike1-git-ccChat-general', '/srv/somewhere else')).toBe('/srv/somewhere else')
+  })
+
+  it('resolves a hyphenated directory against the filesystem instead of splitting it', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'tally-lanes-'))
+    temps.push(dir)
+    const project = join(dir, 'ccChat-general')
+    mkdirSync(project)
+    // the encoding Claude writes: every slash in the real path becomes a dash
+    expect(projectPath(project.replace(/\//g, '-'), null)).toBe(project)
+
+    // and the same walk with a stand-in filesystem, where only the long name exists
+    const encoded = '-home-thatmike1-git-ccChat-general'
+    const tree = ['/home', '/home/thatmike1', '/home/thatmike1/git', '/home/thatmike1/git/ccChat-general']
+    expect(projectPath(encoded, null, onDisk(tree))).toBe('/home/thatmike1/git/ccChat-general')
+    // a plain name still decodes, and the longest match wins over a shorter one
+    expect(projectPath('-home-thatmike1-git-tally', null, onDisk([...tree, '/home/thatmike1/git/tally']))).toBe(
+      '/home/thatmike1/git/tally',
+    )
+  })
+
+  it('hands back the encoded name when no path on disk matches it', () => {
+    const encoded = '-home-thatmike1-git-deleted-project'
+    expect(projectPath(encoded, null, onDisk(['/home', '/home/thatmike1', '/home/thatmike1/git']))).toBe(encoded)
+    expect(projectPath(encoded, null, onDisk([]))).toBe(encoded)
+    // an already-decoded path is left alone
+    expect(projectPath('/home/thatmike1/git/tally', null, onDisk([]))).toBe('/home/thatmike1/git/tally')
+  })
+})
 
 describe('segmentsOf', () => {
   it('merges requests up to LANE_GAP apart and breaks past it', () => {
@@ -107,9 +153,9 @@ describe('buildLanes', () => {
       records: [record(0)],
     })
     expect(withCwd!.project).toBe('/home/thatmike1/git/tally')
-    const [without] = buildLanes({ ...base, records: [record(0)] })
+    const tree = ['/home', '/home/thatmike1', '/home/thatmike1/git', '/home/thatmike1/git/tally']
+    const [without] = buildLanes({ ...base, records: [record(0)], exists: onDisk(tree) })
     expect(without!.project).toBe('/home/thatmike1/git/tally')
-    expect(projectPath('-home-thatmike1-git-ccChat-general', null)).toBe('/home/thatmike1/git/ccChat/general')
   })
 
   it('gives a non-Claude thread a span and no cost, never an invented number', () => {

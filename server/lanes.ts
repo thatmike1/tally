@@ -5,6 +5,7 @@
 // made it look like a three-hour eater. requests closer than `LANE_GAP` merge
 // into a segment, and a segment carries how many subagent transcripts were
 // writing inside it, which is the thickness the page draws.
+import { existsSync } from 'node:fs'
 import { LANE_GAP, type Lane, type LaneSegment } from './history-types'
 import { totalTokens } from './prices'
 import type { Thread } from './t3'
@@ -21,14 +22,45 @@ export function isSubagentFile(path: string): boolean {
 /**
  * the directory a session ran in.
  *
- * the cwd off the transcript when a line carried one; otherwise Claude's own
- * encoding of it (`-home-thatmike1-git-x`) turned back into a path, the same
- * fallback cc-browse used, lossy where a directory name contains a dash.
+ * the cwd off the transcript when a line carried one. otherwise Claude's own
+ * encoding of it (`-home-thatmike1-git-ccChat-general`) has to be decoded, and
+ * the encoding is ambiguous: a dash is both a separator and a character a
+ * directory name may contain. replacing every dash with a slash guesses wrong
+ * on every hyphenated directory, so the filesystem decides instead — the walk
+ * takes the longest piece-join that exists at each level.
+ *
+ * when a level is not on disk the rest of the decode would be a guess, so the
+ * encoded name comes back unchanged: a name that reads as an encoding is
+ * honest, a path that was never real is not.
+ *
+ * @param project the project directory name, or an already-decoded path
+ * @param cwd the cwd a transcript line carried, when it carried one
+ * @param exists how to ask the filesystem about a directory; injected by tests
  */
-export function projectPath(project: string, cwd: string | null | undefined): string {
+export function projectPath(
+  project: string,
+  cwd: string | null | undefined,
+  exists: (path: string) => boolean = existsSync,
+): string {
   if (cwd) return cwd
-  if (project.startsWith('-')) return `/${project.replace(/^-+/, '').replace(/-/g, '/')}`
-  return project
+  if (!project.startsWith('-')) return project
+  const pieces = project.replace(/^-+/, '').split('-')
+  let path = ''
+  for (let i = 0; i < pieces.length; ) {
+    // longest first, so `ccChat-general` wins over `ccChat` when both exist
+    let step: string | null = null
+    for (let take = pieces.length - i; take >= 1; take--) {
+      const candidate = `${path}/${pieces.slice(i, i + take).join('-')}`
+      if (exists(candidate)) {
+        step = candidate
+        i += take
+        break
+      }
+    }
+    if (step === null) return project
+    path = step
+  }
+  return path
 }
 
 /**
@@ -68,6 +100,8 @@ export interface LanesInput {
   to: number
   now: number
   liveWindow?: number
+  /** how `projectPath` asks about a directory; injected by tests, real fs otherwise */
+  exists?: (path: string) => boolean
 }
 
 /**
@@ -102,7 +136,7 @@ export function buildLanes(input: LanesInput): Lane[] {
       id: sessionId,
       kind: 'claude',
       title: meta?.title ?? sessionId.slice(0, 8),
-      project: projectPath(meta?.project ?? own[0]!.project, meta?.cwd),
+      project: projectPath(meta?.project ?? own[0]!.project, meta?.cwd, input.exists ?? existsSync),
       start: segments[0]!.start,
       end: segments.at(-1)!.end,
       live: meta ? now - meta.modified < liveWindow : false,

@@ -256,4 +256,9 @@ export interface IndexProgress {
   builtAt: number | null
   /** the index has never completed: history and lanes may be missing requests */
   cold: boolean
+  /**
+   * files the last pass could not read or store, and that are still on disk. a
+   * completed pass with a non-zero count is incomplete, and the page says so.
+   */
+  failed: number
 }

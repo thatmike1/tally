@@ -11,7 +11,7 @@
 // indexed within seconds of a cold start; `covers()` says how far back the
 // build has reached and `buildState` falls back to a live `scan()` until it is
 // deep enough.
-import { mkdirSync } from 'node:fs'
+import { existsSync, mkdirSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { DatabaseSync, type StatementSync } from 'node:sqlite'
@@ -42,6 +42,11 @@ export interface RefreshCounts {
   skipped: number
   /** indexed files that no longer exist */
   dropped: number
+  /**
+   * files whose parse or store threw and that are still on disk afterwards.
+   * they are left out of `files`, so the next pass reads them again.
+   */
+  failed: number
   /** records written by this pass */
   records: number
   seconds: number
@@ -158,6 +163,8 @@ export class TranscriptIndex {
   private building = false
   private done = 0
   private total = 0
+  /** files the pass could not read, still on disk when it looked again */
+  private failed = 0
   /** the oldest mtime this build has reached; everything newer is indexed */
   private frontier = Number.POSITIVE_INFINITY
   private running: Promise<RefreshCounts> | null = null
@@ -218,6 +225,7 @@ export class TranscriptIndex {
       total: this.total,
       builtAt: this.builtAt,
       cold: this.builtAt === null,
+      failed: this.failed,
     }
   }
 
@@ -258,6 +266,7 @@ export class TranscriptIndex {
     let parsed = 0
     let skipped = 0
     let records = 0
+    this.failed = 0
     for (const file of files) {
       const row = known.get(file.path)
       known.delete(file.path)
@@ -270,7 +279,12 @@ export class TranscriptIndex {
           records += result.records.length
           parsed++
         } catch {
-          // a file that vanished or could not be read mid-pass: leave what is indexed
+          // nothing was written: `store` rolls back, and the file is deliberately
+          // left out of `files` (or left at the mtime it was last read at), so the
+          // next pass reads it again rather than believing it is indexed.
+          // a file that vanished mid-pass is not a failure, it is gone: the next
+          // pass will not find it on disk either and its rows get dropped then
+          if (existsSync(file.path)) this.failed++
         }
       }
       this.done++
@@ -281,6 +295,8 @@ export class TranscriptIndex {
       this.statements.deleteRequests.run(gone.id)
       this.statements.deleteFile.run(gone.id)
     }
+    // a file that can never be read must not hold the build open forever, so the
+    // pass completes and `progress().failed` carries what it could not index
     this.builtAt = Math.round(Date.now() / 1000)
     this.statements.setMeta.run('built_at', String(this.builtAt), String(this.builtAt))
     return {
@@ -288,6 +304,7 @@ export class TranscriptIndex {
       parsed,
       skipped,
       dropped: known.size,
+      failed: this.failed,
       records,
       seconds: (Date.now() - started) / 1000,
     }

@@ -86,7 +86,7 @@ describe('buildState', () => {
 
   it('reports no index at all as cold and never building', async () => {
     const built = await state()
-    expect(built.index).toEqual({ building: false, done: 0, total: 0, builtAt: null, cold: true })
+    expect(built.index).toEqual({ building: false, done: 0, total: 0, builtAt: null, cold: true, failed: 0 })
     expect(built.sources.index).toContain('transcripts.sqlite')
   })
 

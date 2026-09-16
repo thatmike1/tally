@@ -1,6 +1,6 @@
 // the index against the parser it caches: same records, and a file that has not
 // changed is never read twice.
-import { cpSync, mkdtempSync, appendFileSync, rmSync, statSync, utimesSync } from 'node:fs'
+import { chmodSync, cpSync, mkdtempSync, appendFileSync, rmSync, statSync, utimesSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -103,6 +103,34 @@ describe('TranscriptIndex', () => {
     const pass = await index.refresh()
     expect(pass.dropped).toBe(1)
     expect(index.query(0, 9e9).records.some((r) => r.file === agent.path)).toBe(false)
+    index.close()
+  })
+
+  // root reads a mode-000 file anyway, so the failure this test needs cannot happen there
+  it.skipIf(process.getuid?.() === 0)('counts a file it could not read and retries it next pass', async () => {
+    const root = copyRoot()
+    const unreadable = transcriptFiles(root).find((f) => !f.agent)!
+    chmodSync(unreadable.path, 0o000)
+    const index = new TranscriptIndex({ root, path: ':memory:' })
+
+    const first = await index.refresh()
+    expect(first.failed).toBe(1)
+    expect(first.parsed).toBe(first.seen - 1)
+    expect(index.progress().failed).toBe(1)
+    // not in `files`: nothing claims it was indexed, so the next pass reads it
+    expect(index.fileState(unreadable.path)).toBeNull()
+    expect(index.query(0, 9e9).records.some((r) => r.file === unreadable.path)).toBe(false)
+    // the pass still completes: one unreadable file must not block the build forever
+    expect(index.progress().builtAt).toBeGreaterThan(0)
+    expect(index.progress().cold).toBe(false)
+
+    chmodSync(unreadable.path, 0o644)
+    const second = await index.refresh()
+    expect(second.failed).toBe(0)
+    expect(second.parsed).toBe(1)
+    expect(index.progress().failed).toBe(0)
+    expect(index.fileState(unreadable.path)).not.toBeNull()
+    expect(sorted(index.query(0, 9e9).records)).toEqual(sorted((await scan(0, 9e9, root)).records))
     index.close()
   })
 

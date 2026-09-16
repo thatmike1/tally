@@ -336,7 +336,7 @@ export async function buildState(options: Options = {}): Promise<State> {
 
   return {
     now,
-    index: index?.progress() ?? { building: false, done: 0, total: 0, builtAt: null, cold: true },
+    index: index?.progress() ?? { building: false, done: 0, total: 0, builtAt: null, cold: true, failed: 0 },
     lastLooked,
     codex,
     caveat: CAVEAT,
