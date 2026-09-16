@@ -5,7 +5,16 @@
 // made it look like a three-hour eater. requests closer than `LANE_GAP` merge
 // into a segment, and a segment carries how many subagent transcripts were
 // writing inside it, which is the thickness the page draws.
-import { existsSync } from 'node:fs'
+import { statSync } from 'node:fs'
+
+/** a path component of a project is a directory; a file of the same name is not one */
+export function isDirectory(path: string): boolean {
+  try {
+    return statSync(path).isDirectory()
+  } catch {
+    return false
+  }
+}
 import { LANE_GAP, type Lane, type LaneSegment } from './history-types'
 import { totalTokens } from './prices'
 import type { Thread } from './t3'
@@ -40,7 +49,7 @@ export function isSubagentFile(path: string): boolean {
 export function projectPath(
   project: string,
   cwd: string | null | undefined,
-  exists: (path: string) => boolean = existsSync,
+  exists: (path: string) => boolean = isDirectory,
 ): string {
   if (cwd) return cwd
   if (!project.startsWith('-')) return project
@@ -136,7 +145,7 @@ export function buildLanes(input: LanesInput): Lane[] {
       id: sessionId,
       kind: 'claude',
       title: meta?.title ?? sessionId.slice(0, 8),
-      project: projectPath(meta?.project ?? own[0]!.project, meta?.cwd, input.exists ?? existsSync),
+      project: projectPath(meta?.project ?? own[0]!.project, meta?.cwd, input.exists ?? isDirectory),
       start: segments[0]!.start,
       end: segments.at(-1)!.end,
       live: meta ? now - meta.modified < liveWindow : false,

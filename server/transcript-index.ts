@@ -266,6 +266,7 @@ export class TranscriptIndex {
     let parsed = 0
     let skipped = 0
     let records = 0
+    let dropped = 0
     this.failed = 0
     for (const file of files) {
       const row = known.get(file.path)
@@ -279,12 +280,16 @@ export class TranscriptIndex {
           records += result.records.length
           parsed++
         } catch {
-          // nothing was written: `store` rolls back, and the file is deliberately
-          // left out of `files` (or left at the mtime it was last read at), so the
-          // next pass reads it again rather than believing it is indexed.
-          // a file that vanished mid-pass is not a failure, it is gone: the next
-          // pass will not find it on disk either and its rows get dropped then
+          // nothing was written: `store` rolls back. a file that is still on disk
+          // is a failure: its old rows go too, so nothing claims it is indexed and
+          // the next pass reads it again. a file that vanished mid-pass is not a
+          // failure, it is gone, and it is dropped like any other missing file
+          if (row) {
+            this.statements.deleteRequests.run(row.id)
+            this.statements.deleteFile.run(row.id)
+          }
           if (existsSync(file.path)) this.failed++
+          else dropped++
         }
       }
       this.done++
@@ -303,7 +308,7 @@ export class TranscriptIndex {
       seen: files.length,
       parsed,
       skipped,
-      dropped: known.size,
+      dropped: known.size + dropped,
       failed: this.failed,
       records,
       seconds: (Date.now() - started) / 1000,

@@ -134,6 +134,26 @@ describe('TranscriptIndex', () => {
     index.close()
   })
 
+  it.skipIf(process.getuid?.() === 0)('drops the old rows of an indexed file that changed and then could not be read', async () => {
+    const root = copyRoot()
+    const target = transcriptFiles(root).find((f) => !f.agent)!
+    const index = new TranscriptIndex({ root, path: ':memory:' })
+    await index.refresh()
+    expect(index.fileState(target.path)).not.toBeNull()
+    // the file grows, so the next pass must reread it, and then it cannot
+    appendFileSync(target.path, '\n')
+    chmodSync(target.path, 0o000)
+    const pass = await index.refresh()
+    expect(pass.failed).toBe(1)
+    expect(index.fileState(target.path)).toBeNull()
+    expect(index.query(0, 9e9).records.some((r) => r.file === target.path)).toBe(false)
+    chmodSync(target.path, 0o644)
+    const again = await index.refresh()
+    expect(again.failed).toBe(0)
+    expect(index.fileState(target.path)).not.toBeNull()
+    index.close()
+  })
+
   it('claims coverage only for windows the build has reached', async () => {
     const index = new TranscriptIndex({ root: FIXTURE_ROOT, path: ':memory:' })
     expect(index.progress()).toMatchObject({ building: false, cold: true, builtAt: null })
