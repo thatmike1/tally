@@ -1,16 +1,18 @@
 // tests for reading Codex rollouts and splitting the Codex weekly meter across threads.
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, utimesSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import {
   codexCredits,
   codexRate,
+  codexSessionDetail,
   parseRolloutLines,
   pointSteps,
   cutRollout,
   scanRollouts,
   splitCodexWeek,
+  threadSince,
   type CodexRollout,
 } from './codex-sessions'
 
@@ -134,6 +136,104 @@ describe('cutRollout', () => {
     expect(cut.lastT).toBe(FROM + 400)
     expect(cutRollout(full, FROM + 50)).toMatchObject({ calls: [], lastT: null })
     expect(cutRollout(full, FROM + 1000)).toBe(full)
+  })
+})
+
+/** credits at Sol rates: 100 per million uncached input, so 10k input tokens is one credit */
+const sol = (credits: number) => ({ input: credits * 10_000, output: 0 })
+
+const LEAD = 'lead-0001'
+
+/**
+ * a lead thread with two subagents under it: Feynman, a forked thread_spawn
+ * that copied the lead's history, and a guardian review. written into a dated
+ * folder, backdated to `mtime` when given.
+ */
+function writeThread(root: string, day: [string, string, string], mtime?: number) {
+  const feynman = 'feyn-0002'
+  const guardian = 'guard-0003'
+  const dir = join(root, ...day)
+  mkdirSync(dir, { recursive: true })
+  const files: [string, string[]][] = [
+    [LEAD, [meta(LEAD), user('explode the codex thread'), turn('gpt-5.6-sol'), usage(LEAD, 'l1', FROM + 100, sol(10)), usage(LEAD, 'l2', FROM + 500, sol(4))]],
+    [
+      feynman,
+      [
+        meta(feynman, { session_id: LEAD, parent_thread_id: LEAD, source: { subagent: { thread_spawn: { parent_thread_id: LEAD, agent_nickname: 'Feynman', agent_role: 'explorer' } } } }),
+        // the fork carries the lead's session_meta and history before its own
+        meta(LEAD),
+        turn('gpt-5.6-sol'),
+        usage(LEAD, 'l1', FROM + 100, sol(10)),
+        usage(feynman, 'f1', FROM + 200, sol(3)),
+        usage(feynman, 'f2', FROM + 300, sol(2)),
+      ],
+    ],
+    [
+      guardian,
+      [
+        meta(guardian, { session_id: LEAD, parent_thread_id: LEAD, source: { subagent: { other: 'guardian' } } }),
+        turn('gpt-5.6-luna'),
+        // Luna prices 5 per million uncached input: one credit
+        usage(guardian, 'g1', FROM + 600, { input: 200_000, output: 0 }),
+      ],
+    ],
+  ]
+  for (const [id, lines] of files) {
+    const path = join(dir, `rollout-${day.join('-')}T10-00-00-${id}.jsonl`)
+    writeFileSync(path, `${lines.join('\n')}\n`)
+    if (mtime !== undefined) utimesSync(path, mtime, mtime)
+  }
+}
+
+describe('codexSessionDetail', () => {
+  it('lays a thread out as its lead and one labelled lane per subagent, the forked history counted once', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'tally-codex-detail-'))
+    writeThread(root, ['2026', '09', '15'])
+    const detail = (await codexSessionDetail(LEAD, { root, now: FROM + 900 }))!
+    expect(detail).toMatchObject({ sessionId: `codex:${LEAD}`, title: 'explode the codex thread', project: '/home/m/git/tally', unit: 'credits', live: false })
+    expect(detail.parent).toMatchObject({ label: 'main', agent: false })
+    expect(detail.parent.requests.map((r) => r.t)).toEqual([FROM + 100, FROM + 500])
+    expect(detail.parent.cost).toBeCloseTo(14)
+    expect(detail.subagents.map((lane) => [lane.label, lane.agent, lane.requests.length])).toEqual([
+      ['Feynman · explorer', true, 2],
+      ['guardian', true, 1],
+    ])
+    // the copied `l1` stays on the lead; Feynman pays only for its own two calls
+    expect(detail.subagents[0]!.cost).toBeCloseTo(5)
+    expect(detail.subagents[1]!.cost).toBeCloseTo(1)
+    const lanes = [detail.parent, ...detail.subagents]
+    expect(detail.cost).toBeCloseTo(lanes.reduce((sum, lane) => sum + lane.cost, 0))
+    expect(detail.cost).toBeCloseTo(20)
+    expect(detail.tokens).toBe(lanes.reduce((sum, lane) => sum + lane.tokens, 0))
+    expect(detail.requests).toBe(5)
+    expect([detail.start, detail.end]).toEqual([FROM + 100, FROM + 600])
+  })
+
+  it('is null for a root id no rollout carries, a subagent id included', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'tally-codex-detail-'))
+    writeThread(root, ['2026', '09', '15'])
+    expect(await codexSessionDetail('feyn-0002', { root })).toBeNull()
+    expect(await codexSessionDetail('nobody', { root })).toBeNull()
+  })
+
+  it('freezes the thread at `at`: later calls and later subagents have not happened', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'tally-codex-detail-'))
+    writeThread(root, ['2026', '09', '15'])
+    const detail = (await codexSessionDetail(LEAD, { root, at: FROM + 250 }))!
+    expect(detail.parent.requests.map((r) => r.t)).toEqual([FROM + 100])
+    expect(detail.subagents.map((lane) => [lane.label, lane.requests.length])).toEqual([['Feynman · explorer', 1]])
+    expect(detail.cost).toBeCloseTo(13)
+    expect(detail.end).toBe(FROM + 200)
+    expect(await codexSessionDetail(LEAD, { root, at: FROM + 50 })).toBeNull()
+  })
+
+  it('finds a thread whose rollouts were last written long ago', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'tally-codex-detail-'))
+    writeThread(root, ['2025', '01', '10'], Date.UTC(2025, 0, 10, 12) / 1000)
+    expect(threadSince(LEAD, root)).toBe(Date.UTC(2025, 0, 9) / 1000)
+    expect(threadSince('nobody', root)).toBeNull()
+    const detail = (await codexSessionDetail(LEAD, { root, now: Date.UTC(2026, 8, 17) / 1000 }))!
+    expect(detail.subagents).toHaveLength(2)
   })
 })
 

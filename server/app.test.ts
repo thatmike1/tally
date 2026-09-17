@@ -1,5 +1,5 @@
 // the routes, over the frozen fixture home.
-import { mkdtempSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -61,6 +61,52 @@ describe('GET /api/session/:id', () => {
     const response = await app().request('/api/session/not-a-session')
     expect(response.status).toBe(404)
     expect((await response.json()) as { error: string }).toMatchObject({ error: expect.stringContaining('not-a-session') })
+  })
+})
+
+describe('GET /api/session/codex:<id>', () => {
+  /** a home with one Codex thread: a lead call at t=100 and a subagent call at t=300 */
+  function codexApp() {
+    const home = mkdtempSync(join(tmpdir(), 'tally-codex-home-'))
+    const dir = join(home, '.codex', 'sessions', '2026', '09', '15')
+    mkdirSync(dir, { recursive: true })
+    const line = (t: number, type: string, payload: Record<string, unknown>) => JSON.stringify({ timestamp: new Date(t * 1000).toISOString(), type, payload })
+    const rollout = (id: string, meta: Record<string, unknown>, response: string, t: number) =>
+      [
+        line(0, 'session_meta', { id, session_id: 'lead', cwd: '/home/m/git/tally', model_provider: 'openai', ...meta }),
+        line(0, 'turn_context', { model: 'gpt-5.6-sol' }),
+        line(t, 'token_usage_record', { thread_id: id, response_id: response, usage: { input_tokens: 10_000, output_tokens: 0 } }),
+      ].join('\n')
+    writeFileSync(join(dir, 'rollout-2026-09-15T10-00-00-lead.jsonl'), rollout('lead', {}, 'r1', 100))
+    writeFileSync(
+      join(dir, 'rollout-2026-09-15T10-05-00-kid.jsonl'),
+      rollout('kid', { parent_thread_id: 'lead', source: { subagent: { thread_spawn: { parent_thread_id: 'lead', agent_nickname: 'Tesla', agent_role: 'worker' } } } }, 'r2', 300),
+    )
+    return createApp({ home, now: NOW, recordLook: false, lastLookedPath: join(home, 'last-looked') })
+  }
+
+  it('explodes a Codex thread into its lead and subagent lanes', async () => {
+    const response = await codexApp().request('/api/session/codex:lead')
+    expect(response.status).toBe(200)
+    const body = (await response.json()) as SessionDetail & { unit: string }
+    expect(body).toMatchObject({ sessionId: 'codex:lead', unit: 'credits', requests: 2 })
+    expect(body.parent.label).toBe('main')
+    expect(body.subagents.map((lane) => lane.label)).toEqual(['Tesla · worker'])
+  })
+
+  it('freezes the thread at `at` and rejects an `at` that is not a number', async () => {
+    const app = codexApp()
+    const frozen = (await (await app.request('/api/session/codex:lead?at=200')).json()) as SessionDetail
+    expect(frozen.requests).toBe(1)
+    expect(frozen.subagents).toEqual([])
+    expect((await app.request('/api/session/codex:lead?at=50')).status).toBe(404)
+    expect((await app.request('/api/session/codex:lead?at=soon')).status).toBe(400)
+  })
+
+  it('404s a thread no rollout carries', async () => {
+    const response = await codexApp().request('/api/session/codex:nobody')
+    expect(response.status).toBe(404)
+    expect((await response.json()) as { error: string }).toMatchObject({ error: expect.stringContaining('codex:nobody') })
   })
 })
 

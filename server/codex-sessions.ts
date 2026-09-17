@@ -514,7 +514,8 @@ export interface CodexLane {
   end: number
 }
 
-function codexLane(rollout: CodexRollout, seen: Set<string>): CodexLane {
+/** one rollout as a lane; a call already in `seen` belongs to the lane that claimed it first */
+export function codexLane(rollout: CodexRollout, seen: Set<string>): CodexLane {
   const requests = rollout.calls
     .filter((call) => {
       if (seen.has(call.responseId)) return false
@@ -543,12 +544,36 @@ function codexLane(rollout: CodexRollout, seen: Set<string>): CodexLane {
 }
 
 /**
- * one Codex thread exploded into its lead rollout and every subagent spawned
- * under it. null when no rollout carries that root id.
+ * the earliest mtime a rollout of thread `rootId` can have, read off the lead
+ * rollout's file name (`YYYY/MM/DD/rollout-…-<id>.jsonl`) without parsing it.
+ * subagents are spawned after their lead, so nothing older can belong to it.
+ * the directory day is local to whoever wrote it, so a day of slack either side.
+ * null when no file carries the id, and the caller has to scan everything.
  */
-export async function codexSessionDetail(rootId: string, options: { root?: string; t3?: string; now?: number; since?: number } = {}): Promise<CodexSessionDetail | null> {
-  const now = options.now ?? Date.now() / 1000
-  const rollouts = (await scanRollouts(options.since ?? now - 60 * 86400, options.root ?? codexSessionsRoot())).filter((r) => r.rootId === rootId)
+export function threadSince(rootId: string, root: string): number | null {
+  const lead = rolloutFiles(root).find((file) => file.path.endsWith(`-${rootId}.jsonl`))
+  const day = lead?.path.match(/\/(\d{4})\/(\d{2})\/(\d{2})\/[^/]+$/)
+  if (!lead || !day) return lead ? 0 : null
+  return Date.UTC(Number(day[1]), Number(day[2]) - 1, Number(day[3])) / 1000 - 86400
+}
+
+/**
+ * one Codex thread exploded into its lead rollout and every subagent spawned
+ * under it. null when no rollout carries that root id, or none had been
+ * written by `at`.
+ *
+ * there is no age cutoff: the lead's file name dates the thread, so an old
+ * thread parses only the rollouts written since it started. `at` freezes the
+ * thread at a past instant for the history drill-in, the way `/api/state?at=` does.
+ */
+export async function codexSessionDetail(rootId: string, options: { root?: string; t3?: string; now?: number; at?: number } = {}): Promise<CodexSessionDetail | null> {
+  const frozen = options.at !== undefined
+  const now = options.at ?? options.now ?? Date.now() / 1000
+  const root = options.root ?? codexSessionsRoot()
+  const since = threadSince(rootId, root) ?? 0
+  const rollouts = (await scanRollouts(since, root, options.at))
+    // frozen before a rollout's first call or reading, it had not been written yet
+    .filter((r) => r.rootId === rootId && (!frozen || r.lastT !== null))
   if (!rollouts.length) return null
   const seen = new Set<string>()
   const lead = rollouts.find((r) => !r.subagent) ?? rollouts[0]!
@@ -567,7 +592,8 @@ export async function codexSessionDetail(rootId: string, options: { root?: strin
     cost: lanes.reduce((sum, l) => sum + l.cost, 0),
     tokens: lanes.reduce((sum, l) => sum + l.tokens, 0),
     requests: lanes.reduce((sum, l) => sum + l.requests.length, 0),
-    live: known?.live ?? now - lastWrite < LIVE_WINDOW,
+    // T3's in-flight turn is about right now, so a frozen thread goes by its last write alone
+    live: (frozen ? undefined : known?.live) ?? now - lastWrite < LIVE_WINDOW,
     parent,
     subagents,
     agentsview: `http://127.0.0.1:8080/sessions/codex:${rootId}?msg=last`,

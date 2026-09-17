@@ -54,7 +54,7 @@ function credits(value: number): string {
 }
 
 /** which Codex threads moved the weekly meter, split by credits off the rollout files */
-export function CodexThreads({ state, beside = false }: { state: State; beside?: boolean }) {
+export function CodexThreads({ state, frozen = false, beside = false }: { state: State; frozen?: boolean; beside?: boolean }) {
   // under the Codex meter in its own column the section needs no "codex" in its name
   const name = beside ? 'what moved it' : 'codex this week'
   const split = state.codex.split
@@ -96,7 +96,7 @@ export function CodexThreads({ state, beside = false }: { state: State; beside?:
             <span className="share">{pct(row.share * 100)}</span>
           </div>
           <div className="name">
-            <a href={sessionHref(`codex:${row.id}`)} title={`${row.calls} calls · ${row.models.join(', ')}`}>
+            <a href={sessionHref(`codex:${row.id}`, frozen ? state.now : undefined)} title={`${row.calls} calls · ${row.models.join(', ')}`}>
               {row.title}
             </a>
             <span className="meta">

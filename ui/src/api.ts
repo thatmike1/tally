@@ -79,8 +79,10 @@ export async function fetchCodexHistory(): Promise<CodexHistory> {
   return await getJson<CodexHistory>('/api/history/codex')
 }
 
-export async function fetchSession(id: string): Promise<SessionDetail> {
-  return await getJson<SessionDetail>(`/api/session/${encodeURIComponent(id)}`)
+/** one session; `at` freezes it at a past instant (the server honours it for Codex threads) */
+export async function fetchSession(id: string, at?: number): Promise<SessionDetail> {
+  const path = `/api/session/${encodeURIComponent(id)}`
+  return await getJson<SessionDetail>(at === undefined ? path : `${path}?at=${Math.round(at)}`)
 }
 
 /** whatever went wrong, as one line a warn paragraph can show */

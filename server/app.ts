@@ -48,12 +48,19 @@ export function createApp(config: AppConfig = {}) {
   app.get('/api/session/:id', async (c) => {
     const id = c.req.param('id')
     if (id.startsWith('codex:')) {
+      // `?at=<unix seconds>` freezes the thread for a history drill-in, as on /api/state
+      const atRaw = c.req.query('at')
+      const at = atRaw === undefined ? undefined : Number(atRaw)
+      if (at !== undefined && !Number.isFinite(at)) return c.json({ error: 'at must be unix seconds' }, 400)
       const codexDetail = await codexSessionDetail(id.slice('codex:'.length), {
         root: codexSessionsRoot(stateOptions.home ?? homedir()),
         t3: statePath(stateOptions.home ?? homedir()),
         now: stateOptions.now,
+        at,
       })
-      if (!codexDetail) return c.json({ error: `no rollout for codex thread ${id}` }, 404)
+      if (!codexDetail) {
+        return c.json({ error: at === undefined ? `no rollout for codex thread ${id}` : `no rollout for codex thread ${id} written by ${at}` }, 404)
+      }
       return c.json(codexDetail)
     }
     const detail = await sessionDetail(id, {

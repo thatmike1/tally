@@ -8,7 +8,8 @@ export type Route =
   | { kind: 'block'; resetKey: number }
   /** one weekly window, identified by the reset that closes it */
   | { kind: 'week'; resetsAt: number }
-  | { kind: 'session'; id: string }
+  /** `at` freezes the session at a past instant, set when it was opened from a history drill-in */
+  | { kind: 'session'; id: string; at?: number }
 
 const TODAY: Route = { kind: 'today' }
 
@@ -31,7 +32,11 @@ export function parseRoute(hash: string): Route {
     if (second === 'week') return { kind: 'week', resetsAt: key }
     return { kind: 'history' }
   }
-  if (head === 'session' && second) return { kind: 'session', id: second }
+  if (head === 'session' && second) {
+    // `#/session/<id>/<at>`; an `at` that is not a number is dropped, not the session
+    const at = third === undefined ? NaN : Number(third)
+    return Number.isFinite(at) ? { kind: 'session', id: second, at } : { kind: 'session', id: second }
+  }
   return TODAY
 }
 
@@ -45,7 +50,8 @@ export function weekHref(resetsAt: number): string {
   return `#/history/week/${resetsAt}`
 }
 
-/** the href every session title on the page points at */
-export function sessionHref(sessionId: string): string {
-  return `#/session/${encodeURIComponent(sessionId)}`
+/** the href every session title on the page points at; `at` freezes it, for a frozen page's links */
+export function sessionHref(sessionId: string, at?: number): string {
+  const base = `#/session/${encodeURIComponent(sessionId)}`
+  return at === undefined ? base : `${base}/${Math.round(at)}`
 }

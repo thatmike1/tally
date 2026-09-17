@@ -23,7 +23,7 @@ const BAND = 14
 const AXIS = 20
 const MARK = 3
 
-export function Session({ id }: { id: string }) {
+export function Session({ id, at }: { id: string; at?: number | undefined }) {
   const [detail, setDetail] = useState<SessionDetail | null>(null)
   const [error, setError] = useState<string | null>(null)
 
@@ -31,7 +31,7 @@ export function Session({ id }: { id: string }) {
     let alive = true
     setDetail(null)
     setError(null)
-    fetchSession(id)
+    fetchSession(id, at)
       .then((answer) => {
         if (alive) setDetail(answer)
       })
@@ -41,7 +41,7 @@ export function Session({ id }: { id: string }) {
     return () => {
       alive = false
     }
-  }, [id])
+  }, [id, at])
 
   if (error) {
     return (
@@ -64,6 +64,7 @@ export function Session({ id }: { id: string }) {
         <div className="sd-meta">
           {projectName(detail.project)} · {dayDate(detail.start)} {hm(detail.start)}–{hm(detail.end)} ·{' '}
           {duration(detail.end - detail.start)}
+          {at !== undefined ? ` · frozen at ${dayDate(at)} ${hm(at)}` : null}
           {detail.live ? (
             <>
               {' · '}

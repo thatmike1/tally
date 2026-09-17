@@ -63,7 +63,7 @@ export function App() {
       ) : route.kind === 'week' ? (
         <Frozen key={`week-${route.resetsAt}`} kind="week" resetKey={route.resetsAt} />
       ) : route.kind === 'session' ? (
-        <Session id={route.id} />
+        <Session key={`${route.id}@${route.at ?? 'live'}`} id={route.id} at={route.at} />
       ) : (
         <Today />
       )}

@@ -25,3 +25,8 @@ test('a session id survives the round trip, encoded or not', () => {
   expect(parseRoute('#/session/abc-123')).toEqual({ kind: 'session', id: 'abc-123' })
   expect(parseRoute(sessionHref('a b/c'))).toEqual({ kind: 'session', id: 'a b/c' })
 })
+
+test('a frozen session link carries its instant, and a bad one falls back to the live session', () => {
+  expect(parseRoute(sessionHref('codex:01a0', 1789062400.4))).toEqual({ kind: 'session', id: 'codex:01a0', at: 1789062400 })
+  expect(parseRoute('#/session/codex:01a0/soon')).toEqual({ kind: 'session', id: 'codex:01a0' })
+})
