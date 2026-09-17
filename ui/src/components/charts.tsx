@@ -17,13 +17,6 @@ const TOP = 12
 const PLOT = 104
 const AXIS = 18
 
-/**
- * the weekly boundary the September boost ended on, 12 Sep 2026 21:00 Europe/Prague
- * (19:00 UTC, CEST). kept as an instant so the label is formatted like every other
- * time on the page rather than typed out.
- */
-export const BOOST_END = Date.UTC(2026, 8, 12, 19, 0, 0) / 1000
-
 export function useWidth(box: RefObject<HTMLDivElement | null>, min = 520): number {
   const [width, setWidth] = useState(1240)
   useEffect(() => {
@@ -106,14 +99,12 @@ function TimePanel({
   to,
   series,
   unit,
-  reference,
 }: {
   width: number
   from: number
   to: number
   series: Series[]
   unit: string
-  reference?: { t: number; label: string } | null
 }) {
   const values = series.flatMap((one) => one.points.map((point) => point.value))
   const top = niceMax(Math.max(...values, 0))
@@ -146,14 +137,6 @@ function TimePanel({
           </text>
         </g>
       ))}
-      {reference && reference.t > from && reference.t < to ? (
-        <g>
-          <line x1={x(reference.t)} x2={x(reference.t)} y1={TOP} y2={TOP + PLOT} className="mk" />
-          <text x={x(reference.t) - 6} y={TOP + 10} className="tk" textAnchor="end">
-            {reference.label}
-          </text>
-        </g>
-      ) : null}
       {series.map((one) => (
         <g key={one.name}>
           {one.line && one.points.length > 1 ? (
@@ -278,7 +261,6 @@ export function CostPerPercentChart({ history }: { history: ClaudeHistory }) {
   const width = useWidth(box)
   const blocks = blockSeries(history.blocks)
   const weeks = weekSeries(history.weeks)
-  const reference = { t: BOOST_END, label: `week boundary ${hm(BOOST_END)}` }
 
   return (
     <div ref={box}>
@@ -295,15 +277,10 @@ export function CostPerPercentChart({ history }: { history: ClaudeHistory }) {
         to={history.now}
         series={[blocks]}
         unit="$"
-        reference={reference}
       />
       <div className="ch-sub">weekly and Fable · one mark per window</div>
-      <TimePanel width={width} from={history.since} to={history.now} series={weeks} unit="$" reference={reference} />
+      <TimePanel width={width} from={history.since} to={history.now} series={weeks} unit="$" />
       <Legend series={[blocks, ...weeks]} />
-      <p className="caveat">
-        The dashed rule is the weekly boundary at {hm(BOOST_END)} on {dayDate(BOOST_END)}, where September's boosted
-        limits ended: a step across it is the denominator changing, not your spending.
-      </p>
     </div>
   )
 }

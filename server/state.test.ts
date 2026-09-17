@@ -241,4 +241,26 @@ describe('buildState frozen at a past instant', () => {
     expect(built.lastLooked).toBeNull()
     expect(readFileSync(path, 'utf8')).toBe('1789000000')
   })
+
+  it('freezes the Codex meter at the reading of that moment too', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'tally-codex-'))
+    const paths = { history: join(dir, 'codex-usage.jsonl'), status: join(dir, 'codex-usage-status.json') }
+    const resetsAt = AT + 4 * 86_400
+    const earlier = { sampledAt: AT - 300, usedPercent: 20, resetsAt, windowDurationMins: 7 * 24 * 60 }
+    const later = { sampledAt: AT + 3600, usedPercent: 56, resetsAt, windowDurationMins: 7 * 24 * 60 }
+    writeFileSync(paths.history, `${JSON.stringify(earlier)}\n${JSON.stringify(later)}\n`)
+    writeFileSync(paths.status, JSON.stringify({ checkedAt: later.sampledAt, ok: true }))
+    const options = { home: FIXTURE_HOME, codexPaths: paths, codexSessions: join(dir, 'no-sessions'), lastLookedPath: tempLook() }
+
+    const frozen = await buildState({ ...options, at: AT })
+    expect(frozen.codex.usedPercent).toBe(20)
+    expect(frozen.codex.sampledAt).toBe(earlier.sampledAt)
+    expect(frozen.codex.sampledAt!).toBeLessThanOrEqual(AT)
+    expect(frozen.codex.history.every((point) => point.t <= AT)).toBe(true)
+
+    // the live page, over the same file, is the later reading: the freeze is the difference
+    const live = await buildState({ ...options, now: later.sampledAt, recordLook: false })
+    expect(live.codex.usedPercent).toBe(56)
+    expect(live.codex.sampledAt).toBe(later.sampledAt)
+  })
 })

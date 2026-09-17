@@ -307,13 +307,24 @@ export function codexPace(window: CodexUsageReading[]): CodexPace | null {
   return { ready: true, provisional, reason: null, typicalDay, measuredDays: deltas.length, pctAtReset, hitsHundredAt: hits, path, phrase }
 }
 
+export interface CodexUsageViewOptions {
+  /**
+   * freeze the view at this instant: readings taken after it did not exist yet,
+   * so the window, the pace and the percentage are the ones `at` would have seen.
+   * the reader's own status file describes right now and is ignored when set.
+   */
+  at?: number
+}
+
 /** gives both glance surfaces and the page one canonical, honest reading */
-export function codexUsageView(paths: CodexUsagePaths, now: number): CodexUsageView {
+export function codexUsageView(paths: CodexUsagePaths, now: number, options: CodexUsageViewOptions = {}): CodexUsageView {
+  const at = options.at ?? null
   const status = readJson<CodexReadStatus>(paths.status)
-  const readings = readCodexHistory(paths.history)
+  const all = readCodexHistory(paths.history)
+  const readings = at === null ? all : all.filter((reading) => reading.sampledAt <= at)
   const latest = readings.at(-1) ?? null
   const empty = { windowStart: null, pace: null, history: [] }
-  if (!latest || !status) {
+  if (!latest || (!status && at === null)) {
     return { status: 'unavailable', line: 'Codex · unavailable', usedPercent: null, resetsAt: null, sampledAt: null, ageSeconds: null, ...empty }
   }
   const ageSeconds = Math.max(0, now - latest.sampledAt)
@@ -323,7 +334,10 @@ export function codexUsageView(paths: CodexUsagePaths, now: number): CodexUsageV
   const window = currentWindowReadings(readings)
   const windowStart = latest.resetsAt - latest.windowDurationMins * 60
   const history = thinHistory(window)
-  if (!status.ok || now - status.checkedAt > CODEX_STALE_SECONDS || ageSeconds > CODEX_STALE_SECONDS) {
+  // the reader's status describes right now, so a frozen view is judged on the
+  // age of the reading it froze on and nothing else
+  const readerStale = !status?.ok || now - (status?.checkedAt ?? 0) > CODEX_STALE_SECONDS
+  if (ageSeconds > CODEX_STALE_SECONDS || (at === null && readerStale)) {
     return { status: 'stale', line: 'Codex · usage unavailable (last reading stale)', usedPercent: null, resetsAt: latest.resetsAt, sampledAt: latest.sampledAt, ageSeconds, windowStart, pace: null, history }
   }
   const rounded = Math.round(latest.usedPercent)

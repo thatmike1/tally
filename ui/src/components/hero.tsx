@@ -43,6 +43,9 @@ export function Hero({ state, frozen = false }: { state: State; frozen?: boolean
   const projection = state.block.projection
   const hasPace = projection.ready && !five.ended
   const over = projection.hitsHundredAt !== null
+  // an age is relative to now, and a frozen page's now is a past instant: at the
+  // window's last sample it reads "just now". the sample's clock time is the fact
+  const read = frozen ? `sampled ${hm(five.sampledAt)}` : `read ${ago(five.ageSeconds)}`
 
   return (
     <>
@@ -51,8 +54,8 @@ export function Hero({ state, frozen = false }: { state: State; frozen?: boolean
           {pct(five.pct)}
           <small>
             {five.ended
-              ? `5-hour block · resets ${five.nextResetsAt === null ? '5 h after your next message' : `${hm(five.nextResetsAt)} if you start now`} · read ${ago(five.ageSeconds)}`
-              : `5-hour block · resets ${hm(five.resetsAt)}, in ${until(five.resetsAt - state.now)} · read ${ago(five.ageSeconds)}`}
+              ? `5-hour block · resets ${five.nextResetsAt === null ? '5 h after your next message' : `${hm(five.nextResetsAt)} if you start now`} · ${read}`
+              : `5-hour block · resets ${hm(five.resetsAt)}, in ${until(five.resetsAt - state.now)} · ${read}`}
           </small>
         </div>
         <div className="verdict">

@@ -137,14 +137,21 @@ function Blocks({ blocks }: { blocks: BlockSummary[] }) {
                 className={`tile${block.measured ? '' : ' un'}`}
                 key={block.resetKey}
                 href={blockHref(block.resetKey)}
-                title={`${hm(block.start)}–${hm(block.resetKey)} · ended ${pct(block.endPct)} · ${money(
-                  block.usage.cost,
-                )} over ${block.usage.requests} requests in ${block.usage.sessions} session${
-                  block.usage.sessions === 1 ? '' : 's'
-                }${block.measured ? '' : ' · no dollars per point from this one'}`}
+                title={`${hm(block.start)}–${hm(block.resetKey)} · ended ${pct(block.endPct)}${
+                  block.measured && block.delta !== null
+                    ? ` · ${Math.round(block.delta)} points from ${pct(block.startPct)}`
+                    : ''
+                } · ${money(block.usage.cost)} over ${block.usage.requests} requests in ${
+                  block.usage.sessions
+                } session${block.usage.sessions === 1 ? '' : 's'}${
+                  block.measured ? '' : ' · no dollars per point from this one'
+                }`}
               >
                 <em>{hm(block.start)}</em>
                 <b>{pct(block.endPct)}</b>
+                {block.measured && block.delta !== null ? (
+                  <span className="tdel">+{Math.round(block.delta)} pts</span>
+                ) : null}
                 <span>
                   {block.measured && block.dollarsPerPercent !== null ? (
                     `${rate(block.dollarsPerPercent)}/pt`
@@ -161,7 +168,8 @@ function Blocks({ blocks }: { blocks: BlockSummary[] }) {
         </div>
       ))}
       <p className="caveat">
-        The bar under each block is where its meter ended, its brightness is what the block cost. A block with no
+        Each tile is where the meter ended and how far it moved inside the block. The bar under it is the same ending
+        percentage, its brightness is what the block cost. A block with no
         dollars-per-point figure had one sample, no movement, a sampler gap, or a meter already at 100%: the tile says
         so and the charts draw it as a cross.
       </p>

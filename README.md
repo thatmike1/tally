@@ -43,6 +43,19 @@ from memory at `/api/takeaway`).
 `bin/tally.mjs` is a launcher that works from any directory, so
 `ln -s ~/git/tally/bin/tally.mjs ~/.local/bin/tally` is enough to run it anywhere.
 
+## Routes and endpoints
+
+The page is a hash router: `#/` is today, `#/history` the overview of every
+5-hour block and weekly window, `#/history/block/<resetKey>` and
+`#/history/week/<resetsAt>` the drill-in that redraws today's page frozen at that
+window's last meter sample, and `#/session/<id>` one session on the clock. Behind
+them: `GET /api/history` (Claude blocks, weeks and the sub-value line),
+`GET /api/history/codex` (Codex windows, credits per point and api list cost),
+`GET /api/session/<id>` (one session's requests, parent and subagents apart) and
+`GET /api/state?at=<unix seconds>`, which answers with the page as it stood at
+that instant: no sample, reading, call or index entry later than `at` is used,
+and the "since you last looked" marker is neither read nor written.
+
 ## Where the numbers come from
 
 **The meters** — `~/.cache/cc-browse-tray/limits.jsonl`, written by

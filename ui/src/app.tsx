@@ -57,9 +57,11 @@ export function App() {
       {route.kind === 'history' ? (
         <History />
       ) : route.kind === 'block' ? (
-        <Frozen kind="block" resetKey={route.resetKey} />
+        // keyed on the route so a hash change between two windows remounts: without
+        // it the previous window's banner and frozen page stay up under the new key
+        <Frozen key={`block-${route.resetKey}`} kind="block" resetKey={route.resetKey} />
       ) : route.kind === 'week' ? (
-        <Frozen kind="week" resetKey={route.resetsAt} />
+        <Frozen key={`week-${route.resetsAt}`} kind="week" resetKey={route.resetsAt} />
       ) : route.kind === 'session' ? (
         <Session id={route.id} />
       ) : (

@@ -11,7 +11,7 @@ const H = 100
  * Codex's weekly allowance, beside the Claude meters rather than inside them:
  * there is no cost model for Codex, so nothing here splits or attributes.
  */
-export function Codex({ state }: { state: State }) {
+export function Codex({ state, frozen = false }: { state: State; frozen?: boolean }) {
   const codex = state.codex
   if (codex.status === 'unavailable') {
     return (
@@ -30,7 +30,12 @@ export function Codex({ state }: { state: State }) {
         {stale || codex.usedPercent === null ? '–' : pct(codex.usedPercent)}
         <small>
           {codex.resetsAt === null ? '' : `resets ${dayClock(codex.resetsAt)}, in ${days(codex.resetsAt - state.now)} · `}
-          {codex.ageSeconds === null ? 'never read' : `read ${ago(codex.ageSeconds)}`}
+          {/* frozen, the age would be counted from the page's past instant, so say when it was read */}
+          {codex.sampledAt !== null && frozen
+            ? `sampled ${hm(codex.sampledAt)}`
+            : codex.ageSeconds === null
+              ? 'never read'
+              : `read ${ago(codex.ageSeconds)}`}
         </small>
       </div>
       <Verdict codex={codex} />

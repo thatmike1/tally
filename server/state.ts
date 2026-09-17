@@ -193,7 +193,9 @@ export async function buildState(options: Options = {}): Promise<State> {
   // a page frozen at a past instant has no "since you last looked" to draw
   const frozen = options.at !== undefined
   const lastLooked = frozen ? null : readLastLooked(lookPath)
-  const codexView = codexUsageView(options.codexPaths ?? codexUsagePaths(home), now)
+  // frozen, the Codex meter is the reading `at` would have seen: the window
+  // containing it, no reading after it, and the rollouts cut at the same instant
+  const codexView = codexUsageView(options.codexPaths ?? codexUsagePaths(home), now, frozen ? { at: now } : {})
   let codexSplit: CodexWeekSplit | null = null
   if (codexView.windowStart !== null && codexView.resetsAt !== null) {
     const rollouts = await scanRollouts(codexView.windowStart, options.codexSessions ?? codexSessionsRoot(home))

@@ -843,6 +843,12 @@ a.av:hover {
   color: var(--muted);
 }
 
+/* how far the meter moved inside the window, under the percentage it ended on */
+.tile .tdel {
+  color: var(--faint);
+  white-space: nowrap;
+}
+
 .tile .nd {
   font-style: normal;
   font-size: 11px;

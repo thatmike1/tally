@@ -14,7 +14,7 @@ import { codexSessionsRoot, scanRollouts, type CodexRollout } from './codex-sess
 import { codexUsagePaths, readCodexHistory, CODEX_WEEK_MINUTES } from './codex-usage'
 import type { CodexHistory, CodexWindow } from './history-types'
 import { OPENAI_PRICE_TABLE, openAiCost } from './openai-prices'
-import { dayKey, startOfDay } from './time'
+import { startOfMonth } from './time'
 
 /** the ChatGPT tier the dollars are compared against */
 export const CODEX_PLAN_USD = 100
@@ -158,11 +158,6 @@ function priceModels(byModel: Map<string, ModelTotals>): {
     calls += row.calls
   }
   return { rows, credits, calls, costUsd, pricedCostUsd, unknownModels: unknownModels.sort() }
-}
-
-/** unix seconds of the first of the Prague calendar month containing `t` */
-export function startOfMonth(t: number): number {
-  return startOfDay(`${dayKey(t).slice(0, 8)}01`)
 }
 
 /** one weekly window of the Codex meter, credits and dollars over its readings */

@@ -374,11 +374,13 @@ export function splitCodexWeek(
   now: number,
 ): CodexWeekSplit | null {
   const openai = rollouts.filter((rollout) => rollout.openai)
-  // the rollouts' own readings can be fresher than the reader's five-minute tick
+  // the rollouts' own readings can be fresher than the reader's five-minute tick.
+  // `now` is the cutoff, not just the clock: frozen at a past instant, a reading
+  // or a call written after it has not happened yet and must not be counted.
   let latest = anchor
   for (const rollout of openai) {
     for (const reading of rollout.readings) {
-      if (Math.abs(reading.resetsAt - window.resetsAt) > 120 || reading.t < window.from) continue
+      if (Math.abs(reading.resetsAt - window.resetsAt) > 120 || reading.t < window.from || reading.t > now) continue
       if (!latest || reading.t > latest.t) latest = { t: reading.t, pct: reading.pct }
     }
   }
@@ -391,7 +393,7 @@ export function splitCodexWeek(
   let pendingCredits = 0
   for (const rollout of openai) {
     for (const call of rollout.calls) {
-      if (call.t < window.from || seen.has(call.responseId)) continue
+      if (call.t < window.from || call.t > now || seen.has(call.responseId)) continue
       seen.add(call.responseId)
       if (call.t > to) {
         pendingCredits += call.credits

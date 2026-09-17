@@ -6,8 +6,8 @@ import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { buildCodexHistory, startOfMonth } from './history-codex'
-import { dayKey } from './time'
+import { buildCodexHistory } from './history-codex'
+import { dayKey, startOfMonth } from './time'
 
 const WEEK = 7 * 86_400
 /** the older window's reset; the newer window's reset is a week later */

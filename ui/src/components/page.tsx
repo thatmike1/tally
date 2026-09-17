@@ -80,14 +80,14 @@ export function PageBody({
             <Day state={state} />
           </main>
           <aside className="codex-col">
-            <Codex state={state} />
+            <Codex state={state} frozen={frozen} />
             <CodexThreads state={state} beside />
           </aside>
         </div>
       ) : (
         <>
           <Hero state={state} frozen={frozen} />
-          <Codex state={state} />
+          <Codex state={state} frozen={frozen} />
           <BlockSplit state={state} />
           <Week state={state} mode={weekMode} {...(onWeekMode ? { onMode: onWeekMode } : {})} />
           <CodexThreads state={state} />

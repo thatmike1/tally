@@ -107,7 +107,10 @@ function totalOf(request: RequestPoint): number {
   return t.in + t.cw1h + t.cw5m + t.cr + t.out
 }
 
+/** the server's label (the subagent's file name) when it has one, a position otherwise */
 function laneName(lane: AgentLane, index: number): string {
+  const label = (lane.label ?? '').trim()
+  if (label) return label
   return lane.agent ? `agent ${index}` : 'main'
 }
 
