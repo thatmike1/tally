@@ -8,6 +8,7 @@ import {
   codexRate,
   parseRolloutLines,
   pointSteps,
+  cutRollout,
   scanRollouts,
   splitCodexWeek,
   type CodexRollout,
@@ -124,8 +125,27 @@ describe('scanRollouts', () => {
   })
 })
 
+describe('cutRollout', () => {
+  it('drops what was written after the cut and moves the last write back to it', () => {
+    const full = rollout('a', [['r1', FROM + 100, 10], ['r2', FROM + 400, 7]])
+    full.lastT = FROM + 900
+    const cut = cutRollout(full, FROM + 500)
+    expect(cut.calls.map((call) => call.responseId)).toEqual(['r1', 'r2'])
+    expect(cut.lastT).toBe(FROM + 400)
+    expect(cutRollout(full, FROM + 50)).toMatchObject({ calls: [], lastT: null })
+    expect(cutRollout(full, FROM + 1000)).toBe(full)
+  })
+})
+
 describe('splitCodexWeek', () => {
   const window = { from: FROM, resetsAt: RESET }
+
+  it('judges liveness by the last write before the cutoff, not one after it', () => {
+    const late = rollout('a', [['r1', FROM + 100, 10]])
+    late.lastT = FROM + 9_000
+    const split = splitCodexWeek([late], window, { t: FROM + 300, pct: 2 }, new Map(), FROM + 5_000)!
+    expect(split.threads[0].live).toBe(false)
+  })
 
   it('splits the meter by credits and puts the biggest thread first', () => {
     const split = splitCodexWeek(

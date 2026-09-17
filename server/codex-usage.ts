@@ -4,7 +4,7 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, writeF
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { median } from './split'
-import { dayBounds, isWeekend, weekdayName } from './time'
+import { dayBounds, dayKey, isWeekend, weekdayName } from './time'
 
 export const CODEX_WEEK_MINUTES = 7 * 24 * 60
 export const CODEX_STALE_SECONDS = 15 * 60
@@ -325,7 +325,10 @@ export function codexUsageView(paths: CodexUsagePaths, now: number, options: Cod
   const latest = readings.at(-1) ?? null
   const empty = { windowStart: null, pace: null, history: [] }
   if (!latest || (!status && at === null)) {
-    return { status: 'unavailable', line: 'Codex · unavailable', usedPercent: null, resetsAt: null, sampledAt: null, ageSeconds: null, ...empty }
+    // frozen before the reader's first row: the meter was not being read yet
+    const first = all[0]
+    const line = at !== null && first && first.sampledAt > at ? `Codex · no reading yet, the reader started ${dayKey(first.sampledAt)}` : 'Codex · unavailable'
+    return { status: 'unavailable', line, usedPercent: null, resetsAt: null, sampledAt: null, ageSeconds: null, ...empty }
   }
   const ageSeconds = Math.max(0, now - latest.sampledAt)
   if (latest.resetsAt <= now) {

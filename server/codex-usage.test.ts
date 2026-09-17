@@ -90,6 +90,15 @@ describe('Codex usage history and view', () => {
       usedPercent: null,
     })
   })
+
+  it('says why a view frozen before the first reading has nothing', () => {
+    const files = paths()
+    recordCodexReading(files, { sampledAt: 1_789_450_000, usedPercent: 42, resetsAt: 1_789_950_000, windowDurationMins: 10_080 })
+    expect(codexUsageView(files, 1_789_400_000, { at: 1_789_400_000 })).toMatchObject({
+      status: 'unavailable',
+      line: 'Codex · no reading yet, the reader started 2026-09-15',
+    })
+  })
 })
 
 const WEEK = 7 * 86_400

@@ -223,8 +223,14 @@ async function parseFile(path: string): Promise<CodexRollout | null> {
   return parseRolloutLines(path, lines)
 }
 
-/** rollouts written to since `since`; unchanged files come from memory */
-export async function scanRollouts(since: number, root = codexSessionsRoot()): Promise<CodexRollout[]> {
+/**
+ * rollouts written to since `since`; unchanged files come from memory.
+ *
+ * `until` freezes the scan at a past instant: calls, readings and the last
+ * write after it have not happened yet. a file's mtime cannot make that cut,
+ * so every rollout is trimmed line by line; the cache keeps the full parse.
+ */
+export async function scanRollouts(since: number, root = codexSessionsRoot(), until?: number): Promise<CodexRollout[]> {
   const out: CodexRollout[] = []
   for (const file of rolloutFiles(root)) {
     if (file.mtime < since) continue
@@ -236,9 +242,20 @@ export async function scanRollouts(since: number, root = codexSessionsRoot()): P
       rollout = await parseFile(file.path)
       parsed.set(file.path, { mtime: file.mtime, size: file.size, rollout })
     }
-    if (rollout) out.push(rollout)
+    if (rollout) out.push(until === undefined ? rollout : cutRollout(rollout, until))
   }
   return out
+}
+
+/** the rollout as it stood at `until`: nothing written after it, last write no later than it */
+export function cutRollout(rollout: CodexRollout, until: number): CodexRollout {
+  if (rollout.lastT !== null && rollout.lastT <= until) return rollout
+  const calls = rollout.calls.filter((call) => call.t <= until)
+  const readings = rollout.readings.filter((reading) => reading.t <= until)
+  // only calls and readings keep their timestamps; the last of those stands in
+  // for the last line written by `until`
+  const stamps = [...calls.map((call) => call.t), ...readings.map((reading) => reading.t)]
+  return { ...rollout, calls, readings, lastT: stamps.length ? Math.max(...stamps) : null }
 }
 
 /** T3 thread titles keyed by the Codex thread id T3 resumes, plus whether a turn is in flight */
@@ -417,7 +434,9 @@ export function splitCodexWeek(
   for (const rollout of openai) {
     const row = byRoot.get(rollout.rootId)
     if (!row) continue
-    row.lastWrite = Math.max(row.lastWrite, rollout.lastT ?? 0)
+    // a rollout not cut at `now` can carry a later write; the row never does
+    const lastT = rollout.lastT ?? 0
+    row.lastWrite = Math.max(row.lastWrite, lastT <= now ? lastT : row.end)
     if (!rollout.subagent) row.lead = rollout
   }
 

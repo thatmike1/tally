@@ -148,10 +148,10 @@ function Blocks({ blocks }: { blocks: BlockSummary[] }) {
                 }`}
               >
                 <em>{hm(block.start)}</em>
-                <b>{pct(block.endPct)}</b>
-                {block.measured && block.delta !== null ? (
-                  <span className="tdel">+{Math.round(block.delta)} pts</span>
-                ) : null}
+                <b>
+                  {pct(block.endPct)}
+                  {block.measured && block.delta !== null ? <small className="tdel">+{Math.round(block.delta)}</small> : null}
+                </b>
                 <span>
                   {block.measured && block.dollarsPerPercent !== null ? (
                     `${rate(block.dollarsPerPercent)}/pt`
