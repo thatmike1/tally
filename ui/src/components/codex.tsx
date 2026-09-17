@@ -1,4 +1,5 @@
 import type { State } from '../api'
+import { sessionHref } from '../route'
 import { ago, dayClock, days, hm, labelOn, pct } from '../format'
 
 type CodexView = State['codex']
@@ -95,7 +96,7 @@ export function CodexThreads({ state, beside = false }: { state: State; beside?:
             <span className="share">{pct(row.share * 100)}</span>
           </div>
           <div className="name">
-            <a href={`http://127.0.0.1:8080/sessions/codex:${row.id}?msg=last`} title={`${row.calls} calls · ${row.models.join(', ')}`}>
+            <a href={sessionHref(`codex:${row.id}`)} title={`${row.calls} calls · ${row.models.join(', ')}`}>
               {row.title}
             </a>
             <span className="meta">

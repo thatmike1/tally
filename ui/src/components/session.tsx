@@ -3,6 +3,11 @@ import { agentsview, errorLine, fetchSession, type AgentLane, type RequestPoint,
 import { dayDate, duration, hm, money, projectName, tokens } from '../format'
 import { useWidth } from './charts'
 
+/** credits, the Codex unit: whole numbers read fine, a fraction only under ten */
+function credits(value: number): string {
+  return value < 10 ? value.toFixed(1) : String(Math.round(value))
+}
+
 /**
  * one session, one zoom level in from the lanes: the parent transcript on top,
  * one row per subagent under it, every request a mark on the shared time axis.
@@ -51,6 +56,7 @@ export function Session({ id }: { id: string }) {
   if (!detail) return <p className="loading">reading the transcript…</p>
 
   const lanes = [detail.parent, ...[...detail.subagents].sort((a, b) => a.start - b.start)]
+  const amount = detail.unit === 'credits' ? credits : money
   return (
     <>
       <div className="sd-head">
@@ -67,7 +73,7 @@ export function Session({ id }: { id: string }) {
         </div>
         <div className="sd-nums">
           <span>
-            <b>{money(detail.cost)}</b>list price
+            <b>{amount(detail.cost)}</b>{detail.unit === 'credits' ? 'credits' : 'list price'}
           </span>
           <span>
             <b>{tokens(detail.tokens)}</b>tokens
@@ -84,9 +90,9 @@ export function Session({ id }: { id: string }) {
           <a href="#/">back to today</a>
         </div>
       </div>
-      <Rows lanes={lanes} />
+      <Rows lanes={lanes} amount={amount} />
       <p className="caveat">
-        Every mark is one request at the moment it answered, sized and shaded by its list-price cost; the label over a
+        Every mark is one request at the moment it answered, sized and shaded by its cost; the label over a
         run names the model family and the full model id is on hover. A subagent row is its own transcript file, so a
         fan-out reads as parallel rows rather than one thick bar.
       </p>
@@ -114,7 +120,7 @@ function laneName(lane: AgentLane, index: number): string {
   return lane.agent ? `agent ${index}` : 'main'
 }
 
-function Rows({ lanes }: { lanes: AgentLane[] }) {
+function Rows({ lanes, amount }: { lanes: AgentLane[]; amount: (value: number) => string }) {
   const box = useRef<HTMLDivElement>(null)
   const width = useWidth(box, 480)
   const withRequests = lanes.filter((lane) => lane.requests.length > 0)
@@ -175,7 +181,7 @@ function Rows({ lanes }: { lanes: AgentLane[] }) {
                     opacity={0.35 + 0.55 * weight}
                   >
                     <title>
-                      {`${hm(request.t)} · ${request.model} · ${money(request.cost)}${
+                      {`${hm(request.t)} · ${request.model} · ${amount(request.cost)}${
                         request.priced ? '' : ' (no price row)'
                       } · ${tokens(totalOf(request))} tokens`}
                     </title>
@@ -185,7 +191,7 @@ function Rows({ lanes }: { lanes: AgentLane[] }) {
               <FamilyLabels requests={lane.requests} x={x} y={top - 3} />
               {lane.requests.length ? (
                 <text x={costAt} y={mid + 4} className="sd-cost">
-                  {money(lane.cost)} · {lane.requests.length} req
+                  {amount(lane.cost)} · {lane.requests.length} req
                 </text>
               ) : (
                 <text x={LABELS + 10} y={mid + 4} className="sd-cost">

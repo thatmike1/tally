@@ -6,6 +6,8 @@ import { homedir } from 'node:os'
 import { serveStatic } from '@hono/node-server/serve-static'
 import { Hono } from 'hono'
 import { sessionDetail } from './session-detail'
+import { codexSessionDetail, codexSessionsRoot } from './codex-sessions'
+import { statePath } from './t3'
 import { codexHistoryRoutes } from './history-codex'
 import { historyRoutes } from './history-claude'
 import { buildState, type Options } from './state'
@@ -45,6 +47,15 @@ export function createApp(config: AppConfig = {}) {
   // link here, and the detail view phase two draws reads exactly this
   app.get('/api/session/:id', async (c) => {
     const id = c.req.param('id')
+    if (id.startsWith('codex:')) {
+      const codexDetail = await codexSessionDetail(id.slice('codex:'.length), {
+        root: codexSessionsRoot(stateOptions.home ?? homedir()),
+        t3: statePath(stateOptions.home ?? homedir()),
+        now: stateOptions.now,
+      })
+      if (!codexDetail) return c.json({ error: `no rollout for codex thread ${id}` }, 404)
+      return c.json(codexDetail)
+    }
     const detail = await sessionDetail(id, {
       root: projectsRoot(stateOptions.home ?? homedir()),
       index: stateOptions.index ?? null,

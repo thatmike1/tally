@@ -219,6 +219,8 @@ export interface SessionDetail {
   parent: AgentLane
   subagents: AgentLane[]
   agentsview: string
+  /** credits for a Codex thread; list-price dollars when absent */
+  unit?: 'credits'
 }
 
 /** a stretch of activity on a lane: requests closer than `LANE_GAP` merged */

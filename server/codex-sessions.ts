@@ -55,6 +55,8 @@ export interface CodexRollout {
   /** the thread a subagent was spawned under; its own id otherwise */
   rootId: string
   subagent: boolean
+  /** `Herschel · worker` from a thread_spawn, `guardian` for a review, null on a lead */
+  agentName: string | null
   /** `t3code_desktop`, `codex_exec`, `codex_cli_rs` … */
   originator: string | null
   cwd: string | null
@@ -134,11 +136,17 @@ export function parseRolloutLines(path: string, lines: Iterable<string>): CodexR
       const id = String(payload.id ?? '')
       if (!id) return null
       const parent = payload.parent_thread_id ?? payload.source?.subagent?.thread_spawn?.parent_thread_id ?? null
+      const spawn = payload.source?.subagent?.thread_spawn
+      const other = payload.source?.subagent?.other
+      const agentName = spawn
+        ? [spawn.agent_nickname, spawn.agent_role].filter((part: unknown) => typeof part === 'string' && part).join(' · ') || null
+        : typeof other === 'string' ? other : null
       meta = {
         path,
         id,
         rootId: String(payload.session_id ?? parent ?? id),
         subagent: parent !== null,
+        agentName,
         originator: typeof payload.originator === 'string' ? payload.originator : null,
         cwd: typeof payload.cwd === 'string' ? payload.cwd : null,
         openai: (payload.model_provider ?? 'openai') === 'openai',
@@ -475,5 +483,94 @@ export function splitCodexWeek(
     creditsPerPoint: latest.pct > 0 && totalCredits > 0 ? totalCredits / latest.pct : null,
     pendingCredits,
     threads,
+  }
+}
+
+/** the same shape `/api/session/:id` returns for a Claude session, in credits */
+export interface CodexSessionDetail {
+  sessionId: string
+  project: string
+  title: string | null
+  start: number
+  end: number
+  cost: number
+  tokens: number
+  requests: number
+  live: boolean
+  parent: CodexLane
+  subagents: CodexLane[]
+  agentsview: string
+  unit: 'credits'
+}
+
+export interface CodexLane {
+  file: string
+  agent: boolean
+  label: string
+  cost: number
+  tokens: number
+  requests: { t: number; model: string; family: string; cost: number; tokens: { in: number; cw1h: number; cw5m: number; cr: number; out: number }; priced: boolean }[]
+  start: number
+  end: number
+}
+
+function codexLane(rollout: CodexRollout, seen: Set<string>): CodexLane {
+  const requests = rollout.calls
+    .filter((call) => {
+      if (seen.has(call.responseId)) return false
+      seen.add(call.responseId)
+      return true
+    })
+    .sort((a, b) => a.t - b.t)
+    .map((call) => ({
+      t: call.t,
+      model: call.model,
+      family: call.model.replace(/-\d{4}-\d{2}(-\d{2})?$/, ''),
+      cost: call.credits,
+      tokens: { in: call.input, cw1h: 0, cw5m: 0, cr: call.cached, out: call.output },
+      priced: call.priced,
+    }))
+  return {
+    file: rollout.path,
+    agent: rollout.subagent,
+    label: rollout.subagent ? rollout.agentName ?? rollout.id.slice(0, 8) : 'main',
+    cost: requests.reduce((sum, r) => sum + r.cost, 0),
+    tokens: requests.reduce((sum, r) => sum + r.tokens.in + r.tokens.cr + r.tokens.out, 0),
+    requests,
+    start: requests[0]?.t ?? rollout.lastT ?? 0,
+    end: requests.at(-1)?.t ?? rollout.lastT ?? 0,
+  }
+}
+
+/**
+ * one Codex thread exploded into its lead rollout and every subagent spawned
+ * under it. null when no rollout carries that root id.
+ */
+export async function codexSessionDetail(rootId: string, options: { root?: string; t3?: string; now?: number; since?: number } = {}): Promise<CodexSessionDetail | null> {
+  const now = options.now ?? Date.now() / 1000
+  const rollouts = (await scanRollouts(options.since ?? now - 60 * 86400, options.root ?? codexSessionsRoot())).filter((r) => r.rootId === rootId)
+  if (!rollouts.length) return null
+  const seen = new Set<string>()
+  const lead = rollouts.find((r) => !r.subagent) ?? rollouts[0]!
+  const parent = codexLane(lead, seen)
+  const subagents = rollouts.filter((r) => r !== lead).map((r) => codexLane(r, seen)).sort((a, b) => a.start - b.start)
+  const lanes = [parent, ...subagents]
+  const withRequests = lanes.filter((lane) => lane.requests.length)
+  const known = options.t3 ? t3CodexThreads(options.t3).get(rootId) : undefined
+  const lastWrite = Math.max(0, ...rollouts.map((r) => r.lastT ?? 0))
+  return {
+    sessionId: `codex:${rootId}`,
+    project: lead.cwd ?? 'codex',
+    title: known?.title ?? lead.firstPrompt,
+    start: withRequests.length ? Math.min(...withRequests.map((l) => l.start)) : parent.start,
+    end: withRequests.length ? Math.max(...withRequests.map((l) => l.end)) : parent.end,
+    cost: lanes.reduce((sum, l) => sum + l.cost, 0),
+    tokens: lanes.reduce((sum, l) => sum + l.tokens, 0),
+    requests: lanes.reduce((sum, l) => sum + l.requests.length, 0),
+    live: known?.live ?? now - lastWrite < LIVE_WINDOW,
+    parent,
+    subagents,
+    agentsview: `http://127.0.0.1:8080/sessions/codex:${rootId}?msg=last`,
+    unit: 'credits',
   }
 }
