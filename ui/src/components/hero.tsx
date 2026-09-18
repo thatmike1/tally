@@ -59,7 +59,13 @@ export function Hero({ state, frozen = false }: { state: State; frozen?: boolean
           </small>
         </div>
         <div className="verdict">
-          {five.ended ? (
+          {frozen ? (
+            // a closed window has no pace to project: say where it stood, in the past tense
+            <>
+              <b>stood at {pct(five.pct)}</b>
+              <span>at the last meter sample of this window, {hm(five.sampledAt)}</span>
+            </>
+          ) : five.ended ? (
             <>
               <b>fresh block</b> · the last one ended at {pct(state.block.endPct)}
               <span>your next message opens a new 5-hour block</span>
@@ -89,7 +95,7 @@ export function Hero({ state, frozen = false }: { state: State; frozen?: boolean
       </div>
       <div className="meter">
         <i style={{ width: `${Math.min(100, five.pct)}%` }} />
-        {hasPace && projection.pctAtReset > five.pct ? (
+        {!frozen && hasPace && projection.pctAtReset > five.pct ? (
           <u style={{ left: `${five.pct}%`, width: `${Math.min(100, projection.pctAtReset) - five.pct}%` }} />
         ) : null}
       </div>

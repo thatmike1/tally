@@ -11,6 +11,17 @@ export type Route =
   /** `at` freezes the session at a past instant, set when it was opened from a history drill-in */
   | { kind: 'session'; id: string; at?: number }
 
+/** every route that is a page of its own; a session is a drawer over one of these */
+export type PageRoute = Exclude<Route, { kind: 'session' }>
+
+/** the hash that leads back to a page, used when the session drawer closes */
+export function routeHref(route: PageRoute): string {
+  if (route.kind === 'history') return '#/history'
+  if (route.kind === 'block') return blockHref(route.resetKey)
+  if (route.kind === 'week') return weekHref(route.resetsAt)
+  return '#/'
+}
+
 const TODAY: Route = { kind: 'today' }
 
 /**

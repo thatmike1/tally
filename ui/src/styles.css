@@ -1124,3 +1124,129 @@ a.av:hover {
   fill: var(--faint);
   letter-spacing: 0.04em;
 }
+
+/* history grid: one row per day, tiles placed on the clock */
+.htrack {
+  position: relative;
+  height: 58px;
+  background-image: repeating-linear-gradient(
+    to right,
+    var(--line-soft) 0 1px,
+    transparent 1px calc(100% * 6 / 29)
+  );
+}
+
+.haxis {
+  border-top: 0;
+  padding: 0;
+}
+
+.haxis .htrack {
+  height: 18px;
+  background: none;
+}
+
+.haxis span {
+  position: absolute;
+  font-size: 11px;
+  color: var(--faint);
+  padding-left: 4px;
+}
+
+.tile.at {
+  position: absolute;
+  top: 2px;
+  width: calc(100% * 5 / 29 - 6px);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--bg);
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.tile.at b {
+  flex: none;
+}
+
+.tile.at .tmeta {
+  min-width: 0;
+}
+
+.tile.at .tmeta span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* the frozen bar stays on screen: the page under it looks exactly like today */
+.frozen {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: var(--bg);
+}
+
+.fz-tag {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--bg);
+  background: var(--accent);
+  border-radius: 3px;
+  padding: 2px 7px;
+}
+
+.fz-step {
+  margin-left: auto;
+  display: flex;
+  gap: 16px;
+}
+
+.fz-title .fz-step a {
+  margin-left: 0;
+}
+
+.fz-step i {
+  font-style: normal;
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--dim);
+}
+
+/* session detail as a drawer over the page it was opened from */
+body.drawer-open {
+  overflow: hidden;
+}
+
+.drawer-back {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  background: color-mix(in srgb, var(--fg) 22%, transparent);
+}
+
+.drawer {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(1100px, 92vw);
+  overflow-y: auto;
+  padding: 28px 36px;
+  background: var(--bg);
+  border-left: 1px solid var(--line);
+  box-shadow: -18px 0 40px color-mix(in srgb, var(--fg) 12%, transparent);
+}
+
+.drawer-x {
+  float: right;
+  font: inherit;
+  font-size: 12px;
+  color: var(--muted);
+  background: none;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 3px 9px;
+  cursor: pointer;
+}

@@ -1,9 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Frozen } from './components/frozen'
 import { History } from './components/history'
 import { Session } from './components/session'
 import { Today } from './components/today'
-import { parseRoute, type Route } from './route'
+import { parseRoute, routeHref, type PageRoute, type Route } from './route'
 
 /** the hash is the router; `route.ts` holds the parsing, this holds the switch */
 function useRoute(): Route {
@@ -25,7 +25,46 @@ function useTheme(): [string, () => void] {
   return [theme, () => setTheme((current) => (current === 'light' ? 'dark' : 'light'))]
 }
 
-function Nav({ route }: { route: Route }) {
+/**
+ * a session opens as a drawer over the page it was opened from, so that page
+ * never unmounts and keeps its scroll. `base` is the last route that was a page;
+ * a session hash opened cold (a deep link) sits over today.
+ */
+function useBase(route: Route): PageRoute {
+  const base = useRef<PageRoute>({ kind: 'today' })
+  if (route.kind !== 'session') base.current = route
+  return base.current
+}
+
+function Drawer({ base, children }: { base: PageRoute; children: React.ReactNode }) {
+  const close = () => {
+    window.location.hash = routeHref(base)
+  }
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') close()
+    }
+    window.addEventListener('keydown', onKey)
+    // the page under the drawer stays put while the drawer scrolls
+    document.body.classList.add('drawer-open')
+    return () => {
+      window.removeEventListener('keydown', onKey)
+      document.body.classList.remove('drawer-open')
+    }
+  })
+  return (
+    <div className="drawer-back" onClick={close}>
+      <aside className="drawer" role="dialog" aria-label="session detail" onClick={(event) => event.stopPropagation()}>
+        <button className="drawer-x" onClick={close} aria-label="close">
+          esc ✕
+        </button>
+        {children}
+      </aside>
+    </div>
+  )
+}
+
+function Nav({ route }: { route: PageRoute }) {
   const onHistory = route.kind === 'history'
   return (
     <nav className="nav">
@@ -36,7 +75,6 @@ function Nav({ route }: { route: Route }) {
         history
       </a>
       {route.kind === 'block' || route.kind === 'week' ? <span className="here">this window</span> : null}
-      {route.kind === 'session' ? <span className="here">this session</span> : null}
     </nav>
   )
 }
@@ -44,29 +82,33 @@ function Nav({ route }: { route: Route }) {
 export function App() {
   const [theme, toggleTheme] = useTheme()
   const route = useRoute()
+  const page = useBase(route)
 
   return (
     <>
       <div className="top">
         <h1>tally</h1>
-        <Nav route={route} />
+        <Nav route={page} />
         <button className="toggle" onClick={toggleTheme}>
           {theme === 'light' ? 'dark' : 'light'}
         </button>
       </div>
-      {route.kind === 'history' ? (
+      {page.kind === 'history' ? (
         <History />
-      ) : route.kind === 'block' ? (
+      ) : page.kind === 'block' ? (
         // keyed on the route so a hash change between two windows remounts: without
         // it the previous window's banner and frozen page stay up under the new key
-        <Frozen key={`block-${route.resetKey}`} kind="block" resetKey={route.resetKey} />
-      ) : route.kind === 'week' ? (
-        <Frozen key={`week-${route.resetsAt}`} kind="week" resetKey={route.resetsAt} />
-      ) : route.kind === 'session' ? (
-        <Session key={`${route.id}@${route.at ?? 'live'}`} id={route.id} at={route.at} />
+        <Frozen key={`block-${page.resetKey}`} kind="block" resetKey={page.resetKey} />
+      ) : page.kind === 'week' ? (
+        <Frozen key={`week-${page.resetsAt}`} kind="week" resetKey={page.resetsAt} />
       ) : (
         <Today />
       )}
+      {route.kind === 'session' ? (
+        <Drawer base={page}>
+          <Session key={`${route.id}@${route.at ?? 'live'}`} id={route.id} at={route.at} />
+        </Drawer>
+      ) : null}
     </>
   )
 }

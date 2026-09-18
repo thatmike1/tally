@@ -88,7 +88,6 @@ export function Session({ id, at }: { id: string; at?: number | undefined }) {
         </div>
         <div className="sd-links">
           <a href={agentsview(detail.sessionId)}>read the transcript in AgentsView ↗</a>
-          <a href="#/">back to today</a>
         </div>
       </div>
       <Rows lanes={lanes} amount={amount} />

@@ -4,9 +4,12 @@ import { PageBody } from './page'
 
 const POLL_MS = 60_000
 
+/** the last answer, kept across remounts so coming back from history paints at once and keeps its height */
+let lastState: State | null = null
+
 /** the live page at `#/`: the minute poll, the reset catch-up, the week mode */
 export function Today() {
-  const [state, setState] = useState<State | null>(null)
+  const [state, setState] = useState<State | null>(lastState)
   const [error, setError] = useState<string | null>(null)
   const [weekMode, setWeekMode] = useState<WeekMode>(() =>
     localStorage.getItem('tally-week') === 'whole' ? 'whole' : 'recent',
@@ -61,6 +64,7 @@ export function Today() {
       .catch(() => {})
   }
 
+  if (state) lastState = state
   if (error && !state) return <p className="warn">tally: {error}</p>
   if (!state) return <p className="loading">reading the meters…</p>
   return <PageBody state={state} weekMode={weekMode} onWeekMode={changeWeekMode} />

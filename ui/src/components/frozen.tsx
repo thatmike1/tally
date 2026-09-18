@@ -9,6 +9,7 @@ import {
   type WindowUsage,
 } from '../api'
 import { dayDate, hm, money, pct, rate, ratio, tokens } from '../format'
+import { blockHref, weekHref } from '../route'
 import { PageBody } from './page'
 
 /**
@@ -24,6 +25,8 @@ export function Frozen({ kind, resetKey }: { kind: 'block' | 'week'; resetKey: n
   const [block, setBlock] = useState<BlockSummary | null>(null)
   const [week, setWeek] = useState<WeekSummary | null>(null)
   const [historyError, setHistoryError] = useState<string | null>(null)
+  // the windows on either side, as hrefs, so the bar can step through history
+  const [around, setAround] = useState<{ prev: string | null; next: string | null }>({ prev: null, next: null })
 
   useEffect(() => {
     let alive = true
@@ -35,11 +38,19 @@ export function Frozen({ kind, resetKey }: { kind: 'block' | 'week'; resetKey: n
         const history = await fetchHistory()
         if (!alive) return
         if (kind === 'block') {
-          const found = history.blocks.find((one) => one.resetKey === resetKey) ?? null
+          const index = history.blocks.findIndex((one) => one.resetKey === resetKey)
+          const found = history.blocks[index] ?? null
+          const before = index > 0 ? history.blocks[index - 1] : undefined
+          const after = index >= 0 ? history.blocks[index + 1] : undefined
+          setAround({ prev: before ? blockHref(before.resetKey) : null, next: after ? blockHref(after.resetKey) : null })
           setBlock(found)
           if (found) at = found.to
         } else {
-          const found = history.weeks.find((one) => one.resetsAt === resetKey) ?? null
+          const index = history.weeks.findIndex((one) => one.resetsAt === resetKey)
+          const found = history.weeks[index] ?? null
+          const before = index > 0 ? history.weeks[index - 1] : undefined
+          const after = index >= 0 ? history.weeks[index + 1] : undefined
+          setAround({ prev: before ? weekHref(before.resetsAt) : null, next: after ? weekHref(after.resetsAt) : null })
           setWeek(found)
           if (found) at = found.to
         }
@@ -64,6 +75,7 @@ export function Frozen({ kind, resetKey }: { kind: 'block' | 'week'; resetKey: n
     <>
       <div className="frozen">
         <div className="fz-title">
+          <span className="fz-tag" title="every number below is this window's, read at the meter sample it closed on. nothing on it is live">past · not live</span>
           {block ? (
             <>
               5-hour block · {dayDate(block.start)} {hm(block.start)}–{hm(block.resetKey)}
@@ -78,7 +90,12 @@ export function Frozen({ kind, resetKey }: { kind: 'block' | 'week'; resetKey: n
               {kind === 'block' ? '5-hour block' : 'week'} · {dayDate(resetKey)} {hm(resetKey)}
             </>
           )}
-          <a href="#/history">back to the overview</a>
+          <span className="fz-step">
+            {around.prev ? <a href={around.prev}>← earlier</a> : <i>← earlier</i>}
+            {around.next ? <a href={around.next}>later →</a> : <i>later →</i>}
+            <a href="#/history">all windows</a>
+            <a href="#/">back to now</a>
+          </span>
         </div>
         {block ? <BlockLine block={block} /> : week ? <WeekLine week={week} /> : null}
         {historyError ? (
@@ -89,9 +106,6 @@ export function Frozen({ kind, resetKey }: { kind: 'block' | 'week'; resetKey: n
         ) : !block && !week ? (
           <div className="fz-note warn">no window with this key is in the history answer.</div>
         ) : null}
-        <div className="fz-note">
-          Every number below is this window's, read at the meter sample it closed on. Nothing on it is live.
-        </div>
       </div>
       {error ? <p className="warn">tally: {error}</p> : null}
       {state ? <PageBody state={state} weekMode="whole" frozen /> : error ? null : <p className="loading">reading the window…</p>}

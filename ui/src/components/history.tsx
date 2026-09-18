@@ -114,6 +114,14 @@ function brightness(cost: number, max: number): number {
   return 0.35 + 0.45 * Math.sqrt(Math.min(1, cost / Math.max(0.01, max)))
 }
 
+/** a day row runs midnight to 05:00 the next morning, so a block opened late still fits on its own day */
+const AXIS_HOURS = 29
+
+function hourOfDay(unix: number): number {
+  const date = new Date(unix * 1000)
+  return date.getHours() + date.getMinutes() / 60
+}
+
 function Blocks({ blocks }: { blocks: BlockSummary[] }) {
   if (!blocks.length) return <p className="more">no 5-hour blocks in the log yet.</p>
   const max = Math.max(0.01, ...blocks.map((block) => block.usage.cost))
@@ -128,36 +136,45 @@ function Blocks({ blocks }: { blocks: BlockSummary[] }) {
   return (
     <>
       <h2 style={{ marginTop: 44 }}>every 5-hour block · {blocks.length} since the first sample</h2>
-      {days.map((day) => (
+      <div className="hday haxis" aria-hidden="true">
+        <div />
+        <div className="htrack">
+          {[0, 6, 12, 18, 24].map((hour) => (
+            <span key={hour} style={{ left: `${(hour / AXIS_HOURS) * 100}%` }}>
+              {hour === 24 ? 'midnight' : `${String(hour).padStart(2, '0')}:00`}
+            </span>
+          ))}
+        </div>
+      </div>
+      {[...days].reverse().map((day) => (
         <div className="hday" key={day.key}>
           <div className="hd">{dayDate(day.at)}</div>
-          <div className="htiles">
+          <div className="htrack">
             {day.rows.map((block) => (
               <a
-                className={`tile${block.measured ? '' : ' un'}`}
+                className={`tile at${block.measured ? '' : ' un'}`}
                 key={block.resetKey}
                 href={blockHref(block.resetKey)}
-                title={`${hm(block.start)}–${hm(block.resetKey)} · ended ${pct(block.endPct)}${
-                  block.measured && block.delta !== null
-                    ? ` · ${Math.round(block.delta)} points from ${pct(block.startPct)}`
-                    : ''
-                } · ${money(block.usage.cost)} over ${block.usage.requests} requests in ${
-                  block.usage.sessions
-                } session${block.usage.sessions === 1 ? '' : 's'}${
-                  block.measured ? '' : ' · no dollars per point from this one'
-                }`}
+                style={{ left: `${(hourOfDay(block.start) / AXIS_HOURS) * 100}%` }}
+                title={`${block.usage.requests} requests${block.measured ? '' : ' · no dollars per point from this one'}`}
               >
-                <em>{hm(block.start)}</em>
                 <b>
                   {pct(block.endPct)}
                   {block.measured && block.delta !== null ? <small className="tdel">+{Math.round(block.delta)}</small> : null}
                 </b>
-                <span>
-                  {block.measured && block.dollarsPerPercent !== null ? (
-                    `${rate(block.dollarsPerPercent)}/pt`
-                  ) : (
-                    <i className="nd">not measured</i>
-                  )}
+                <span className="tmeta">
+                  <em>
+                    {hm(block.start)}–{hm(block.resetKey)}
+                  </em>
+                  <span>
+                    {money(block.usage.cost)} · {block.usage.sessions} session{block.usage.sessions === 1 ? '' : 's'}
+                    {' · '}
+                    {block.measured && block.dollarsPerPercent !== null ? (
+                      `${rate(block.dollarsPerPercent)}/pt`
+                    ) : (
+                      <i className="nd">not measured</i>
+                    )}
+                  </span>
                 </span>
                 <u className="tfill">
                   <i style={{ width: `${Math.min(100, block.endPct)}%`, opacity: brightness(block.usage.cost, max) }} />
@@ -168,7 +185,7 @@ function Blocks({ blocks }: { blocks: BlockSummary[] }) {
         </div>
       ))}
       <p className="caveat">
-        Each tile is where the meter ended and how far it moved inside the block. The bar under it is the same ending
+        Newest day first; a tile sits where its block ran on the clock and is five hours wide. Each tile is where the meter ended and how far it moved inside the block. The bar under it is the same ending
         percentage, its brightness is what the block cost. A block with no
         dollars-per-point figure had one sample, no movement, a sampler gap, or a meter already at 100%: the tile says
         so and the charts draw it as a cross.
