@@ -63,7 +63,7 @@ export function History() {
       ) : null}
 
       <SubValue history={history} />
-      <Blocks blocks={history.blocks} />
+      <Blocks blocks={history.blocks} weeks={history.weeks} />
       <Weeks weeks={history.weeks} />
       <CostPerPercentChart history={history} />
       <ChatsShareChart weeks={history.weeks} />
@@ -122,9 +122,51 @@ function hourOfDay(unix: number): number {
   return date.getHours() + date.getMinutes() / 60
 }
 
-function Blocks({ blocks }: { blocks: BlockSummary[] }) {
+/**
+ * the block grid. with `weeks` it is cut at the weekly resets, the running week
+ * open and every older one folded under a one-line summary, so the page stays one
+ * screen tall however long the log gets.
+ */
+export function Blocks({ blocks, weeks, title }: { blocks: BlockSummary[]; weeks?: WeekSummary[]; title?: string }) {
   if (!blocks.length) return <p className="more">no 5-hour blocks in the log yet.</p>
   const max = Math.max(0.01, ...blocks.map((block) => block.usage.cost))
+  // newest group first; a block belongs to the week whose window holds its start
+  const groups: { key: string; week: WeekSummary | null; rows: BlockSummary[] }[] = []
+  for (const block of [...blocks].reverse()) {
+    const week = weeks?.find((one) => block.start >= one.start && block.start < one.resetsAt) ?? null
+    const key = week ? `w${week.resetsAt}` : 'loose'
+    const last = groups.at(-1)
+    if (last && last.key === key) last.rows.unshift(block)
+    else groups.push({ key, week, rows: [block] })
+  }
+
+  return (
+    <>
+      <h2 style={{ marginTop: 44 }}>{title ?? `every 5-hour block · ${blocks.length} since the first sample`}</h2>
+      {groups.map((group, index) =>
+        group.week === null || index === 0 ? (
+          <DayRows key={group.key} blocks={group.rows} max={max} />
+        ) : (
+          <details className="fold" key={group.key}>
+            <summary>
+              week to {dayDate(group.week.resetsAt)} · {group.rows.length} blocks · {money(group.week.usage.cost)} · ended{' '}
+              {pct(group.week.endPct)}
+            </summary>
+            <DayRows blocks={group.rows} max={max} />
+          </details>
+        ),
+      )}
+      <p className="caveat">
+        Newest day first; a tile sits where its block ran on the clock and is five hours wide. Each tile is where the meter ended and how far it moved inside the block. The bar under it is the same ending
+        percentage, its brightness is what the block cost. A block with no
+        dollars-per-point figure had one sample, no movement, a sampler gap, or a meter already at 100%: the tile says
+        so and the charts draw it as a cross.
+      </p>
+    </>
+  )
+}
+
+function DayRows({ blocks, max }: { blocks: BlockSummary[]; max: number }) {
   const days: { key: string; at: number; rows: BlockSummary[] }[] = []
   for (const block of blocks) {
     const key = dayKey(block.start)
@@ -135,7 +177,6 @@ function Blocks({ blocks }: { blocks: BlockSummary[] }) {
 
   return (
     <>
-      <h2 style={{ marginTop: 44 }}>every 5-hour block · {blocks.length} since the first sample</h2>
       <div className="hday haxis" aria-hidden="true">
         <div />
         <div className="htrack">
@@ -184,12 +225,6 @@ function Blocks({ blocks }: { blocks: BlockSummary[] }) {
           </div>
         </div>
       ))}
-      <p className="caveat">
-        Newest day first; a tile sits where its block ran on the clock and is five hours wide. Each tile is where the meter ended and how far it moved inside the block. The bar under it is the same ending
-        percentage, its brightness is what the block cost. A block with no
-        dollars-per-point figure had one sample, no movement, a sampler gap, or a meter already at 100%: the tile says
-        so and the charts draw it as a cross.
-      </p>
     </>
   )
 }

@@ -32,13 +32,48 @@ export function PageBody({
   weekMode,
   onWeekMode,
   frozen = false,
+  focus,
 }: {
   state: State
   weekMode: WeekMode
   onWeekMode?: (mode: WeekMode) => void
   frozen?: boolean
+  /** a frozen 5-hour block folds the week-wide sections away: they are not about that block */
+  focus?: 'block' | 'week'
 }) {
   const wide = useWide()
+  const week = <Week state={state} mode={weekMode} {...(onWeekMode ? { onMode: onWeekMode } : {})} />
+  if (focus === 'block') {
+    return (
+      <>
+        <Hero state={state} frozen={frozen} />
+        <BlockSplit state={state} />
+        <Day state={state} />
+        <details className="fold">
+          <summary>the week as it stood at that moment · Claude weekly, Fable and Codex</summary>
+          {week}
+          <Codex state={state} frozen={frozen} />
+          <CodexThreads state={state} frozen={frozen} />
+        </details>
+      </>
+    )
+  }
+  if (focus === 'week') {
+    // the week's own split leads; the block that happened to be running at the reset is a footnote
+    return (
+      <>
+        {week}
+        <Codex state={state} frozen={frozen} />
+        <CodexThreads state={state} frozen={frozen} />
+        <details className="fold">
+          <summary>the 5-hour block and the day the week closed on</summary>
+          <Hero state={state} frozen={frozen} />
+          <BlockSplit state={state} />
+          <Day state={state} />
+        </details>
+      </>
+    )
+  }
   return (
     <>
       <div className="legend">

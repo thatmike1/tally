@@ -53,7 +53,9 @@ export function Hero({ state, frozen = false }: { state: State; frozen?: boolean
         <div className="big">
           {pct(five.pct)}
           <small>
-            {five.ended
+            {frozen
+              ? `5-hour block · reset ${hm(five.resetsAt)} · ${read}`
+              : five.ended
               ? `5-hour block · resets ${five.nextResetsAt === null ? '5 h after your next message' : `${hm(five.nextResetsAt)} if you start now`} · ${read}`
               : `5-hour block · resets ${hm(five.resetsAt)}, in ${until(five.resetsAt - state.now)} · ${read}`}
           </small>

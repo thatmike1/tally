@@ -10,6 +10,7 @@ import {
 } from '../api'
 import { dayDate, hm, money, pct, rate, ratio, tokens } from '../format'
 import { blockHref, weekHref } from '../route'
+import { Blocks } from './history'
 import { PageBody } from './page'
 
 /**
@@ -26,6 +27,8 @@ export function Frozen({ kind, resetKey }: { kind: 'block' | 'week'; resetKey: n
   const [week, setWeek] = useState<WeekSummary | null>(null)
   const [historyError, setHistoryError] = useState<string | null>(null)
   // the windows on either side, as hrefs, so the bar can step through history
+  // a week's own 5-hour blocks, so the week view is also the way down into them
+  const [inside, setInside] = useState<BlockSummary[]>([])
   const [around, setAround] = useState<{ prev: string | null; next: string | null }>({ prev: null, next: null })
 
   useEffect(() => {
@@ -52,6 +55,7 @@ export function Frozen({ kind, resetKey }: { kind: 'block' | 'week'; resetKey: n
           const after = index >= 0 ? history.weeks[index + 1] : undefined
           setAround({ prev: before ? weekHref(before.resetsAt) : null, next: after ? weekHref(after.resetsAt) : null })
           setWeek(found)
+          if (found) setInside(history.blocks.filter((one) => one.start >= found.start && one.start < found.resetsAt))
           if (found) at = found.to
         }
       } catch (problem) {
@@ -108,7 +112,8 @@ export function Frozen({ kind, resetKey }: { kind: 'block' | 'week'; resetKey: n
         ) : null}
       </div>
       {error ? <p className="warn">tally: {error}</p> : null}
-      {state ? <PageBody state={state} weekMode="whole" frozen /> : error ? null : <p className="loading">reading the window…</p>}
+      {inside.length ? <Blocks blocks={inside} title={`the ${inside.length} blocks inside this week`} /> : null}
+      {state ? <PageBody state={state} weekMode="whole" frozen focus={kind} /> : error ? null : <p className="loading">reading the window…</p>}
     </>
   )
 }
