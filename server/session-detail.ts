@@ -11,9 +11,13 @@ import { LIVE_WINDOW, projectPath } from './lanes'
 import type { TranscriptIndex } from './transcript-index'
 import { parseTranscript, projectsRoot, transcriptFiles, type RequestRecord, type TranscriptFile } from './transcripts'
 
-/** the same url the page's `agentsview()` builds; transcripts are never rendered here */
-export function agentsviewUrl(sessionId: string): string {
-  return `http://127.0.0.1:8080/sessions/${sessionId}?msg=last`
+/**
+ * the same url the page's `agentsview()` builds; transcripts are never rendered
+ * here. null without a configured AgentsView, which is a machine that has none:
+ * the link sites then render nothing rather than a dead anchor.
+ */
+export function agentsviewUrl(base: string | null, sessionId: string): string | null {
+  return base === null ? null : `${base}/sessions/${sessionId}?msg=last`
 }
 
 export interface DetailOptions {
@@ -21,6 +25,8 @@ export interface DetailOptions {
   root?: string
   index?: TranscriptIndex | null
   now?: number
+  /** base url of the local AgentsView; null means no transcript link */
+  agentsviewUrl?: string | null
 }
 
 function pointOf(record: RequestRecord): RequestPoint {
@@ -133,6 +139,6 @@ export async function sessionDetail(sessionId: string, options: DetailOptions = 
     live: modified > 0 && now - modified < LIVE_WINDOW,
     parent,
     subagents,
-    agentsview: agentsviewUrl(sessionId),
+    agentsview: agentsviewUrl(options.agentsviewUrl ?? null, sessionId),
   }
 }

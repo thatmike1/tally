@@ -49,33 +49,49 @@ export function History() {
   }
   if (!history) return <p className="loading">reading the windows…</p>
 
+  // a Codex the machine does not have is not an empty section, it is no section
+  const codexShown = !codex || codex.installed
+
   return (
     <>
-      <div className="legend">
-        <b>Real:</b> every meter reading and every reset time. <b>Computed from real:</b> the cost of each window and
-        what a point of it cost. <b>Not shown:</b> anything before {dayDate(history.since)}, and any window the
-        sampler did not measure — those are marked, never drawn as a zero.
-      </div>
-      {history.indexing ? (
+      {history.since === null ? (
         <p className="warn">
-          the transcript index is still building, so every cost on this page may be missing requests.
+          the meter log has no reading in it yet, so there is no history to draw. the sampler writes one every five
+          minutes and this page starts at its first.
         </p>
-      ) : null}
-
-      <SubValue history={history} />
-      <Blocks blocks={history.blocks} weeks={history.weeks} />
-      <Weeks weeks={history.weeks} />
-      <CostPerPercentChart history={history} />
-      <ChatsShareChart weeks={history.weeks} />
-
-      <h2 style={{ marginTop: 52 }}>codex</h2>
-      {codexError && !codex ? (
-        <p className="warn">the codex history endpoint is not answering: {codexError}</p>
-      ) : !codex ? (
-        <p className="loading">reading the codex windows…</p>
       ) : (
-        <CodexSection codex={codex} />
+        <>
+          <div className="legend">
+            <b>Real:</b> every meter reading and every reset time. <b>Computed from real:</b> the cost of each window
+            and what a point of it cost. <b>Not shown:</b> anything before {dayDate(history.since)}, and any window
+            the sampler did not measure — those are marked, never drawn as a zero.
+          </div>
+          {history.indexing ? (
+            <p className="warn">
+              the transcript index is still building, so every cost on this page may be missing requests.
+            </p>
+          ) : null}
+
+          <SubValue history={history} />
+          <Blocks blocks={history.blocks} weeks={history.weeks} />
+          <Weeks weeks={history.weeks} />
+          <CostPerPercentChart history={history} />
+          <ChatsShareChart weeks={history.weeks} />
+        </>
       )}
+
+      {codexShown ? (
+        <>
+          <h2 style={{ marginTop: 52 }}>codex</h2>
+          {codexError && !codex ? (
+            <p className="warn">the codex history endpoint is not answering: {codexError}</p>
+          ) : !codex ? (
+            <p className="loading">reading the codex windows…</p>
+          ) : (
+            <CodexSection codex={codex} />
+          )}
+        </>
+      ) : null}
 
       <p className="caveat">{history.caveat}</p>
     </>
@@ -91,7 +107,7 @@ function SubValue({ history }: { history: ClaudeHistory }) {
       <h2>what the sub is worth</h2>
       <p className="calc">
         {money(subValue.monthCost)} of list-price usage this month (since {dayDate(subValue.monthStart)}), against the{' '}
-        {money(subValue.planUsd)} Max 5x price · {money(subValue.weekCost)} in the week since{' '}
+        {money(subValue.planUsd)} {subValue.planName} price · {money(subValue.weekCost)} in the week since{' '}
         {dayDate(subValue.weekStart)} {hm(subValue.weekStart)}
         <small>computed, no model</small>
       </p>
@@ -103,7 +119,7 @@ function SubValue({ history }: { history: ClaudeHistory }) {
           ? `the bar is full at ${money(subValue.planUsd)}: the month is already ${(
               subValue.monthCost / subValue.planUsd
             ).toFixed(1)}× the price`
-          : `${pct(share * 100)} of the ${money(subValue.planUsd)} the month has to beat`}
+          : `${pct(share * 100)} of the ${money(subValue.planUsd)} ${subValue.planName} price the month has to beat`}
       </div>
     </>
   )
@@ -282,7 +298,7 @@ function CodexSection({ codex }: { codex: CodexHistory }) {
         {/* the priced subtotal is a real number even when a model is missing a price
             row, so it is drawn with the gap named beside it, never withheld */}
         {money(subValue.monthCostUsd ?? subValue.pricedMonthCostUsd)} of api list price this month (since{' '}
-        {dayDate(subValue.monthStart)}), against the {money(subValue.planUsd)} tier
+        {dayDate(subValue.monthStart)}), against the {money(subValue.planUsd)} {subValue.planName} tier
         {subValue.monthCostUsd === null ? ` · plus calls of ${unknown.join(', ')}, which have no price row` : ''}
         <small>computed, no model</small>
       </p>

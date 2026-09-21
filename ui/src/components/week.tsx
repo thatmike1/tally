@@ -79,7 +79,14 @@ export function Week({
         </p>
       ) : null}
 
-      <List weekly={weekly} fable={fable} fableName={fableName} clock={clock} since={week.since === 'today' ? 'today' : week.since === 'week' ? 'this week' : `since ${clock(week.from)}`} />
+      <List
+        weekly={weekly}
+        fable={fable}
+        fableName={fableName}
+        clock={clock}
+        agentsviewUrl={state.agentsviewUrl}
+        since={week.since === 'today' ? 'today' : week.since === 'week' ? 'this week' : `since ${clock(week.from)}`}
+      />
       <p className="caveat">{week.caveat}</p>
     </>
   )
@@ -178,12 +185,14 @@ function List({
   fableName,
   since,
   clock,
+  agentsviewUrl,
 }: {
   weekly: WeekSplit | null
   fable: WeekSplit | null
   fableName: string
   since: string
   clock: (t: number) => string
+  agentsviewUrl: string | null
 }) {
   const byId = new Map<string, ListRow>()
   for (const row of fable?.sessions ?? []) {
@@ -213,7 +222,7 @@ function List({
         <div>weekly</div>
       </div>
       {movers.map((item) => (
-        <Row key={item.row.sessionId} item={item} fableName={fableName} clock={clock} />
+        <Row key={item.row.sessionId} item={item} fableName={fableName} clock={clock} agentsviewUrl={agentsviewUrl} />
       ))}
       {fableSplit && quiet.length ? (
         <div className="wsep">
@@ -223,7 +232,7 @@ function List({
         </div>
       ) : null}
       {shown.map((item) => (
-        <Row key={item.row.sessionId} item={item} fableName={fableName} clock={clock} />
+        <Row key={item.row.sessionId} item={item} fableName={fableName} clock={clock} agentsviewUrl={agentsviewUrl} />
       ))}
       {quiet.length > shown.length ? (
         <span className="more">
@@ -234,8 +243,19 @@ function List({
   )
 }
 
-function Row({ item, fableName, clock }: { item: ListRow; fableName: string; clock: (t: number) => string }) {
+function Row({
+  item,
+  fableName,
+  clock,
+  agentsviewUrl,
+}: {
+  item: ListRow
+  fableName: string
+  clock: (t: number) => string
+  agentsviewUrl: string | null
+}) {
   const { row, fable, weekly } = item
+  const transcript = agentsview(agentsviewUrl, row.sessionId)
   return (
     <div className="wrow">
       <div className="pts">
@@ -246,9 +266,11 @@ function Row({ item, fableName, clock }: { item: ListRow; fableName: string; clo
         <a href={sessionHref(row.sessionId)} title={`${money(row.cost)} list price since the window opened`}>
           {row.title ?? row.sessionId.slice(0, 8)}
         </a>
-        <a className="av" href={agentsview(row.sessionId)} title="open the transcript in AgentsView">
-          ↗
-        </a>
+        {transcript ? (
+          <a className="av" href={transcript} title="open the transcript in AgentsView">
+            ↗
+          </a>
+        ) : null}
         <span className="meta">
           claude
           {fable ? (

@@ -90,6 +90,11 @@ export function errorLine(problem: unknown): string {
   return problem instanceof Error ? problem.message : String(problem)
 }
 
-export function agentsview(sessionId: string): string {
-  return `http://127.0.0.1:8080/sessions/${sessionId}?msg=last`
+/**
+ * the transcript link for a session, or null when no AgentsView is configured:
+ * `state.agentsviewUrl` carries the base, and a machine without AgentsView gets
+ * no link at all rather than a dead one.
+ */
+export function agentsview(base: string | null, sessionId: string): string | null {
+  return base === null ? null : `${base}/sessions/${sessionId}?msg=last`
 }

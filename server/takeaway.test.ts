@@ -10,7 +10,9 @@ import {
   buildTakeawayPrompt,
   buildTakeawaySummary,
   createTakeawayRefresher,
+  resolveCommand,
   takeawayCacheKey,
+  takeawayFromConfig,
   type CommandRunner,
 } from './takeaway'
 
@@ -286,5 +288,46 @@ describe('/api/takeaway endpoint', () => {
     expect(res.status).toBe(200)
     const json = (await res.json()) as { text: string | null; model: string | null }
     expect(json).toEqual({ text: null, model: null })
+  })
+})
+
+describe('resolveCommand and takeawayFromConfig', () => {
+  /** a directory holding one executable-looking file, as a PATH entry */
+  function binDir(name: string): string {
+    const dir = mkdtempSync(join(tmpdir(), 'tally-bin-'))
+    writeFileSync(join(dir, name), '')
+    return dir
+  }
+
+  it('finds a command on the PATH and reports a missing one as null', () => {
+    const dir = binDir('agy')
+    expect(resolveCommand('agy', { PATH: dir })).toBe(join(dir, 'agy'))
+    expect(resolveCommand('agy', { PATH: '/nowhere' })).toBeNull()
+  })
+
+  it('is off without a takeaway in the config', () => {
+    expect(takeawayFromConfig(null)).toBeNull()
+  })
+
+  it('is off when the configured command is not installed', () => {
+    expect(takeawayFromConfig({ command: 'agy', model: 'gemini-3.8-flash-low' }, { env: { PATH: '/nowhere' } })).toBeNull()
+  })
+
+  it('runs the command and model the config names', async () => {
+    const dir = binDir('runner')
+    const calls: { cmd: string; args: string[] }[] = []
+    const runner: CommandRunner = async (cmd, args) => {
+      calls.push({ cmd, args })
+      return { stdout: 'the block went on one session', stderr: '' }
+    }
+    const refresher = takeawayFromConfig(
+      { command: 'runner', model: 'a-cheap-model' },
+      { env: { PATH: dir }, runner },
+    )
+    expect(refresher).not.toBeNull()
+    await refresher!.refresh(await fixtureState())
+    expect(calls[0]!.cmd).toBe(join(dir, 'runner'))
+    expect(calls[0]!.args).toContain('a-cheap-model')
+    expect(refresher!.current()).toEqual({ text: 'the block went on one session', model: 'a-cheap-model' })
   })
 })

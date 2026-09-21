@@ -6,12 +6,14 @@ import { parseArgs } from 'node:util'
 import { serve } from '@hono/node-server'
 import { createApp } from './app'
 import { startCodexUsageReader } from './codex-usage'
+import { defaultConfig, tallyConfig } from './config'
 import { buildState } from './state'
-import { createTakeawayRefresher } from './takeaway'
+import { takeawayFromConfig } from './takeaway'
 import { TranscriptIndex, type RefreshCounts } from './transcript-index'
-import { defaultWidgetsDir, removeWidget, writeWidget } from './widget'
+import { removeWidget, writeWidget } from './widget'
 
-const DEFAULT_PORT = 1337
+/** the unit the reset kick starts; `systemd/install.sh` writes it */
+const SAMPLER_UNIT = 'tally-sampler.service'
 
 export interface Options {
   port: number
@@ -20,8 +22,8 @@ export interface Options {
   takeaway: boolean
 }
 
-/** parses `tally [--port <n>] [--no-open] [--no-widget] [--no-takeaway]` */
-export function parseOptions(argv: string[]): Options {
+/** parses `tally [--port <n>] [--no-open] [--no-widget] [--no-takeaway]`; the flag wins over the config's port */
+export function parseOptions(argv: string[], defaultPort: number = defaultConfig().port): Options {
   const { values } = parseArgs({
     args: argv,
     options: {
@@ -33,7 +35,7 @@ export function parseOptions(argv: string[]): Options {
     allowPositionals: false,
   })
 
-  const port = values.port === undefined ? DEFAULT_PORT : Number(values.port)
+  const port = values.port === undefined ? defaultPort : Number(values.port)
   if (!Number.isInteger(port) || port < 0 || port > 65535) throw new Error('--port must be between 0 and 65535')
 
   return {
@@ -55,18 +57,19 @@ function logPass(counts: RefreshCounts): void {
 }
 
 function main(): void {
+  const config = tallyConfig()
   let options: Options
   try {
-    options = parseOptions(process.argv.slice(2))
+    options = parseOptions(process.argv.slice(2), config.port)
   } catch (error) {
     console.error(`tally: ${error instanceof Error ? error.message : String(error)}`)
     process.exit(2)
   }
 
   const uiDist = resolve(dirname(fileURLToPath(import.meta.url)), '../ui/dist')
-  const takeaway = options.takeaway ? createTakeawayRefresher() : null
+  const takeaway = options.takeaway ? takeawayFromConfig(config.takeaway) : null
   const index = new TranscriptIndex()
-  const app = createApp({ uiDist, index, takeaway })
+  const app = createApp({ uiDist, index, takeaway, config })
 
   // the first build reads the whole tree, so it runs in the background and the
   // page says it is building; every window falls back to a live scan until the
@@ -92,22 +95,22 @@ function main(): void {
     }
   })
 
-  const widgetsDir = defaultWidgetsDir()
   let kickedFor: number | null = null
 
   // one state build a minute feeds the widget file and the reset kick. the
   // browser requests the Gemini takeaway only while Tally is visible and focused
   const tick = async () => {
     try {
-      const state = await buildState({ index, recordLook: false })
+      const state = await buildState({ index, recordLook: false, config })
       const five = state.fiveHour
       // the sampler runs every five minutes; a block that just reset gets read now instead
       if (five?.ended && state.now - five.ageSeconds < five.resetsAt && kickedFor !== five.resetsAt) {
         kickedFor = five.resetsAt
-        const child = spawn('systemctl', ['--user', 'start', '--no-block', 'usage-sample.service'], { stdio: 'ignore' })
-        child.on('error', () => console.error('tally: could not start usage-sample.service'))
+        const child = spawn('systemctl', ['--user', 'start', '--no-block', SAMPLER_UNIT], { stdio: 'ignore' })
+        child.on('error', () => console.error(`tally: could not start ${SAMPLER_UNIT}`))
       }
-      if (options.widget) writeWidget(state, widgetsDir)
+      // the directory is resolved per tick, so installing T3 later starts the widget
+      if (options.widget) writeWidget(state)
       // pick up whatever was written since the last pass; an unchanged file is a stat
       indexPass()
     } catch (error) {
@@ -124,7 +127,7 @@ function main(): void {
     codexUsage.stop()
     index.close()
     if (options.widget) {
-      removeWidget(widgetsDir)
+      removeWidget()
     }
     server.close(() => process.exit(0))
   }

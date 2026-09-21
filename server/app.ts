@@ -5,6 +5,7 @@ import { existsSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { serveStatic } from '@hono/node-server/serve-static'
 import { Hono } from 'hono'
+import { defaultConfig } from './config'
 import { sessionDetail } from './session-detail'
 import { codexSessionDetail, codexSessionsRoot } from './codex-sessions'
 import { statePath } from './t3'
@@ -21,8 +22,10 @@ export interface AppConfig extends Options {
   takeaway?: Pick<TakeawayRefresher, 'current' | 'refresh'> | null
 }
 
-export function createApp(config: AppConfig = {}) {
-  const { uiDist = null, takeaway = null, ...stateOptions } = config
+export function createApp(options: AppConfig = {}) {
+  const { uiDist = null, takeaway = null, ...stateOptions } = options
+  // the config the routes read; `stateOptions` carries it on to `buildState`
+  const config = stateOptions.config ?? defaultConfig()
   const app = new Hono()
 
   app.onError((error, c) => {
@@ -57,6 +60,7 @@ export function createApp(config: AppConfig = {}) {
         t3: statePath(stateOptions.home ?? homedir()),
         now: stateOptions.now,
         at,
+        agentsviewUrl: config.agentsviewUrl,
       })
       if (!codexDetail) {
         return c.json({ error: at === undefined ? `no rollout for codex thread ${id}` : `no rollout for codex thread ${id} written by ${at}` }, 404)
@@ -67,14 +71,26 @@ export function createApp(config: AppConfig = {}) {
       root: projectsRoot(stateOptions.home ?? homedir()),
       index: stateOptions.index ?? null,
       now: stateOptions.now,
+      agentsviewUrl: config.agentsviewUrl,
     })
     if (!detail) return c.json({ error: `no transcript for session ${id}` }, 404)
     return c.json(detail)
   })
 
   // the codex routes mount first so `/api/history/codex` is not swallowed by `/api/history`
-  app.route('/api/history/codex', codexHistoryRoutes({ home: stateOptions.home, now: stateOptions.now }))
-  app.route('/api/history', historyRoutes({ home: stateOptions.home, index: stateOptions.index, now: stateOptions.now }))
+  app.route(
+    '/api/history/codex',
+    codexHistoryRoutes({
+      home: stateOptions.home,
+      now: stateOptions.now,
+      plan: config.codexPlan,
+      installed: stateOptions.codexInstalled,
+    }),
+  )
+  app.route(
+    '/api/history',
+    historyRoutes({ home: stateOptions.home, index: stateOptions.index, now: stateOptions.now, plan: config.plan }),
+  )
 
   // reads the last generated line without spending tokens
   app.get('/api/takeaway', (c) => c.json(takeaway?.current() ?? { text: null, model: null }))

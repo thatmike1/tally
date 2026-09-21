@@ -8,7 +8,7 @@
 //   - `resets_at` jitters by a second between samples of the same block, so the
 //     block key is `round(resets_at / 60) * 60`.
 //   - inside a block the meter only climbs; a lower reading is stale.
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 
@@ -50,8 +50,23 @@ export interface Block {
   samples: Sample[]
 }
 
+/**
+ * a sampler file under `~/.cache/tally`, falling back to the `cc-browse-tray`
+ * dir it used to live in when only the old copy exists. `install.sh` moves the
+ * files, so the fallback only matters on a machine where it has not run: that
+ * machine still shows its history instead of an empty page. with neither file
+ * present the new path wins, so a fresh install names the path the sampler is
+ * about to write rather than one nothing will ever create.
+ */
+export function cacheFile(home: string, name: string): string {
+  const next = join(home, '.cache', 'tally', name)
+  if (existsSync(next)) return next
+  const legacy = join(home, '.cache', 'cc-browse-tray', name)
+  return existsSync(legacy) ? legacy : next
+}
+
 export function limitsLogPath(home = homedir()): string {
-  return join(home, '.cache', 'cc-browse-tray', 'limits.jsonl')
+  return cacheFile(home, 'limits.jsonl')
 }
 
 const KNOWN_KEYS = new Set(['t', 'src', 'limits', 'scoped', 'extra', 'other_limits', 'raw_extra'])

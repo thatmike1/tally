@@ -1,20 +1,66 @@
 # tally
 
 A local page that answers "I'm suddenly at 60% of my 5-hour limit, what ate it"
-in three seconds. Successor to cc-browse's live/lanes view and usage-burn, fused.
+in three seconds, and keeps every past block so you can see what a meter point
+actually costs you.
 
-The design record lives in `~/git/ccChat-general/projects/tally`: `sketch.md` for
-the decisions, `mock.html` for the accepted picture (v4), `attribution-proof.md`
-for the maths behind every number here.
+Ubuntu, a Claude subscription, Node 22+ and Python 3. Everything else is
+optional and detected: Codex, AgentsView, T3 Code, `agy`, and whatever local
+pages you want in the tray.
 
-## Run it
+## Install
+
+```
+git clone https://github.com/thatmike1/tally && cd tally
+systemd/install.sh
+```
+
+That installs dependencies, builds the ui, and enables three user units:
+`tally.service` (the page on 127.0.0.1:1337), `tally-sampler.timer` (reads your
+account meters every five minutes) and `tally-tray.service` (the GNOME tray
+icon). It also writes `~/.config/tally/config.json` from what it finds on the
+machine, once — after that the file is yours and install never touches it again.
+Re-running is safe. `systemd/uninstall.sh` takes the units back off and leaves
+the cache and config alone.
+
+**The sampler is the part that matters.** `sampler/usage-sample.py` asks
+`GET /api/oauth/usage` with your existing Claude OAuth token from
+`~/.claude/.credentials.json`, costs no tokens, and appends one row to
+`~/.cache/tally/limits.jsonl`. Without it tally has nothing to draw, so a fresh
+install shows an honest empty page until the first sample lands five minutes
+later, and the history page fills in over a day or two. Nothing is backfilled:
+tally only knows what the sampler saw.
+
+## Configuration
+
+`~/.config/tally/config.json`. Every key is optional and every missing one falls
+back, so you can delete the file and tally still runs.
+
+| key | default | what it does |
+|---|---|---|
+| `port` | `1337` | where the page listens |
+| `plan` | `{"name": "Max 5x", "usdPerMonth": 100}` | what "the sub is worth" compares your list-price usage against |
+| `codexPlan` | `{"name": "ChatGPT Pro", "usdPerMonth": 100}` | the same for the Codex history tab |
+| `agentsviewUrl` | `null` | base url of a local AgentsView. `null` means no transcript links are drawn at all, rather than dead ones |
+| `takeaway` | `null` | `{"command": "agy", "model": "..."}`. Off unless the command is on PATH |
+| `tray.links` | `[]` | rows that open a local page, starting the row's unit if the port is closed |
+| `tray.toggles` | `[]` | rows that start *and stop* a unit, for a service that costs something while it runs |
+
+The `links` / `toggles` split is the whole tray design: bd-board is an always-on
+service, so its row is just "open it". AgentsView costs about 7% of a core while
+sessions are writing, so its row starts and stops it.
+
+Tally reads this file once at startup; the tray re-reads it on Refresh. Three
+programs share the shape (the server, the tray and the installer), so adding a
+key means touching `server/config.ts`, `tray/tally-tray.py` and
+`systemd/install.sh` together.
+
+## Running it by hand
 
 ```
 npm install
 npm start          # builds the ui, serves on 127.0.0.1:1337, opens the browser
 ```
-
-Other scripts:
 
 | command | what it does |
 |---|---|
@@ -22,26 +68,18 @@ Other scripts:
 | `npm run serve` | the server alone, against the already-built ui |
 | `npm test` | vitest, including the comparison against the python oracle |
 | `npm run typecheck` | tsc over server and ui |
-| `npm run oracle` | regenerate the expected tables from `jobs/*.py` (see Tests) |
+| `npm run oracle` | regenerate the expected tables from the proof scripts (see Tests) |
 
-## As a service
+The service serves the built `ui/dist`, so after ui changes run `npm run build`
+and `systemctl --user restart tally`.
 
-`systemd/install.sh` builds the ui and enables `systemd/tally.service` as a user
-unit (linked from this repo, so edits apply after `systemctl --user daemon-reload`).
-It serves the built `ui/dist`, so after ui changes run `npm run build` and
-`systemctl --user restart tally`.
+Flags: `--port <n>` (wins over the config), `--no-open`, `--no-widget`,
+`--no-takeaway`. `bin/tally.mjs` is a launcher that works from any directory, so
+`ln -s "$PWD/bin/tally.mjs" ~/.local/bin/tally` is enough to run it anywhere.
 
-`systemd/tally-tray.service` runs `tray/tally-tray.py`, a GNOME tray icon with
-the three meter lines (the same text the server writes to the T3 widget at
-`~/.t3/userdata/widgets/tally.json` every minute), then rows that open tally and
-bd-board, and open, start or stop AgentsView. `tray/tally-tray.py --print` dumps
-the label and rows. Which sessions ate the block stays on the page.
-
-Flags: `--port <n>`, `--no-open`, `--no-widget`, `--no-takeaway` (the focused,
-visible page requests the takeaway through an `agy -p` call, then it is served
-from memory at `/api/takeaway`).
-`bin/tally.mjs` is a launcher that works from any directory, so
-`ln -s ~/git/tally/bin/tally.mjs ~/.local/bin/tally` is enough to run it anywhere.
+`tray/tally-tray.py --print` dumps the tray label and rows without a tray, which
+is the fastest way to see what a given config produces; `TALLY_CONFIG=/tmp/c.json`
+points it at a scratch file.
 
 ## Routes and endpoints
 
@@ -58,16 +96,25 @@ and the "since you last looked" marker is neither read nor written.
 
 ## Where the numbers come from
 
-**The meters** — `~/.cache/cc-browse-tray/limits.jsonl`, written by
-`projects/usage-burn/usage-sample.py` off `GET /api/oauth/usage` on a five-minute
-systemd timer. Only rows with `"src": "api"` are read: the statusline hook writes
-the same shape, but a payload republished by an idle terminal is stale, and 26%
-of those rows disagreed with the API by two points or more. Blocks are keyed on
-`round(resets_at / 60)` because `resets_at` jitters by a second, and a reading
+**The meters** — `~/.cache/tally/limits.jsonl`, written by
+`sampler/usage-sample.py` off `GET /api/oauth/usage` on a five-minute systemd
+timer. Only rows with `"src": "api"` are read: a Claude Code statusline hook can
+write the same shape, but a payload republished by an idle terminal is stale, and
+26% of those rows disagreed with the API by two points or more. Blocks are keyed
+on `round(resets_at / 60)` because `resets_at` jitters by a second, and a reading
 lower than the one before it inside a block is dropped as stale.
 
+The history starts at the first sample in the log, not at a fixed date, so the
+page never claims to know about a day nobody sampled.
+
 If the page says the sampler is behind, check
-`systemctl --user list-timers usage-sample.timer`.
+`systemctl --user list-timers tally-sampler.timer`.
+
+`USAGE_UPSTREAM=user@host` on the sampler unit makes that machine the sampler and
+this one copy its log over ssh, asking the endpoint itself only when the
+upstream's newest sample is stale. That is for a second machine (a VPS that is up
+overnight) on the same account: the endpoint answers 429 when two machines ask at
+once, and a 24/7 sampler leaves no holes where background agents ran.
 
 **Per-request tokens and cost** — `~/.claude/projects/*/*.jsonl` plus
 `*/subagents/*.jsonl`, last line per (file, message id), subagent files folded
@@ -92,8 +139,10 @@ brightness is the session's cost, and a click opens `#/session/<id>`, whose data
 comes from `GET /api/session/:id` (the lead transcript and one lane per subagent
 file, with every request on it).
 
-**Codex weekly** — the server spawns `codex app-server` every five minutes and
-asks `account/rateLimits/read` for the main bucket's seven-day window, with no
+**Codex weekly** — with no `codex` binary on the machine the whole Codex surface
+is hidden rather than shown as permanently unavailable. With one, the server
+spawns `codex app-server` every five minutes and asks
+`account/rateLimits/read` for the main bucket's seven-day window, with no
 conversation or model turn. Readings go to `~/.cache/tally/codex-usage.jsonl`,
 the last read's outcome to `codex-usage-status.json`; neither holds credentials.
 A reading older than 15 minutes or a failed read shows as stale, never as 0%.
@@ -126,7 +175,9 @@ opencode threads get a title, a span and a live tag. They never get points: ther
 is no usage data for them and none is invented, and the page says the split is
 Claude only.
 
-**Transcript links** go to AgentsView, `http://127.0.0.1:8080/sessions/<id>?msg=last`.
+**Transcript links** go to AgentsView, `<agentsviewUrl>/sessions/<id>?msg=last`.
+With no `agentsviewUrl` configured no link is drawn anywhere, because a dead link
+is worse than none.
 
 ## What the split can claim
 
@@ -167,10 +218,13 @@ proof:
 Both fixtures are frozen in `test/fixtures/`. The transcripts there are real ones
 with every message body stripped out; only the fields both parsers read survive.
 Rebuild them with `python3 scripts/make-fixtures.py` and then `npm run oracle`,
-which needs the proof scripts (`TALLY_JOBS`, default
-`~/git/ccChat-general/projects/tally/jobs`).
+which needs the proof scripts that produced the attribution numbers
+(`TALLY_JOBS`; they are not in this repo, so the oracle refresh only runs where
+they are and `npm test` never needs them — the fixtures it compares against are
+checked in).
 
-## Not in v1
+## Screenshots
 
-The tray face, the T3 sidebar widget, the Gemini one-liner over the split, and
-any transcript rendering. `docs/v1.png` is what v1 looks like.
+`docs/v1.png` and `docs/v2-week.png` are earlier versions: no tray face, no T3
+sidebar widget, no takeaway line over the split, no Codex. Tally renders no
+transcripts itself and never will; that is AgentsView's job.

@@ -168,7 +168,7 @@ describe('buildState', () => {
 
   it('formats other limits as notes', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'tally-notes-home-'))
-    const logDir = join(dir, '.cache', 'cc-browse-tray')
+    const logDir = join(dir, '.cache', 'tally')
     mkdirSync(logDir, { recursive: true })
     writeFileSync(
       join(logDir, 'limits.jsonl'),

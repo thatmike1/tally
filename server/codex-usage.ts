@@ -81,7 +81,8 @@ export interface CodexHistoryPoint {
 }
 
 export interface CodexUsageView {
-  status: 'fresh' | 'stale' | 'unavailable'
+  /** `absent` is "no codex on this machine" and hides Codex; `unavailable` is a read that failed */
+  status: 'fresh' | 'stale' | 'unavailable' | 'absent'
   line: string
   usedPercent: number | null
   resetsAt: number | null
@@ -308,6 +309,8 @@ export function codexPace(window: CodexUsageReading[]): CodexPace | null {
 }
 
 export interface CodexUsageViewOptions {
+  /** false when no codex binary was found; the view is `absent` and the page drops Codex */
+  installed?: boolean
   /**
    * freeze the view at this instant: readings taken after it did not exist yet,
    * so the window, the pace and the percentage are the ones `at` would have seen.
@@ -319,6 +322,11 @@ export interface CodexUsageViewOptions {
 /** gives both glance surfaces and the page one canonical, honest reading */
 export function codexUsageView(paths: CodexUsagePaths, now: number, options: CodexUsageViewOptions = {}): CodexUsageView {
   const at = options.at ?? null
+  if (options.installed === false) {
+    // a leftover reading from a machine that has since lost Codex would be a
+    // number nothing can refresh, so `absent` reports nothing at all
+    return { status: 'absent', line: 'Codex · not installed', usedPercent: null, resetsAt: null, sampledAt: null, ageSeconds: null, windowStart: null, pace: null, history: [] }
+  }
   const status = readJson<CodexReadStatus>(paths.status)
   const all = readCodexHistory(paths.history)
   const readings = at === null ? all : all.filter((reading) => reading.sampledAt <= at)
@@ -362,23 +370,26 @@ function send(child: ChildProcessWithoutNullStreams, message: object): void {
   child.stdin.write(`${JSON.stringify(message)}\n`)
 }
 
-/** finds Codex in the service's PATH or common user-level install locations */
-export function codexBinaryPath(home: string = homedir(), env: NodeJS.ProcessEnv = process.env): string {
+/** finds Codex in the service's PATH or common user-level install locations; null when the machine has none */
+export function codexBinaryPath(home: string = homedir(), env: NodeJS.ProcessEnv = process.env): string | null {
   const candidates = [
     env.CODEX_BIN,
     ...(env.PATH ?? '').split(':').filter(Boolean).map((dir) => join(dir, 'codex')),
     join(home, '.bun', 'bin', 'codex'),
     join(home, '.local', 'bin', 'codex'),
   ]
-  return candidates.find((candidate): candidate is string => Boolean(candidate && existsSync(candidate))) ?? 'codex'
+  return candidates.find((candidate): candidate is string => Boolean(candidate && existsSync(candidate))) ?? null
 }
 
 /** one bounded app-server session; it never creates a conversation or model turn */
 export function readCodexWeeklyUsage(options: { now?: number; timeoutMs?: number; signal?: AbortSignal; binary?: string } = {}): Promise<CodexUsageReading> {
   const sampledAt = options.now ?? Date.now() / 1000
   const timeoutMs = options.timeoutMs ?? REQUEST_TIMEOUT_MS
+  const binary = options.binary ?? codexBinaryPath()
   return new Promise((resolve, reject) => {
-    const child = spawn(options.binary ?? codexBinaryPath(), ['app-server', '--stdio'], { stdio: ['pipe', 'pipe', 'pipe'] })
+    // nothing to spawn: a machine with no Codex has no reading, not a failed one
+    if (!binary) return reject(new Error('no codex binary on this machine'))
+    const child = spawn(binary, ['app-server', '--stdio'], { stdio: ['pipe', 'pipe', 'pipe'] })
     let buffer = ''
     let settled = false
     const abort = () => finish(new Error('Codex usage reader stopped'))
@@ -432,8 +443,15 @@ export interface CodexUsageReader {
 }
 
 /** starts an immediate read and then refreshes without overlapping requests */
-export function startCodexUsageReader(options: { paths?: CodexUsagePaths; intervalMs?: number; onUpdate?: () => void | Promise<void> } = {}): CodexUsageReader {
+export function startCodexUsageReader(options: { paths?: CodexUsagePaths; intervalMs?: number; binary?: string | null; onUpdate?: () => void | Promise<void> } = {}): CodexUsageReader {
   const paths = options.paths ?? codexUsagePaths()
+  const binary = options.binary === undefined ? codexBinaryPath() : options.binary
+  if (!binary) {
+    // without a binary every read would be a failed spawn on a timer, and the
+    // failures would be written down as if Codex were broken rather than absent
+    console.log('tally: no codex binary found, so the Codex meter is off')
+    return { refresh: async () => {}, stop: () => {} }
+  }
   let stopped = false
   let running = false
   let active: AbortController | null = null
@@ -443,7 +461,7 @@ export function startCodexUsageReader(options: { paths?: CodexUsagePaths; interv
     active = new AbortController()
     const checkedAt = Date.now() / 1000
     try {
-      recordCodexReading(paths, await readCodexWeeklyUsage({ now: checkedAt, signal: active.signal }))
+      recordCodexReading(paths, await readCodexWeeklyUsage({ now: checkedAt, signal: active.signal, binary }))
     } catch (error) {
       if (!stopped) {
         recordCodexFailure(paths, checkedAt, error instanceof Error ? error.message : String(error))

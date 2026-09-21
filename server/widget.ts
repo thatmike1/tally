@@ -20,9 +20,15 @@ export interface WidgetData {
 
 const lastBodies = new Map<string, string>()
 
-/** default location where T3 Code watches for widget json files */
-export function defaultWidgetsDir(): string {
-  return process.env.T3_WIDGETS_DIR ?? join(homedir(), '.t3', 'userdata', 'widgets')
+/**
+ * where T3 Code watches for widget json files, or null when this machine has no
+ * T3 Code: creating `~/.t3/userdata/widgets` there would be tally inventing a
+ * tree nothing ever reads. `T3_WIDGETS_DIR` forces a directory either way.
+ */
+export function defaultWidgetsDir(env: NodeJS.ProcessEnv = process.env, home: string = homedir()): string | null {
+  if (env.T3_WIDGETS_DIR) return env.T3_WIDGETS_DIR
+  const userdata = join(home, '.t3', 'userdata')
+  return existsSync(userdata) ? join(userdata, 'widgets') : null
 }
 
 /** derives the 5-hour verdict phrase and formatted reset time */
@@ -112,8 +118,9 @@ export function renderWidget(state: State): WidgetData {
   return data
 }
 
-/** writes tally.json atomically to dir; skips write if body is unchanged */
-export function writeWidget(state: State, dir: string = defaultWidgetsDir()): void {
+/** writes tally.json atomically to dir; skips write if body is unchanged, or if there is no T3 to read it */
+export function writeWidget(state: State, dir: string | null = defaultWidgetsDir()): void {
+  if (dir === null) return
   try {
     const data = renderWidget(state)
     const body = JSON.stringify(data)
@@ -133,7 +140,8 @@ export function writeWidget(state: State, dir: string = defaultWidgetsDir()): vo
 }
 
 /** removes tally.json from dir on clean shutdown */
-export function removeWidget(dir: string = defaultWidgetsDir()): void {
+export function removeWidget(dir: string | null = defaultWidgetsDir()): void {
+  if (dir === null) return
   try {
     const filePath = join(dir, 'tally.json')
     if (existsSync(filePath)) {

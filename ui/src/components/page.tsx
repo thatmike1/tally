@@ -98,7 +98,7 @@ export function PageBody({
       {state.fiveHour?.expired && !frozen ? (
         <p className="warn">
           the block reset over ten minutes ago and nothing has read the account since: the sampler is behind, so this
-          page is stale. check <code>systemctl --user list-timers usage-sample.timer</code>.
+          page is stale. check <code>systemctl --user list-timers tally-sampler.timer</code>.
         </p>
       ) : null}
       {state.notes.map((note) => (

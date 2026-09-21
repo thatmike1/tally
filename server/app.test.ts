@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { createApp } from './app'
+import { defaultConfig } from './config'
 import type { SessionDetail } from './history-types'
 import { TranscriptIndex } from './transcript-index'
 import { projectsRoot } from './transcripts'
@@ -46,8 +47,23 @@ describe('GET /api/session/:id', () => {
     )
     expect(body.cost).toBeGreaterThan(0)
     expect(body.tokens).toBeGreaterThan(0)
-    expect(body.agentsview).toBe(`http://127.0.0.1:8080/sessions/${WITH_AGENTS}?msg=last`)
+    // no AgentsView configured, so there is no transcript link to offer
+    expect(body.agentsview).toBeNull()
     expect(body.start).toBeLessThanOrEqual(body.end)
+  })
+
+  it('links the transcript to the configured AgentsView', async () => {
+    const withAgentsview = createApp({
+      home: FIXTURE_HOME,
+      now: NOW,
+      recordLook: false,
+      lastLookedPath: join(mkdtempSync(join(tmpdir(), 'tally-look-')), 'last-looked'),
+      config: { ...defaultConfig(), agentsviewUrl: 'http://127.0.0.1:8080' },
+    })
+    const body = (await (await withAgentsview.request(`/api/session/${WITH_AGENTS}`)).json()) as SessionDetail
+    expect(body.agentsview).toBe(`http://127.0.0.1:8080/sessions/${WITH_AGENTS}?msg=last`)
+    const state = (await (await withAgentsview.request('/api/state?peek')).json()) as { agentsviewUrl: string }
+    expect(state.agentsviewUrl).toBe('http://127.0.0.1:8080')
   })
 
   it('answers the same detail out of the index as off the transcripts', async () => {
@@ -89,7 +105,7 @@ describe('GET /api/session/codex:<id>', () => {
     const response = await codexApp().request('/api/session/codex:lead')
     expect(response.status).toBe(200)
     const body = (await response.json()) as SessionDetail & { unit: string }
-    expect(body).toMatchObject({ sessionId: 'codex:lead', unit: 'credits', requests: 2 })
+    expect(body).toMatchObject({ sessionId: 'codex:lead', unit: 'credits', requests: 2, agentsview: null })
     expect(body.parent.label).toBe('main')
     expect(body.subagents.map((lane) => lane.label)).toEqual(['Tesla · worker'])
   })
@@ -121,5 +137,21 @@ describe('GET /api/state', () => {
     // the sources the page can trace a wrong number home through, and no others
     expect(Object.keys(body.sources).sort()).toEqual(['index', 'limits', 't3', 'transcripts'])
     expect(body.sources.index).toContain('transcripts.sqlite')
+    expect(body.agentsviewUrl).toBeNull()
+  })
+
+  it('hides Codex when the machine has no codex binary', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'tally-no-codex-'))
+    const bare = createApp({
+      home: FIXTURE_HOME,
+      now: NOW,
+      recordLook: false,
+      lastLookedPath: join(dir, 'last-looked'),
+      codexInstalled: false,
+    })
+    const state = (await (await bare.request('/api/state?peek')).json()) as Record<string, any>
+    expect(state.codex).toMatchObject({ status: 'absent', usedPercent: null, split: null })
+    const history = (await (await bare.request('/api/history/codex')).json()) as { installed: boolean }
+    expect(history.installed).toBe(false)
   })
 })

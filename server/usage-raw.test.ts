@@ -1,9 +1,9 @@
 // the `seven_day_breakdown` reader, over a hand-written raw usage log.
-import { mkdtempSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { breakdownForWindow, chatsPercent, readBreakdowns } from './usage-raw'
+import { breakdownForWindow, chatsPercent, readBreakdowns, usageRawPath } from './usage-raw'
 
 const iso = (t: number) => new Date(t * 1000).toISOString()
 
@@ -33,6 +33,19 @@ function logWith(lines: string[]): string {
   writeFileSync(path, lines.join('\n') + '\n')
   return path
 }
+
+describe('usageRawPath', () => {
+  it('falls back to the cc-browse-tray copy, and takes the new one as soon as it exists', () => {
+    const home = mkdtempSync(join(tmpdir(), 'tally-home-'))
+    mkdirSync(join(home, '.cache', 'cc-browse-tray'), { recursive: true })
+    writeFileSync(join(home, '.cache', 'cc-browse-tray', 'usage-raw.jsonl'), '')
+    expect(usageRawPath(home)).toBe(join(home, '.cache', 'cc-browse-tray', 'usage-raw.jsonl'))
+
+    mkdirSync(join(home, '.cache', 'tally'), { recursive: true })
+    writeFileSync(join(home, '.cache', 'tally', 'usage-raw.jsonl'), '')
+    expect(usageRawPath(home)).toBe(join(home, '.cache', 'tally', 'usage-raw.jsonl'))
+  })
+})
 
 describe('readBreakdowns', () => {
   it('skips malformed lines and rows with no breakdown', () => {

@@ -259,6 +259,8 @@ function weekSeries(weeks: WeekSummary[]): Series[] {
 export function CostPerPercentChart({ history }: { history: ClaudeHistory }) {
   const box = useRef<HTMLDivElement>(null)
   const width = useWidth(box)
+  // no first sample means no left edge, and an axis drawn from a guess is a lie
+  if (history.since === null) return null
   const blocks = blockSeries(history.blocks)
   const weeks = weekSeries(history.weeks)
 

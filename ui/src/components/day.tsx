@@ -241,6 +241,8 @@ function Lanes({ state }: { state: State }) {
             </div>
             {rows.map((lane) => {
               const other = lane.cost === null
+              // no AgentsView configured means no transcript link, not a dead one
+              const transcript = other ? null : agentsview(state.agentsviewUrl, lane.id)
               // brightness by cost, as in v1; a thread with no cost stays flat
               const opacity = other ? 0.55 : 0.4 + 0.36 * Math.sqrt(Math.min(1, (lane.cost ?? 0) / maxCost))
               const href = other ? null : sessionHref(lane.id)
@@ -281,11 +283,11 @@ function Lanes({ state }: { state: State }) {
                     ) : (
                       <span title={title}>{lane.title}</span>
                     )}
-                    {other ? null : (
-                      <a className="av" href={agentsview(lane.id)} title="open the transcript in AgentsView">
+                    {transcript ? (
+                      <a className="av" href={transcript} title="open the transcript in AgentsView">
                         ↗
                       </a>
-                    )}
+                    ) : null}
                   </div>
                   {href ? (
                     <a className="lb" href={href} title={title}>

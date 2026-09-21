@@ -48,12 +48,31 @@ describe('selectCodexWeeklyWindow', () => {
 })
 
 describe('codexBinaryPath', () => {
+  it('is null when the machine has no codex at all', () => {
+    expect(codexBinaryPath(mkdtempSync(join(tmpdir(), 'tally-codex-home-')), { PATH: '/nowhere' })).toBeNull()
+  })
+
   it('finds a user-level Bun install when the service PATH does not include it', () => {
     const home = mkdtempSync(join(tmpdir(), 'tally-codex-home-'))
     const binary = join(home, '.bun', 'bin', 'codex')
     mkdirSync(join(home, '.bun', 'bin'), { recursive: true })
     writeFileSync(binary, '')
     expect(codexBinaryPath(home, { PATH: '/usr/bin' })).toBe(binary)
+  })
+})
+
+describe('a machine with no Codex', () => {
+  it('reports the meter as absent rather than unavailable, and reads no file', () => {
+    const files = paths()
+    recordCodexReading(files, { sampledAt: 100, usedPercent: 40, resetsAt: 10_000, windowDurationMins: 7 * 24 * 60 })
+    expect(codexUsageView(files, 120, { installed: false })).toMatchObject({
+      status: 'absent',
+      usedPercent: null,
+      resetsAt: null,
+      windowStart: null,
+      pace: null,
+      history: [],
+    })
   })
 })
 

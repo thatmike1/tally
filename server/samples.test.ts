@@ -1,9 +1,9 @@
 // the meter log: which rows count, how blocks are keyed, what stale means.
-import { mkdtempSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { blocks, currentBlock, monotonic, readLog, readSamples, type Sample } from './samples'
+import { blocks, currentBlock, limitsLogPath, monotonic, readLog, readSamples, type Sample } from './samples'
 
 function logWith(rows: unknown[]): string {
   const dir = mkdtempSync(join(tmpdir(), 'tally-samples-'))
@@ -21,6 +21,32 @@ function apiRow(t: number, pct: number, resetsAt: number, extra: Record<string, 
     ...extra,
   }
 }
+
+describe('limitsLogPath', () => {
+  function homeWith(...dirs: string[]): string {
+    const home = mkdtempSync(join(tmpdir(), 'tally-home-'))
+    for (const dir of dirs) {
+      mkdirSync(join(home, '.cache', dir), { recursive: true })
+      writeFileSync(join(home, '.cache', dir, 'limits.jsonl'), '')
+    }
+    return home
+  }
+
+  it('reads the log the old sampler left behind when nothing has moved yet', () => {
+    const home = homeWith('cc-browse-tray')
+    expect(limitsLogPath(home)).toBe(join(home, '.cache', 'cc-browse-tray', 'limits.jsonl'))
+  })
+
+  it('prefers the new path once install.sh has moved the log', () => {
+    const home = homeWith('cc-browse-tray', 'tally')
+    expect(limitsLogPath(home)).toBe(join(home, '.cache', 'tally', 'limits.jsonl'))
+  })
+
+  it('names the new path on a machine with no log at all, which is where the sampler will write', () => {
+    const home = homeWith()
+    expect(limitsLogPath(home)).toBe(join(home, '.cache', 'tally', 'limits.jsonl'))
+  })
+})
 
 describe('readSamples', () => {
   it('drops everything that is not an api row', () => {

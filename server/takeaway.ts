@@ -1,6 +1,10 @@
 // generates an optional one-line takeaway of what ate the 5-hour block and
-// whether the reset is safe, using a cheap model via agy on a visible-page request.
+// whether the reset is safe, using whatever cheap-model command the config
+// names, on a visible-page request.
 import { execFile } from 'node:child_process'
+import { existsSync } from 'node:fs'
+import { join } from 'node:path'
+import type { TakeawayConfig } from './config'
 import type { State } from './state'
 
 export interface TakeawayResult {
@@ -115,8 +119,22 @@ function cleanText(raw: string): string | null {
 
 export interface TakeawayOptions {
   runner?: CommandRunner
+  /** the command to run; the config names it, and it is resolved before it is used */
+  command?: string
   model?: string
   timeoutMs?: number
+  /** the environment the PATH lookup reads, so a test can hand it one */
+  env?: NodeJS.ProcessEnv
+}
+
+/** the command as a path, or null when this machine does not have it */
+export function resolveCommand(command: string, env: NodeJS.ProcessEnv = process.env): string | null {
+  if (command.includes('/')) return existsSync(command) ? command : null
+  for (const dir of (env.PATH ?? '').split(':').filter(Boolean)) {
+    const candidate = join(dir, command)
+    if (existsSync(candidate)) return candidate
+  }
+  return null
 }
 
 export interface TakeawayRefresher {
@@ -131,10 +149,11 @@ export interface TakeawayRefresher {
  * so the page's request waits for `refresh` while keeping the rest of Tally
  * responsive. only a success moves the cache key, so a failed or timed-out run
  * is retried the next time the user returns to the page.
- * runs `agy -p <prompt> --model gemini-3.8-flash-low --output-format text`.
+ * runs `<command> -p <prompt> --model <model> --output-format text`.
  */
 export function createTakeawayRefresher(options: TakeawayOptions = {}): TakeawayRefresher {
   const runner = options.runner ?? defaultExecRunner
+  const command = options.command ?? 'agy'
   const model = options.model ?? 'gemini-3.8-flash-low'
   // nothing waits on the call any more, so the timeout only bounds a hung agy
   const timeoutMs = options.timeoutMs ?? 45_000
@@ -153,7 +172,7 @@ export function createTakeawayRefresher(options: TakeawayOptions = {}): Takeaway
       inFlight = (async () => {
         try {
           const prompt = buildTakeawayPrompt(buildTakeawaySummary(state))
-          const res = await runner('agy', ['-p', prompt, '--model', model, '--output-format', 'text'], timeoutMs)
+          const res = await runner(command, ['-p', prompt, '--model', model, '--output-format', 'text'], timeoutMs)
           const text = res ? cleanText(res.stdout) : null
           if (text) {
             latest = { text, model }
@@ -168,4 +187,19 @@ export function createTakeawayRefresher(options: TakeawayOptions = {}): Takeaway
       return inFlight
     },
   }
+}
+
+/**
+ * the refresher this machine's config asks for, or null when the takeaway is
+ * off or the command it names is not installed. without the second check every
+ * focused page view is a failed spawn of something that was never there.
+ */
+export function takeawayFromConfig(config: TakeawayConfig | null, options: TakeawayOptions = {}): TakeawayRefresher | null {
+  if (!config) return null
+  const command = resolveCommand(config.command, options.env)
+  if (!command) {
+    console.log(`tally: ${config.command} is not on the PATH, so the takeaway is off`)
+    return null
+  }
+  return createTakeawayRefresher({ ...options, command, model: config.model })
 }

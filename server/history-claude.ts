@@ -13,9 +13,8 @@
 //     `cost / (delta * (1 - chats / 100))`, from `seven_day_breakdown`.
 import { homedir } from 'node:os'
 import { Hono } from 'hono'
+import { defaultConfig, type PlanConfig } from './config'
 import {
-  HISTORY_SINCE,
-  MAX_5X_USD_PER_MONTH,
   MEASURED_MAX_GAP,
   type BlockSummary,
   type CacheRatio,
@@ -28,7 +27,7 @@ import {
 import type { Tokens } from './prices'
 import { blocks as groupBlocks, limitsLogPath, monotonic, readSamples, type Sample } from './samples'
 import { scopedReadings, WEEK, type Reading } from './split'
-import { startOfMonth } from './time'
+import { dayBounds, startOfMonth } from './time'
 import { indexPath, type TranscriptIndex } from './transcript-index'
 import { projectsRoot, scan, type RequestRecord } from './transcripts'
 import { breakdownForWindow, chatsPercent, readBreakdowns, usageRawPath, WINDOW_JITTER } from './usage-raw'
@@ -39,6 +38,18 @@ export interface HistoryOptions {
   now?: number
   /** the raw usage log, when a test points somewhere other than the home's */
   usageRaw?: string
+  /** the plan the sub-value line is compared against; the default plan without a config file */
+  plan?: PlanConfig
+}
+
+/**
+ * the day the log's first api reading fell on, local time. the sampler's own
+ * start is the only honest left edge: a baked-in date claims history on a
+ * machine that has none. null with no samples at all.
+ */
+export function historySince(samples: Sample[]): number | null {
+  const first = samples[0]
+  return first ? dayBounds(first.t)[0] : null
 }
 
 export const CAVEAT =
@@ -124,7 +135,6 @@ export function weekGroups(samples: Sample[]): WeekGroup[] {
 function blockSummaries(samples: Sample[], records: RequestRecord[], now: number): BlockSummary[] {
   const out: BlockSummary[] = []
   for (const block of groupBlocks(samples)) {
-    if (block.resetKey < HISTORY_SINCE) continue
     const kept = monotonic(block.samples)
     const first = kept[0]
     const last = kept.at(-1)
@@ -165,7 +175,6 @@ function weekSummaries(
   const breakdowns = readBreakdowns(usageRaw)
   const out: WeekSummary[] = []
   for (const group of weekGroups(samples)) {
-    if (group.resetsAt < HISTORY_SINCE) continue
     const start = group.resetsAt - WEEK
     const partial = group.resetsAt > now
     const end = partial ? now : group.resetsAt
@@ -221,7 +230,7 @@ function weekSummaries(
   return out
 }
 
-function subValue(samples: Sample[], records: RequestRecord[], now: number): SubValue {
+function subValue(samples: Sample[], records: RequestRecord[], now: number, plan: PlanConfig): SubValue {
   const latest = samples.at(-1) ?? null
   const weekStart =
     latest?.weeklyResetsAt != null ? Math.round(latest.weeklyResetsAt / 60) * 60 - WEEK : startOfMonth(now)
@@ -231,7 +240,8 @@ function subValue(samples: Sample[], records: RequestRecord[], now: number): Sub
     weekStart,
     monthCost: usageOver(records, monthStart, now).cost,
     monthStart,
-    planUsd: MAX_5X_USD_PER_MONTH,
+    planUsd: plan.usdPerMonth,
+    planName: plan.name,
   }
 }
 
@@ -240,19 +250,21 @@ export async function claudeHistory(options: HistoryOptions = {}): Promise<Claud
   const home = options.home ?? homedir()
   const now = options.now ?? Date.now() / 1000
   const index = options.index ?? null
+  const plan = options.plan ?? defaultConfig().plan
   const samples = readSamples(limitsLogPath(home))
+  const since = historySince(samples)
   // the month-to-date total reaches back past the first meter sample, so the
   // read starts at whichever of the two opens first
-  const from = Math.min(HISTORY_SINCE, startOfMonth(now))
+  const from = since === null ? startOfMonth(now) : Math.min(since, startOfMonth(now))
   const records =
     index && index.covers(from) ? index.query(from, now).records : (await scan(from, now, projectsRoot(home))).records
   const progress = index?.progress() ?? null
   return {
-    since: HISTORY_SINCE,
+    since,
     now,
     blocks: blockSummaries(samples, records, now),
     weeks: weekSummaries(samples, records, now, options.usageRaw ?? usageRawPath(home)),
-    subValue: subValue(samples, records, now),
+    subValue: subValue(samples, records, now, plan),
     indexing: progress ? progress.building || progress.cold : false,
     caveat: CAVEAT,
     sources: {

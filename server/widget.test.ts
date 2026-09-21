@@ -1,5 +1,5 @@
 // tests for rendering and writing the T3 sidebar widget.
-import { existsSync, mkdtempSync, readFileSync, statSync, utimesSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, statSync, utimesSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -8,6 +8,7 @@ import { buildState } from './state'
 import { formatHm } from './time'
 import {
   computeWidgetState,
+  defaultWidgetsDir,
   renderWidget,
   resetWidgetCache,
   removeWidget,
@@ -211,6 +212,26 @@ describe('writeWidget and removeWidget', () => {
     const invalidDir = '/dev/null/impossible-dir'
     expect(() => writeWidget({} as never, invalidDir)).not.toThrow()
     expect(() => removeWidget(invalidDir)).not.toThrow()
+  })
+})
+
+describe('defaultWidgetsDir', () => {
+  it('is null on a machine with no T3 Code, so nothing is created under ~/.t3', () => {
+    const home = mkdtempSync(join(tmpdir(), 'tally-no-t3-'))
+    expect(defaultWidgetsDir({}, home)).toBeNull()
+    expect(() => writeWidget({} as never, null)).not.toThrow()
+    expect(existsSync(join(home, '.t3'))).toBe(false)
+  })
+
+  it('takes the directory T3_WIDGETS_DIR names even without a T3 tree', () => {
+    const home = mkdtempSync(join(tmpdir(), 'tally-no-t3-'))
+    expect(defaultWidgetsDir({ T3_WIDGETS_DIR: '/tmp/forced' }, home)).toBe('/tmp/forced')
+  })
+
+  it('is the widgets directory once T3 has a userdata tree', () => {
+    const home = mkdtempSync(join(tmpdir(), 'tally-t3-'))
+    mkdirSync(join(home, '.t3', 'userdata'), { recursive: true })
+    expect(defaultWidgetsDir({}, home)).toBe(join(home, '.t3', 'userdata', 'widgets'))
   })
 })
 

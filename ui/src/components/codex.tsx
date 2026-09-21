@@ -14,6 +14,8 @@ const H = 100
  */
 export function Codex({ state, frozen = false }: { state: State; frozen?: boolean }) {
   const codex = state.codex
+  // no codex on this machine: no band, no empty section, nothing about Codex at all
+  if (codex.status === 'absent') return null
   if (codex.status === 'unavailable') {
     return (
       <section className="codex quiet">
@@ -58,7 +60,7 @@ export function CodexThreads({ state, frozen = false, beside = false }: { state:
   // under the Codex meter in its own column the section needs no "codex" in its name
   const name = beside ? 'what moved it' : 'codex this week'
   const split = state.codex.split
-  if (!split) return null
+  if (state.codex.status === 'absent' || !split) return null
   const rows = split.threads.filter((row) => row.credits > 0)
   if (!rows.length) {
     return (

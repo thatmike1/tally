@@ -11,13 +11,11 @@
 import { homedir } from 'node:os'
 import { Hono } from 'hono'
 import { codexSessionsRoot, scanRollouts, type CodexRollout } from './codex-sessions'
-import { codexUsagePaths, readCodexHistory, CODEX_WEEK_MINUTES } from './codex-usage'
+import { codexBinaryPath, codexUsagePaths, readCodexHistory, CODEX_WEEK_MINUTES } from './codex-usage'
+import { defaultConfig, type PlanConfig } from './config'
 import type { CodexHistory, CodexWindow } from './history-types'
 import { OPENAI_PRICE_TABLE, openAiCost } from './openai-prices'
 import { startOfMonth } from './time'
-
-/** the ChatGPT tier the dollars are compared against */
-export const CODEX_PLAN_USD = 100
 
 /** readings of one window agree on the reset to within this, as `splitCodexWeek` assumes */
 const RESET_JITTER_SECONDS = 120
@@ -29,6 +27,10 @@ export interface CodexHistoryOptions {
   now?: number
   /** injected by the tests; the real route scans `~/.codex/sessions` */
   rollouts?: CodexRollout[]
+  /** the ChatGPT tier the dollars are compared against */
+  plan?: PlanConfig
+  /** whether this machine has Codex at all; found from the binary when not given */
+  installed?: boolean
 }
 
 interface Reading {
@@ -195,6 +197,8 @@ function buildWindow(rollouts: CodexRollout[], window: { resetsAt: number; readi
 export async function buildCodexHistory(options: CodexHistoryOptions = {}): Promise<CodexHistory> {
   const now = options.now ?? Date.now() / 1000
   const home = options.home ?? homedir()
+  const plan = options.plan ?? defaultConfig().codexPlan
+  const installed = options.installed ?? codexBinaryPath(home) !== null
   const paths = codexUsagePaths(home)
   const root = codexSessionsRoot(home)
   // history reaches as far back as the rollouts do, so nothing is skipped by mtime
@@ -208,12 +212,14 @@ export async function buildCodexHistory(options: CodexHistoryOptions = {}): Prom
 
   return {
     now,
+    installed,
     windows,
     subValue: {
       monthCostUsd: month.costUsd,
       pricedMonthCostUsd: month.pricedCostUsd,
       monthStart,
-      planUsd: CODEX_PLAN_USD,
+      planUsd: plan.usdPerMonth,
+      planName: plan.name,
       unknownModels: month.unknownModels,
     },
     prices: OPENAI_PRICE_TABLE,

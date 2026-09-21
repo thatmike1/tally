@@ -3,7 +3,8 @@ import { readFileSync, mkdirSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { codexSessionsRoot, scanRollouts, splitCodexWeek, t3CodexThreads, type CodexWeekSplit } from './codex-sessions'
-import { codexUsagePaths, codexUsageView, type CodexUsageView } from './codex-usage'
+import { codexBinaryPath, codexUsagePaths, codexUsageView, type CodexUsageView } from './codex-usage'
+import { defaultConfig, type TallyConfig } from './config'
 import type { IndexProgress, Lane } from './history-types'
 import { buildLanes, LIVE_WINDOW } from './lanes'
 import {
@@ -47,6 +48,10 @@ export const OTHER_COLOR = '#3c6e9e'
 export interface Options {
   home?: string
   now?: number
+  /** the machine's config; the defaults when nothing passes one */
+  config?: TallyConfig
+  /** whether Codex is installed; found from the binary when not given */
+  codexInstalled?: boolean
   /** the transcript index; without one every window is read with a live `scan()` */
   index?: TranscriptIndex | null
   /** file that remembers when the page was last opened */
@@ -90,6 +95,8 @@ export interface OtherRow extends Thread {
 
 export interface State {
   now: number
+  /** base url for transcript links, or null when no AgentsView is configured */
+  agentsviewUrl: string | null
   /** how far the transcript index has got; the page says so while it builds */
   index: IndexProgress
   lastLooked: number | null
@@ -195,7 +202,12 @@ export async function buildState(options: Options = {}): Promise<State> {
   const lastLooked = frozen ? null : readLastLooked(lookPath)
   // frozen, the Codex meter is the reading `at` would have seen: the window
   // containing it, no reading after it, and the rollouts cut at the same instant
-  const codexView = codexUsageView(options.codexPaths ?? codexUsagePaths(home), now, frozen ? { at: now } : {})
+  const config = options.config ?? defaultConfig()
+  const codexInstalled = options.codexInstalled ?? codexBinaryPath(home) !== null
+  const codexView = codexUsageView(options.codexPaths ?? codexUsagePaths(home), now, {
+    installed: codexInstalled,
+    ...(frozen ? { at: now } : {}),
+  })
   let codexSplit: CodexWeekSplit | null = null
   if (codexView.windowStart !== null && codexView.resetsAt !== null) {
     const rollouts = await scanRollouts(codexView.windowStart, options.codexSessions ?? codexSessionsRoot(home), frozen ? now : undefined)
@@ -355,6 +367,7 @@ export async function buildState(options: Options = {}): Promise<State> {
 
   return {
     now,
+    agentsviewUrl: config.agentsviewUrl,
     index: index?.progress() ?? { building: false, done: 0, total: 0, builtAt: null, cold: true, failed: 0 },
     lastLooked,
     codex,

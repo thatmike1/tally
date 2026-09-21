@@ -1,15 +1,19 @@
+# template: install.sh fills in the checkout path and the node binary and writes
+# the result into ~/.config/systemd/user/. editing this file changes nothing
+# until install.sh runs again.
 [Unit]
-Description=tally (what ate the 5-hour limit), 127.0.0.1:1337
-Documentation=file://%h/git/tally/README.md
+Description=tally (what ate the 5-hour limit)
+Documentation=file://@TALLY_DIR@/README.md
 
 [Service]
 Type=simple
-WorkingDirectory=%h/git/tally
-# nvm-exec resolves NODE_VERSION through nvm, so a node upgrade does not break
-# the unit the way a pinned ~/.nvm/versions path would
+WorkingDirectory=@TALLY_DIR@
+# only read when ExecStart below runs through nvm-exec: nvm picks the version at
+# start, so a node upgrade does not break the unit the way a pinned
+# ~/.nvm/versions path would
 Environment=NODE_VERSION=default
 # serves the already-built ui/dist: after ui changes, `npm run build` then restart
-ExecStart=%h/.nvm/nvm-exec node %h/git/tally/bin/tally.mjs --no-open
+ExecStart=@NODE@ @TALLY_DIR@/bin/tally.mjs --no-open
 Restart=on-failure
 RestartSec=5
 

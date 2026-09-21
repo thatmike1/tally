@@ -1,3 +1,5 @@
+# template: install.sh fills in the checkout path and writes the result into
+# ~/.config/systemd/user/. editing this file changes nothing until it runs again.
 [Unit]
 Description=tally tray icon (five-hour meter and session attribution)
 PartOf=graphical-session.target
@@ -5,7 +7,7 @@ After=graphical-session.target
 
 [Service]
 Type=simple
-ExecStart=%h/git/tally/tray/tally-tray.py
+ExecStart=@TALLY_DIR@/tray/tally-tray.py
 Restart=on-failure
 RestartSec=5
 

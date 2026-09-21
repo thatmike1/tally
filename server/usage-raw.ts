@@ -1,5 +1,5 @@
 // the whole `GET /api/oauth/usage` payload, as the sampler has kept it since
-// 14 Sep 2026 (`~/.cache/cc-browse-tray/usage-raw.jsonl`, one row per sample).
+// 14 Sep 2026 (`~/.cache/tally/usage-raw.jsonl`, one row per sample).
 //
 // tally reads exactly one thing out of it: `seven_day_breakdown`, the endpoint's
 // own split of the weekly meter by surface (`claude_code`, `chat`, `cowork`,
@@ -12,10 +12,10 @@
 // rather than treated as an empty breakdown.
 import { readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { join } from 'node:path'
+import { cacheFile } from './samples'
 
 export function usageRawPath(home = homedir()): string {
-  return join(home, '.cache', 'cc-browse-tray', 'usage-raw.jsonl')
+  return cacheFile(home, 'usage-raw.jsonl')
 }
 
 /** one `seven_day_breakdown` as one sample carried it */

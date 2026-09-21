@@ -13,6 +13,7 @@ import { basename, join } from 'node:path'
 import { createInterface } from 'node:readline'
 import { DatabaseSync } from 'node:sqlite'
 import { CODEX_WEEK_MINUTES } from './codex-usage'
+import { agentsviewUrl } from './session-detail'
 
 /** credits per million tokens, from https://help.openai.com/en/articles/20001106-codex-rate-card (read 15 Sep 2026) */
 export const CODEX_RATES: Record<string, { input: number; cached: number; output: number }> = {
@@ -499,7 +500,8 @@ export interface CodexSessionDetail {
   live: boolean
   parent: CodexLane
   subagents: CodexLane[]
-  agentsview: string
+  /** null when no AgentsView is configured */
+  agentsview: string | null
   unit: 'credits'
 }
 
@@ -566,7 +568,7 @@ export function threadSince(rootId: string, root: string): number | null {
  * thread parses only the rollouts written since it started. `at` freezes the
  * thread at a past instant for the history drill-in, the way `/api/state?at=` does.
  */
-export async function codexSessionDetail(rootId: string, options: { root?: string; t3?: string; now?: number; at?: number } = {}): Promise<CodexSessionDetail | null> {
+export async function codexSessionDetail(rootId: string, options: { root?: string; t3?: string; now?: number; at?: number; agentsviewUrl?: string | null } = {}): Promise<CodexSessionDetail | null> {
   const frozen = options.at !== undefined
   const now = options.at ?? options.now ?? Date.now() / 1000
   const root = options.root ?? codexSessionsRoot()
@@ -596,7 +598,7 @@ export async function codexSessionDetail(rootId: string, options: { root?: strin
     live: (frozen ? undefined : known?.live) ?? now - lastWrite < LIVE_WINDOW,
     parent,
     subagents,
-    agentsview: `http://127.0.0.1:8080/sessions/codex:${rootId}?msg=last`,
+    agentsview: agentsviewUrl(options.agentsviewUrl ?? null, `codex:${rootId}`),
     unit: 'credits',
   }
 }

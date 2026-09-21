@@ -1,0 +1,8 @@
+# template: install.sh fills in the checkout path and writes the result into
+# ~/.config/systemd/user/. editing this file changes nothing until it runs again.
+[Unit]
+Description=sample the Claude account usage meters into tally's limits log
+
+[Service]
+Type=oneshot
+ExecStart=@TALLY_DIR@/sampler/usage-sample.py

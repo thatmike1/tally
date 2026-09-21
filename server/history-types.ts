@@ -7,12 +7,6 @@
 // rather than draw a zero.
 import type { Family, Tokens } from './prices'
 
-/** the first api meter sample; nothing before it is shown (sketch v4) */
-export const HISTORY_SINCE = Date.UTC(2026, 8, 8) / 1000
-
-/** the Max 5x plan price the sub-value line compares against */
-export const MAX_5X_USD_PER_MONTH = 100
-
 /** cache read against uncached input, cache write against read; one small line per window */
 export interface CacheRatio {
   /** cache-read tokens / (input + cache-write tokens); null when the denominator is 0 */
@@ -118,11 +112,18 @@ export interface SubValue {
   monthCost: number
   monthStart: number
   planUsd: number
+  /** the plan the price belongs to, so the page never bakes "Max 5x" into a sentence */
+  planName: string
 }
 
 /** `GET /api/history` */
 export interface ClaudeHistory {
-  since: number
+  /**
+   * the day the sampler's first api reading fell on, so the page never claims
+   * history it has no samples for. null with an empty log: there is no history
+   * yet, which the page says rather than drawing an axis from a date.
+   */
+  since: number | null
   now: number
   /** oldest first */
   blocks: BlockSummary[]
@@ -174,10 +175,19 @@ export interface OpenAiPrice {
 /** `GET /api/history/codex` */
 export interface CodexHistory {
   now: number
+  /** false when no codex binary was found: the page hides Codex entirely rather than showing an empty section */
+  installed: boolean
   /** oldest first */
   windows: CodexWindow[]
   /** `pricedMonthCostUsd` is `monthCostUsd` over the known models alone, always a number */
-  subValue: { monthCostUsd: number | null; pricedMonthCostUsd: number; monthStart: number; planUsd: number; unknownModels: string[] }
+  subValue: {
+    monthCostUsd: number | null
+    pricedMonthCostUsd: number
+    monthStart: number
+    planUsd: number
+    planName: string
+    unknownModels: string[]
+  }
   prices: { source: string; readAt: string; models: Record<string, OpenAiPrice> }
   sources: { usage: string; rollouts: string }
 }
@@ -218,7 +228,8 @@ export interface SessionDetail {
   live: boolean
   parent: AgentLane
   subagents: AgentLane[]
-  agentsview: string
+  /** null when no AgentsView is configured; the link site renders nothing rather than a dead anchor */
+  agentsview: string | null
   /** credits for a Codex thread; list-price dollars when absent */
   unit?: 'credits'
 }

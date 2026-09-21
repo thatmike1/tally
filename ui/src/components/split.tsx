@@ -58,30 +58,36 @@ export function BlockSplit({ state }: { state: State }) {
         </p>
       ) : null}
 
-      {claude.map((row) => (
-        <div className="row" key={row.sessionId}>
-          <div className="pts">
-            <s style={{ background: row.color }} />
-            <span className="share">{pct(row.share * 100)}</span>
+      {claude.map((row) => {
+        // no AgentsView configured means no transcript link, not a dead one
+        const transcript = agentsview(state.agentsviewUrl, row.sessionId)
+        return (
+          <div className="row" key={row.sessionId}>
+            <div className="pts">
+              <s style={{ background: row.color }} />
+              <span className="share">{pct(row.share * 100)}</span>
+            </div>
+            <div className="name">
+              <a href={sessionHref(row.sessionId)} title={`${tokens(row.tokens)} tokens · ${money(row.cost)} list price`}>
+                {row.title ?? row.sessionId.slice(0, 8)}
+              </a>
+              {transcript ? (
+                <a className="av" href={transcript} title="open the transcript in AgentsView">
+                  ↗
+                </a>
+              ) : null}
+              <span className="meta">
+                claude
+                {row.points === null ? '' : <> · <span className="approx">~{row.points.toFixed(1)} pts</span></>}
+                {row.fableShare ? ` · ${pct(row.fableShare * 100)} of ${state.fable?.model ?? 'Fable'} ${since}` : ''}
+                {row.subagents ? ` · ${row.subagents} subagent${row.subagents === 1 ? '' : 's'}` : ''}
+                {row.live ? <> · <b className="lv">live</b></> : ''}
+                {` · ${hm(row.start)}–${hm(row.end)}`}
+              </span>
+            </div>
           </div>
-          <div className="name">
-            <a href={sessionHref(row.sessionId)} title={`${tokens(row.tokens)} tokens · ${money(row.cost)} list price`}>
-              {row.title ?? row.sessionId.slice(0, 8)}
-            </a>
-            <a className="av" href={agentsview(row.sessionId)} title="open the transcript in AgentsView">
-              ↗
-            </a>
-            <span className="meta">
-              claude
-              {row.points === null ? '' : <> · <span className="approx">~{row.points.toFixed(1)} pts</span></>}
-              {row.fableShare ? ` · ${pct(row.fableShare * 100)} of ${state.fable?.model ?? 'Fable'} ${since}` : ''}
-              {row.subagents ? ` · ${row.subagents} subagent${row.subagents === 1 ? '' : 's'}` : ''}
-              {row.live ? <> · <b className="lv">live</b></> : ''}
-              {` · ${hm(row.start)}–${hm(row.end)}`}
-            </span>
-          </div>
-        </div>
-      ))}
+        )
+      })}
 
       {state.others.map((row) => (
         <div className="row" key={row.id}>

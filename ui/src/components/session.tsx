@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { agentsview, errorLine, fetchSession, type AgentLane, type RequestPoint, type SessionDetail } from '../api'
+import { errorLine, fetchSession, type AgentLane, type RequestPoint, type SessionDetail } from '../api'
 import { dayDate, dayKey, duration, hm, money, projectName, tokens } from '../format'
 import { useWidth } from './charts'
 
@@ -118,9 +118,12 @@ export function Session({ id, at }: { id: string; at?: number | undefined }) {
             <b>{detail.subagents.length}</b>subagent{detail.subagents.length === 1 ? '' : 's'}
           </span>
         </div>
-        <div className="sd-links">
-          <a href={agentsview(detail.sessionId)}>read the transcript in AgentsView ↗</a>
-        </div>
+        {/* the server built the link, or left it null because no AgentsView is configured */}
+        {detail.agentsview ? (
+          <div className="sd-links">
+            <a href={detail.agentsview}>read the transcript in AgentsView ↗</a>
+          </div>
+        ) : null}
       </div>
       <Rows lanes={lanes} amount={amount} />
       <p className="caveat">

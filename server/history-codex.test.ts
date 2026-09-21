@@ -172,9 +172,19 @@ describe('buildCodexHistory', () => {
 
   it('has no month cost while an unknown model is in the month, and names it', async () => {
     const history = await buildCodexHistory({ home: twoWindowHome(), now: NOW })
-    expect(history.subValue).toMatchObject({ monthCostUsd: null, planUsd: 100, unknownModels: ['codex-auto-review'] })
+    expect(history.subValue).toMatchObject({ monthCostUsd: null, planUsd: 100, planName: 'ChatGPT Pro', unknownModels: ['codex-auto-review'] })
     expect(history.subValue.monthStart).toBe(startOfMonth(NOW))
     expect(dayKey(history.subValue.monthStart)).toMatch(/-01$/)
+  })
+
+  it('takes the tier it is compared against from the config', async () => {
+    const history = await buildCodexHistory({ home: twoWindowHome(), now: NOW, plan: { name: 'ChatGPT Plus', usdPerMonth: 20 } })
+    expect(history.subValue).toMatchObject({ planUsd: 20, planName: 'ChatGPT Plus' })
+  })
+
+  it('says Codex is not installed when no binary was found', async () => {
+    expect((await buildCodexHistory({ home: twoWindowHome(), now: NOW, installed: false })).installed).toBe(false)
+    expect((await buildCodexHistory({ home: twoWindowHome(), now: NOW, installed: true })).installed).toBe(true)
   })
 
   it('publishes the price table with its source and read date', async () => {

@@ -13,7 +13,7 @@ import { claudeHistory } from './history-claude'
 import { MEASURED_MAX_GAP } from './history-types'
 import { limitsLogPath, readSamples } from './samples'
 import { WEEK } from './split'
-import { startOfMonth } from './time'
+import { dayBounds, startOfMonth } from './time'
 import { projectsRoot, scan } from './transcripts'
 
 const FIXTURE_HOME = join(import.meta.dirname, '..', 'test', 'fixtures', 'home')
@@ -59,7 +59,7 @@ function blockLabel(start: number): string {
 /** a home of its own with the fixture's transcripts and limits, so a test can add a raw usage log */
 function homeLike(fixtureLimits: boolean, limits?: string): string {
   const home = mkdtempSync(join(tmpdir(), 'tally-history-'))
-  mkdirSync(join(home, '.cache', 'cc-browse-tray'), { recursive: true })
+  mkdirSync(join(home, '.cache', 'tally'), { recursive: true })
   mkdirSync(join(home, '.claude'), { recursive: true })
   symlinkSync(projectsRoot(FIXTURE_HOME), join(home, '.claude', 'projects'))
   writeFileSync(
@@ -159,7 +159,7 @@ describe('the weekly windows', () => {
     const home = homeLike(true)
     const windowStart = WEEK_RESET - WEEK
     writeFileSync(
-      join(home, '.cache', 'cc-browse-tray', 'usage-raw.jsonl'),
+      join(home, '.cache', 'tally', 'usage-raw.jsonl'),
       [
         // an older sample of the same window, and one for the window before it
         breakdownRow(windowStart - 3600, windowStart - WEEK, 55),
@@ -207,6 +207,7 @@ describe('the sub value', () => {
     const monthStart = startOfMonth(NOW)
     expect(built.subValue.monthStart).toBe(monthStart)
     expect(built.subValue.planUsd).toBe(100)
+    expect(built.subValue.planName).toBe('Max 5x')
 
     const { records } = await scan(monthStart, NOW, projectsRoot(FIXTURE_HOME))
     const cost = records.reduce((sum, r) => sum + r.cost, 0)
@@ -229,9 +230,22 @@ describe('the envelope', () => {
   it('names its sources and says nothing is indexed', async () => {
     const built = await history()
     expect(built.now).toBe(NOW)
-    expect(built.since).toBe(1788825600)
+    // the local day the fixture log's first api sample fell on, not a baked-in date
+    expect(built.since).toBe(dayBounds(readSamples(limitsLogPath(FIXTURE_HOME))[0]!.t)[0])
     expect(built.indexing).toBe(false)
     expect(built.sources.limits).toBe(limitsLogPath(FIXTURE_HOME))
     expect(built.caveat).toMatch(/Chats/)
+  })
+
+  it('says there is no history at all when the log is empty', async () => {
+    const built = await history(homeLike(false))
+    expect(built.since).toBeNull()
+    expect(built.blocks).toEqual([])
+    expect(built.weeks).toEqual([])
+  })
+
+  it('takes the plan it is compared against from the config', async () => {
+    const built = await claudeHistory({ home: FIXTURE_HOME, now: NOW, plan: { name: 'Max 20x', usdPerMonth: 200 } })
+    expect(built.subValue).toMatchObject({ planUsd: 200, planName: 'Max 20x' })
   })
 })
