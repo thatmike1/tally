@@ -158,7 +158,8 @@ export function buildLanes(input: LanesInput): Lane[] {
   }
 
   for (const thread of threads) {
-    if (thread.end < from || thread.start >= to) continue
+    // `otherThreads` already clipped to the window; an empty thread is not a row
+    if (!thread.segments.length) continue
     lanes.push({
       id: thread.id,
       kind: thread.kind,
@@ -167,12 +168,14 @@ export function buildLanes(input: LanesInput): Lane[] {
       start: thread.start,
       end: thread.end,
       live: thread.live,
-      // no usage data exists for a non-Claude thread, so it gets a span and nothing else
+      // no usage data exists for a non-Claude thread, so it gets its stretches
+      // of activity off T3's message times and nothing else
       cost: null,
       tokens: null,
       requests: 0,
       agents: 0,
-      segments: [{ start: thread.start, end: thread.end, cost: 0, requests: 0, agents: 0 }],
+      began: thread.began,
+      segments: thread.segments.map((segment) => ({ ...segment, cost: 0, requests: 0, agents: 0 })),
     })
   }
 

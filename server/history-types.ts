@@ -246,12 +246,14 @@ export interface Lane {
   start: number
   end: number
   live: boolean
-  /** Claude only; a T3 thread has a span and nothing else */
+  /** Claude only; a T3 thread has its stretches of activity and nothing else */
   cost: number | null
   tokens: number | null
   requests: number
   agents: number
   segments: LaneSegment[]
+  /** the thread's first message ever, when it is older than this window */
+  began?: number | null
 }
 
 /** what `/api/state` says about the transcript index */

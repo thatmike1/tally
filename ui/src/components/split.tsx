@@ -1,6 +1,12 @@
-import { agentsview, type State } from '../api'
-import { hm, labelOn, money, pct, tokens } from '../format'
+import { agentsview, type OtherRow, type State } from '../api'
+import { duration, hm, labelOn, money, pct, tokens } from '../format'
 import { sessionHref } from '../route'
+
+/** a T3 thread's working time is the sum of its stretches, never first to last message */
+function activeOf(row: OtherRow): string {
+  const seconds = row.segments.reduce((sum, segment) => sum + (segment.end - segment.start), 0)
+  return seconds < 60 ? '<1m' : duration(seconds)
+}
 
 /**
  * the block's measured jump, divided by list-price cost.
@@ -88,7 +94,7 @@ export function BlockSplit({ state }: { state: State }) {
             <span className="meta">
               {row.kind}
               {row.live ? <> · <b className="lv">live</b></> : ''}
-              {` · ${hm(row.start)}–${hm(row.end)}`}
+              {` · ${hm(row.start)}–${hm(row.end)} · ${activeOf(row)} active`}
             </span>
           </div>
         </div>

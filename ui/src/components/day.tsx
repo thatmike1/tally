@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { agentsview, type Lane, type State } from '../api'
-import { duration, hm, money, projectName, tokens } from '../format'
+import { dayDate, duration, hm, money, projectName, tokens } from '../format'
 import { sessionHref } from '../route'
 
 const HEIGHT = 140
@@ -163,24 +163,34 @@ function activeSeconds(lane: Lane): number {
   return lane.segments.reduce((sum, segment) => sum + (segment.end - segment.start), 0)
 }
 
+/** a couple of marks minutes apart is not a duration worth printing to the second */
+function activeLabel(lane: Lane): string {
+  const seconds = activeSeconds(lane)
+  return seconds < 60 ? '<1m' : duration(seconds)
+}
+
 function laneTitle(lane: Lane): string {
+  const stretches = `${lane.segments.length} stretch${lane.segments.length === 1 ? '' : 'es'}`
   if (lane.cost === null) {
-    return `${lane.kind} · ${duration(lane.end - lane.start)}${lane.live ? ' · live' : ''}`
+    const bits = [lane.kind, `${duration(activeSeconds(lane))} active over ${stretches}`]
+    if (lane.began) bits.push(`thread opened ${dayDate(lane.began)}`)
+    if (lane.live) bits.push('live')
+    return bits.join(' · ')
   }
   const bits = [
     `${tokens(lane.tokens ?? 0)} tokens`,
     money(lane.cost),
     `${lane.requests} request${lane.requests === 1 ? '' : 's'}`,
-    `${duration(activeSeconds(lane))} active`,
+    `${duration(activeSeconds(lane))} active over ${stretches}`,
   ]
   if (lane.agents) bits.push(`${lane.agents} agent${lane.agents === 1 ? '' : 's'}`)
   return bits.join(' · ')
 }
 
 function laneLabel(lane: Lane): string {
-  if (lane.cost === null) return `${duration(lane.end - lane.start)} · ${lane.kind}`
+  if (lane.cost === null) return `${activeLabel(lane)} · ${lane.kind}`
   return [
-    duration(activeSeconds(lane)),
+    activeLabel(lane),
     lane.agents ? `${lane.agents} agent${lane.agents === 1 ? '' : 's'}` : null,
     money(lane.cost),
   ]

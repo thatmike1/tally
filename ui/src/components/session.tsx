@@ -1,7 +1,40 @@
 import { useEffect, useRef, useState } from 'react'
 import { agentsview, errorLine, fetchSession, type AgentLane, type RequestPoint, type SessionDetail } from '../api'
-import { dayDate, duration, hm, money, projectName, tokens } from '../format'
+import { dayDate, dayKey, duration, hm, money, projectName, tokens } from '../format'
 import { useWidth } from './charts'
+
+/** requests further apart than this are two stretches of work, not one long one */
+const GAP = 5 * 60
+
+/**
+ * the time this session was working, which is the sum of its stretches.
+ *
+ * first request to last is a span, and a session resumed the next morning has a
+ * span full of sleep in it.
+ */
+function activeSeconds(detail: SessionDetail): number {
+  const times = [detail.parent, ...detail.subagents].flatMap((lane) => lane.requests.map((request) => request.t))
+  times.sort((a, b) => a - b)
+  let total = 0
+  let open: number | null = null
+  let last = 0
+  for (const t of times) {
+    if (open === null) open = t
+    else if (t - last > GAP) {
+      total += last - open
+      open = t
+    }
+    last = t
+  }
+  return open === null ? 0 : total + last - open
+}
+
+/** one clock range when the session stayed inside a day, dated on both ends when it did not */
+function spanLine(detail: SessionDetail): string {
+  const sameDay = dayKey(detail.start) === dayKey(detail.end)
+  if (sameDay) return `${dayDate(detail.start)} ${hm(detail.start)}–${hm(detail.end)}`
+  return `${dayDate(detail.start)} ${hm(detail.start)} – ${dayDate(detail.end)} ${hm(detail.end)}`
+}
 
 /** credits, the Codex unit: whole numbers read fine, a fraction only under ten */
 function credits(value: number): string {
@@ -62,8 +95,7 @@ export function Session({ id, at }: { id: string; at?: number | undefined }) {
       <div className="sd-head">
         <h1 className="sd-title">{detail.title ?? detail.sessionId.slice(0, 8)}</h1>
         <div className="sd-meta">
-          {projectName(detail.project)} · {dayDate(detail.start)} {hm(detail.start)}–{hm(detail.end)} ·{' '}
-          {duration(detail.end - detail.start)}
+          {projectName(detail.project)} · {spanLine(detail)} · {duration(activeSeconds(detail))} active
           {at !== undefined ? ` · frozen at ${dayDate(at)} ${hm(at)}` : null}
           {detail.live ? (
             <>

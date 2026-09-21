@@ -158,7 +158,7 @@ describe('buildLanes', () => {
     expect(without!.project).toBe('/home/thatmike1/git/tally')
   })
 
-  it('gives a non-Claude thread a span and no cost, never an invented number', () => {
+  it("draws a thread's stretches of activity and no cost, never an invented number", () => {
     const thread: Thread = {
       id: 't-1',
       title: 'an antigravity thread',
@@ -166,6 +166,11 @@ describe('buildLanes', () => {
       project: 'tally',
       start: 100,
       end: 900,
+      began: null,
+      segments: [
+        { start: 100, end: 200 },
+        { start: 800, end: 900 },
+      ],
       live: true,
     }
     const lanes = buildLanes({ ...base, records: [record(0)], threads: [thread] })
@@ -173,12 +178,16 @@ describe('buildLanes', () => {
     expect(other.cost).toBeNull()
     expect(other.tokens).toBeNull()
     expect(other.requests).toBe(0)
-    expect(other.segments).toEqual([{ start: 100, end: 900, cost: 0, requests: 0, agents: 0 }])
+    // the idle stretch between the two is not drawn as work
+    expect(other.segments).toEqual([
+      { start: 100, end: 200, cost: 0, requests: 0, agents: 0 },
+      { start: 800, end: 900, cost: 0, requests: 0, agents: 0 },
+    ])
     // oldest first, whatever kind it is
     expect(lanes.map((lane) => lane.start)).toEqual([0, 100])
   })
 
-  it('drops a thread that does not touch the window', () => {
+  it('drops a thread with nothing inside the window', () => {
     const thread: Thread = {
       id: 't-2',
       title: 'yesterday',
@@ -186,6 +195,8 @@ describe('buildLanes', () => {
       project: null,
       start: -500,
       end: -100,
+      began: -500,
+      segments: [],
       live: false,
     }
     expect(buildLanes({ ...base, records: [], threads: [thread] })).toEqual([])
