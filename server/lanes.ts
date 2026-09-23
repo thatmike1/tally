@@ -111,6 +111,10 @@ export interface LanesInput {
   liveWindow?: number
   /** how `projectPath` asks about a directory; injected by tests, real fs otherwise */
   exists?: (path: string) => boolean
+  /** requests further apart than this open a new segment; `LANE_GAP` unless a long window coarsens it */
+  gap?: number
+  /** T3 thread titles by Claude session id, for `Lane.shortTitle` */
+  shortTitles?: Map<string, string>
 }
 
 /**
@@ -132,7 +136,7 @@ export function buildLanes(input: LanesInput): Lane[] {
   const lanes: Lane[] = []
   for (const [sessionId, own] of bySession) {
     const meta = sessions.get(sessionId)
-    const segments = segmentsOf(own)
+    const segments = segmentsOf(own, input.gap ?? LANE_GAP)
     if (!segments.length) continue
     const agentFiles = new Set(own.filter((record) => isSubagentFile(record.file)).map((record) => record.file))
     let cost = 0
@@ -145,6 +149,7 @@ export function buildLanes(input: LanesInput): Lane[] {
       id: sessionId,
       kind: 'claude',
       title: meta?.title ?? sessionId.slice(0, 8),
+      shortTitle: input.shortTitles?.get(sessionId) ?? null,
       project: projectPath(meta?.project ?? own[0]!.project, meta?.cwd, input.exists ?? isDirectory),
       start: segments[0]!.start,
       end: segments.at(-1)!.end,
@@ -164,6 +169,8 @@ export function buildLanes(input: LanesInput): Lane[] {
       id: thread.id,
       kind: thread.kind,
       title: thread.title,
+      // a T3 thread's title is already the short one
+      shortTitle: null,
       project: thread.project ?? 'other agents',
       start: thread.start,
       end: thread.end,

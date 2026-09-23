@@ -83,6 +83,43 @@ export function familyOf(model: string): Family {
   return 'other'
 }
 
+/**
+ * the model each model replaced, keyed by the same prefixes as `PRICES`, so a
+ * window can say what its tokens would have cost on the older one. the value is
+ * a model id that `priceFor` resolves, priced with that model's own cache
+ * multipliers: `claude-opus-5` reads its cache at 0.1x where opus 5.5 reads at
+ * 0.05x, and that difference is most of what the comparison shows.
+ */
+export const PREDECESSOR: Record<string, string> = {
+  'claude-opus-5-5': 'claude-opus-5',
+  'claude-fable-5-1': 'claude-fable-5',
+  'claude-mythos-5-1': 'claude-mythos-5',
+  'claude-sonnet-5': 'claude-sonnet-4-6',
+}
+
+/** the model `model` replaced, or null when it has no row in `PREDECESSOR` */
+export function predecessorOf(model: string): string | null {
+  const prefix = pricePrefix(model)
+  return (prefix === null ? undefined : PREDECESSOR[prefix]) ?? null
+}
+
+/**
+ * usd per token bucket for one request: the parts `costOf` adds up. an
+ * unpriced model is all zeros.
+ */
+export function costByBucket(model: string, t: Tokens): Tokens {
+  const price = priceFor(model)
+  if (!price) return { in: 0, cw1h: 0, cw5m: 0, cr: 0, out: 0 }
+  const [base, out] = price
+  return {
+    in: (t.in * base) / 1e6,
+    cw1h: (t.cw1h * base * CACHE_WRITE_1H_MULT) / 1e6,
+    cw5m: (t.cw5m * base * CACHE_WRITE_5M_MULT) / 1e6,
+    cr: (t.cr * base * cacheReadMult(model)) / 1e6,
+    out: (t.out * out) / 1e6,
+  }
+}
+
 /** usd for one request's buckets; an unpriced model costs 0 and is flagged instead */
 export function costOf(model: string, t: Tokens): number {
   const price = priceFor(model)

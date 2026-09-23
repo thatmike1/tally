@@ -37,6 +37,7 @@ function pointOf(record: RequestRecord): RequestPoint {
     cost: record.cost,
     tokens: { in: record.in, cw1h: record.cw1h, cw5m: record.cw5m, cr: record.cr, out: record.out },
     priced: record.priced,
+    effort: record.effort,
   }
 }
 

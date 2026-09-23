@@ -50,9 +50,11 @@ export function parseOptions(argv: string[], defaultPort: number = defaultConfig
 function logPass(counts: RefreshCounts): void {
   // the failed count is silent at zero, so a line that mentions it means something
   const failed = counts.failed > 0 ? `, ${counts.failed} failed` : ''
+  // silent too once no file is left under an older parser
+  const reread = counts.reread > 0 || counts.stale > 0 ? `, ${counts.reread} reread for a new field (${counts.stale} to go)` : ''
   console.log(
     `tally: index pass in ${counts.seconds.toFixed(1)}s — ${counts.seen} files seen, ${counts.parsed} parsed, ` +
-      `${counts.skipped} skipped, ${counts.dropped} dropped${failed}, ${counts.records} records written`,
+      `${counts.skipped} skipped, ${counts.dropped} dropped${failed}, ${counts.records} records written${reread}`,
   )
 }
 
@@ -74,13 +76,25 @@ function main(): void {
   // the first build reads the whole tree, so it runs in the background and the
   // page says it is building; every window falls back to a live scan until the
   // build has reached back far enough
+  let passRunning = false
   const indexPass = () => {
     // a pass already running will pick up anything written since it started
-    if (index.progress().building) return
+    if (passRunning) return
+    passRunning = true
     index
       .refresh()
-      .then(logPass)
-      .catch((error) => console.error(`tally: index pass failed: ${error instanceof Error ? error.message : error}`))
+      .then((counts) => {
+        logPass(counts)
+        passRunning = false
+        // files left under an older parser: the next slice of the reread starts
+        // right away, and each pass takes the changed files first, so the page
+        // stays a few seconds fresh while the reread runs
+        if (counts.stale > 0) setImmediate(indexPass)
+      })
+      .catch((error) => {
+        passRunning = false
+        console.error(`tally: index pass failed: ${error instanceof Error ? error.message : error}`)
+      })
   }
   indexPass()
 

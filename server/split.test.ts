@@ -29,6 +29,7 @@ function request(sessionId: string, t: number, cost: number, agent = false, fami
     family,
     priced: true,
     cost,
+    effort: null,
     in: 0,
     cw1h: 0,
     cw5m: 0,

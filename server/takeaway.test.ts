@@ -15,6 +15,7 @@ import {
   takeawayFromConfig,
   type CommandRunner,
 } from './takeaway'
+import { UsageTally } from './usage'
 
 const FIXTURE_HOME = join(import.meta.dirname, '..', 'test', 'fixtures', 'home')
 const NOW = 1789138000
@@ -44,6 +45,7 @@ describe('buildTakeawaySummary and prompt', () => {
       totalCost: 1.5,
       costBeforeFirstSample: 2.5,
       costAfterLastSample: 0.75,
+      usage: new UsageTally().summary(),
       sessions: [
         {
           sessionId: 's1',
@@ -63,6 +65,10 @@ describe('buildTakeawaySummary and prompt', () => {
           color: '#d94f2a',
           fableShare: null,
           fablePoints: null,
+          models: [],
+          effort: [],
+          buckets: { in: 0, cw1h: 0, cw5m: 0, cr: 0, out: 0 },
+          shortTitle: null,
         },
         {
           sessionId: 's2',
@@ -82,6 +88,10 @@ describe('buildTakeawaySummary and prompt', () => {
           color: '#b5836a',
           fableShare: null,
           fablePoints: null,
+          models: [],
+          effort: [],
+          buckets: { in: 0, cw1h: 0, cw5m: 0, cr: 0, out: 0 },
+          shortTitle: null,
         },
       ],
     }

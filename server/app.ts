@@ -1,6 +1,7 @@
-// one route with data on it (`/api/state`) plus the built page. everything the
-// screen shows is assembled server-side, so the page is one fetch away from
-// answering "what ate the block".
+// the page's data routes (`/api/state`, the history, one session, a range's
+// split and lanes) plus the built page. everything the screen shows is
+// assembled server-side, so the page is one fetch away from answering "what ate
+// the block".
 import { existsSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { serveStatic } from '@hono/node-server/serve-static'
@@ -11,6 +12,7 @@ import { codexSessionDetail, codexSessionsRoot } from './codex-sessions'
 import { statePath } from './t3'
 import { codexHistoryRoutes } from './history-codex'
 import { historyRoutes } from './history-claude'
+import { BadRange, parseRange, rangeLanes, rangeSplit } from './range'
 import { buildState, type Options } from './state'
 import type { TakeawayRefresher } from './takeaway'
 import { projectsRoot } from './transcripts'
@@ -75,6 +77,33 @@ export function createApp(options: AppConfig = {}) {
     })
     if (!detail) return c.json({ error: `no transcript for session ${id}` }, 404)
     return c.json(detail)
+  })
+
+  // `?from=<unix>&to=<unix>`: the meters' movement over any range the timeline
+  // drags, split by session the way the block split is (`RangeSplit`)
+  app.get('/api/split', async (c) => {
+    let range: { from: number; to: number }
+    try {
+      range = parseRange(c.req.query('from'), c.req.query('to'))
+    } catch (error) {
+      if (error instanceof BadRange) return c.json({ error: error.message }, 400)
+      throw error
+    }
+    const { home, index, now } = stateOptions
+    return c.json(await rangeSplit(range.from, range.to, { home, index, now }))
+  })
+
+  // `?from=<unix>&to=<unix>`: the lanes and meter samples for any window (`RangeLanes`)
+  app.get('/api/lanes', async (c) => {
+    let range: { from: number; to: number }
+    try {
+      range = parseRange(c.req.query('from'), c.req.query('to'))
+    } catch (error) {
+      if (error instanceof BadRange) return c.json({ error: error.message }, 400)
+      throw error
+    }
+    const { home, index, now } = stateOptions
+    return c.json(await rangeLanes(range.from, range.to, { home, index, now }))
   })
 
   // the codex routes mount first so `/api/history/codex` is not swallowed by `/api/history`

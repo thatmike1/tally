@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { DatabaseSync } from 'node:sqlite'
-import { TranscriptIndex } from './transcript-index'
+import { PARSER_VERSION, TranscriptIndex } from './transcript-index'
 import { projectsRoot, scan, transcriptFiles, type RequestRecord } from './transcripts'
 
 const FIXTURE_HOME = join(import.meta.dirname, '..', 'test', 'fixtures', 'home')
@@ -199,6 +199,63 @@ describe('TranscriptIndex', () => {
     expect(new Set(session.map((r) => r.file)).size).toBeGreaterThan(1)
     expect(session.map((r) => r.t)).toEqual([...session.map((r) => r.t)].sort((a, b) => a - b))
     index.close()
+  })
+
+  it('stores the effort level with each request, null where none was recorded', async () => {
+    const index = new TranscriptIndex({ root: FIXTURE_ROOT, path: ':memory:' })
+    await index.refresh()
+    const records = index.query(0, 9e9).records
+    expect(records.some((r) => r.effort === 'high')).toBe(true)
+    expect(records.some((r) => r.effort === null)).toBe(true)
+    expect(index.progress().stale).toBe(0)
+    index.close()
+  })
+
+  it('migrates a db from before effort in place and fills it by rereading, answering all along', async () => {
+    const root = copyRoot()
+    const path = join(root, '..', 'index.sqlite')
+    const first = new TranscriptIndex({ root, path })
+    await first.refresh()
+    first.close()
+
+    // the db as the previous tally left it: no effort column, no parser column
+    const raw = new DatabaseSync(path)
+    raw.exec('ALTER TABLE requests DROP COLUMN effort; ALTER TABLE files DROP COLUMN parser')
+    const empty = transcriptFiles(root).find((f) => f.agent)!
+    // a file that yielded no request, to check it is not queued for a reread
+    raw.prepare('INSERT INTO files (path, session_id, project, agent, mtime, size, first_t) VALUES (?, ?, ?, 1, 0, 0, NULL)').run(
+      `${empty.path}.none`,
+      empty.sessionId,
+      empty.project,
+    )
+    raw.close()
+
+    const reopened = new TranscriptIndex({ root, path })
+    const live = await scan(0, 9e9, root)
+    const withFiles = new Set(live.records.map((r) => r.file)).size
+    // every file that holds a request waits for a reread; the old rows still answer every window
+    expect(reopened.progress().stale).toBe(withFiles)
+    expect(reopened.progress().cold).toBe(false)
+    expect(reopened.covers(0)).toBe(true)
+    const before = reopened.query(0, 9e9).records
+    expect(before.length).toBe(live.records.length)
+    expect(before.every((r) => r.effort === null)).toBe(true)
+
+    const pass = await reopened.refresh()
+    expect(pass.reread).toBe(withFiles)
+    expect(pass.stale).toBe(0)
+    expect(reopened.progress().stale).toBe(0)
+    expect(sorted(reopened.query(0, 9e9).records)).toEqual(sorted(live.records))
+
+    // and a reread file is never read again
+    const again = await reopened.refresh()
+    expect(again.parsed).toBe(0)
+    reopened.close()
+
+    const check = new DatabaseSync(path)
+    const versions = check.prepare('SELECT DISTINCT parser FROM files').all() as { parser: number }[]
+    expect(versions).toEqual([{ parser: PARSER_VERSION }])
+    check.close()
   })
 
   it('survives a restart, reading the built index back off disk', async () => {

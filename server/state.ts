@@ -36,7 +36,7 @@ import {
   type WeekWindow,
   type WindowSplit,
 } from './split'
-import { otherThreads, statePath, type Thread } from './t3'
+import { claudeThreadTitles, otherThreads, statePath, type Thread } from './t3'
 import { dayBounds, formatLocalTime } from './time'
 import { indexPath, type TranscriptIndex } from './transcript-index'
 import { projectsRoot, scan, type RequestRecord, type SessionMeta } from './transcripts'
@@ -85,6 +85,35 @@ export interface SessionRow extends SessionSplit {
   /** this session's share of the Fable meter's movement over the week window; null when there is no Fable split */
   fableShare: number | null
   fablePoints: number | null
+  /**
+   * the T3 Code thread's title when T3 ran this session, else null; the page
+   * falls back to `title`, the first thing typed into the session
+   */
+  shortTitle: string | null
+}
+
+/** what turns a `SessionSplit` into a `SessionRow` */
+export interface RowContext {
+  now: number
+  sessions: Map<string, SessionMeta>
+  /** T3 thread titles by Claude session id, from `claudeThreadTitles` */
+  shortTitles: Map<string, string>
+  /** the Fable split whose shares ride along on every row; null when there is none */
+  fable: { sessions: SessionSplit[]; crossedReset?: boolean } | null
+}
+
+/** a split row with its colour by rank, its live tag, its Fable share and its T3 title */
+export function sessionRow(row: SessionSplit, rank: number, context: RowContext): SessionRow {
+  const fableRow = context.fable?.sessions.find((candidate) => candidate.sessionId === row.sessionId)
+  return {
+    ...row,
+    kind: 'claude',
+    live: context.now - (context.sessions.get(row.sessionId)?.modified ?? 0) < LIVE_WINDOW,
+    color: PALETTE[Math.min(rank, PALETTE.length - 1)]!,
+    fableShare: context.fable && !context.fable.crossedReset ? (fableRow?.share ?? 0) : null,
+    fablePoints: fableRow?.points ?? null,
+    shortTitle: context.shortTitles.get(row.sessionId) ?? null,
+  }
 }
 
 export type WeekSplit = Omit<WindowSplit, 'sessions'> & { sessions: SessionRow[] }
@@ -304,7 +333,8 @@ export async function buildState(options: Options = {}): Promise<State> {
   const rawFable = fableName
     ? splitFable(records, sessions, whole ? openedAtZero(fableRows, fableRows.at(-1)?.resetsAt ?? null) : fableRows, window)
     : null
-  const fableById = new Map((rawFable?.sessions ?? []).map((row) => [row.sessionId, row]))
+  const shortTitles = claudeThreadTitles(statePath(home))
+  const rowContext: RowContext = { now, sessions, shortTitles, fable: rawFable }
 
   // the week section ranks by Fable share, then weekly share, so the top Fable
   // mover takes the first colour and both week strips agree with its list
@@ -312,17 +342,7 @@ export async function buildState(options: Options = {}): Promise<State> {
   for (const row of [...(rawFable?.sessions ?? []), ...(rawWeekly?.sessions ?? [])]) {
     if (!weekRank.has(row.sessionId)) weekRank.set(row.sessionId, weekRank.size)
   }
-  const toRow = (row: SessionSplit, rank: number): SessionRow => {
-    const fableRow = fableById.get(row.sessionId)
-    return {
-      ...row,
-      kind: 'claude',
-      live: now - (sessions.get(row.sessionId)?.modified ?? 0) < LIVE_WINDOW,
-      color: PALETTE[Math.min(rank, PALETTE.length - 1)]!,
-      fableShare: rawFable && !rawFable.crossedReset ? (fableRow?.share ?? 0) : null,
-      fablePoints: fableRow?.points ?? null,
-    }
-  }
+  const toRow = (row: SessionSplit, rank: number): SessionRow => sessionRow(row, rank, rowContext)
   const withRows = (raw: WindowSplit | null): WeekSplit | null =>
     raw ? { ...raw, sessions: raw.sessions.map((row) => toRow(row, weekRank.get(row.sessionId)!)) } : null
 
@@ -355,7 +375,7 @@ export async function buildState(options: Options = {}): Promise<State> {
   }
 
   const threads = otherThreads(dayStart, dayEnd, statePath(home))
-  const lanes = buildLanes({ records, sessions, threads, from: dayStart, to: dayEnd, now })
+  const lanes = buildLanes({ records, sessions, threads, from: dayStart, to: dayEnd, now, shortTitles })
 
   // Codex threads have their own list under the Codex meter, with real shares on them
   const others = otherThreads(block?.start ?? dayStart, now, statePath(home))
@@ -368,7 +388,7 @@ export async function buildState(options: Options = {}): Promise<State> {
   return {
     now,
     agentsviewUrl: config.agentsviewUrl,
-    index: index?.progress() ?? { building: false, done: 0, total: 0, builtAt: null, cold: true, failed: 0 },
+    index: index?.progress() ?? { building: false, done: 0, total: 0, builtAt: null, cold: true, failed: 0, stale: 0 },
     lastLooked,
     codex,
     caveat: CAVEAT,

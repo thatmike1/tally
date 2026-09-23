@@ -14,6 +14,13 @@ import { join } from 'node:path'
 import { createInterface } from 'node:readline'
 import { costOf, familyOf, isPriced, type Family, type Tokens } from './prices'
 
+/**
+ * the effort level Claude Code ran a request at, as the transcript names it:
+ * `low`, `medium`, `high`, `xhigh`, `max`. the set grows with new models, so any
+ * other string passes through unchanged.
+ */
+export type Effort = 'low' | 'medium' | 'high' | 'xhigh' | 'max' | (string & {})
+
 export interface RequestRecord extends Tokens {
   /** unix seconds */
   t: number
@@ -27,6 +34,12 @@ export interface RequestRecord extends Tokens {
   family: Family
   priced: boolean
   cost: number
+  /**
+   * the assistant line's top-level `effort` (its `perTurnEffort` when only
+   * that one is there). null means the transcript did not record one, which is
+   * every request from before Claude Code started writing it; never a default.
+   */
+  effort: Effort | null
 }
 
 export interface SessionMeta {
@@ -108,6 +121,15 @@ export function transcriptFiles(root = projectsRoot()): TranscriptFile[] {
     }
   }
   return out
+}
+
+/** the effort a line records, or null; an empty or non-string value is no record */
+export function effortOf(line: Record<string, unknown>): Effort | null {
+  for (const key of ['effort', 'perTurnEffort']) {
+    const value = line[key]
+    if (typeof value === 'string' && value) return value
+  }
+  return null
 }
 
 function parseTimestamp(value: unknown): number | null {
@@ -221,6 +243,7 @@ export async function parseTranscript(
         family: familyOf(model),
         priced: isPriced(model),
         cost: costOf(model, tokens),
+        effort: effortOf(line),
       })
     }
   } finally {

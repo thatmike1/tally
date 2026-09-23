@@ -25,6 +25,7 @@ function record(t: number, over: Partial<RequestRecord> = {}): RequestRecord {
     family: 'opus',
     priced: true,
     cost: 1,
+    effort: null,
     in: 10,
     cw1h: 0,
     cw5m: 0,

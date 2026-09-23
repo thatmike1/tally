@@ -45,13 +45,18 @@ def strip(src, dst, label):
                           "cache_read_input_tokens", "output_tokens") if k in u}
                 if "cache_creation" in u:
                     usage["cache_creation"] = u["cache_creation"]
-                out.write(json.dumps({
+                row = {
                     "type": "assistant",
                     "timestamp": r.get("timestamp"),
                     "requestId": r.get("requestId"),
                     "isSidechain": bool(r.get("isSidechain")),
                     "message": {"id": m["id"], "model": m.get("model", "?"), "usage": usage},
-                }) + "\n")
+                }
+                # the effort level both parsers read, when the line records one
+                for k in ("effort", "perTurnEffort"):
+                    if k in r:
+                        row[k] = r[k]
+                out.write(json.dumps(row) + "\n")
                 kept += 1
             elif r.get("type") == "user" and not seen_user:
                 seen_user = True

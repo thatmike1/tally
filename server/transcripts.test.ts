@@ -7,8 +7,8 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { costOf, familyOf, isPriced, priceFor } from './prices'
-import { projectsRoot, scan, transcriptFiles } from './transcripts'
+import { costByBucket, costOf, familyOf, isPriced, predecessorOf, priceFor } from './prices'
+import { effortOf, projectsRoot, scan, transcriptFiles } from './transcripts'
 
 const FIXTURE_HOME = join(import.meta.dirname, '..', 'test', 'fixtures', 'home')
 const EXPECTED = join(import.meta.dirname, '..', 'test', 'fixtures', 'requests-expected.jsonl')
@@ -28,6 +28,8 @@ interface Expected {
   out: number
   cost: number
   priced: boolean
+  /** absent from an oracle file written before effort was parsed */
+  effort?: string | null
 }
 
 /** the oracle was written from one checkout; key its paths on the fixture home so any checkout matches */
@@ -81,6 +83,37 @@ describe('prices', () => {
   })
 })
 
+describe('effortOf', () => {
+  it('takes effort, then perTurnEffort, and never invents a level', () => {
+    expect(effortOf({ effort: 'xhigh', perTurnEffort: 'high' })).toBe('xhigh')
+    expect(effortOf({ perTurnEffort: 'medium' })).toBe('medium')
+    expect(effortOf({ effort: '' })).toBeNull()
+    expect(effortOf({ effort: 3 })).toBeNull()
+    expect(effortOf({})).toBeNull()
+  })
+})
+
+describe('predecessor prices', () => {
+  it('names the model each one replaced, by the longest prefix', () => {
+    expect(predecessorOf('claude-opus-5-5')).toBe('claude-opus-5')
+    expect(predecessorOf('claude-opus-5-5-20260901')).toBe('claude-opus-5')
+    expect(predecessorOf('claude-fable-5-1')).toBe('claude-fable-5')
+    expect(predecessorOf('claude-opus-5')).toBeNull()
+    expect(predecessorOf('<synthetic>')).toBeNull()
+  })
+
+  it('splits a request\'s cost into buckets that add back up to it', () => {
+    const tokens = { in: 1200, cw1h: 30_000, cw5m: 4000, cr: 900_000, out: 2500 }
+    for (const model of ['claude-opus-5-5', 'claude-opus-5', 'claude-fable-5-1', 'gpt-5.5']) {
+      const parts = costByBucket(model, tokens)
+      expect(parts.in + parts.cw1h + parts.cw5m + parts.cr + parts.out).toBeCloseTo(costOf(model, tokens), 12)
+    }
+    // opus 5.5 reads its cache at 0.05x of $4, opus 5 at 0.1x of $5
+    expect(costByBucket('claude-opus-5-5', tokens).cr).toBeCloseTo(0.9 * 4 * 0.05, 12)
+    expect(costByBucket('claude-opus-5', tokens).cr).toBeCloseTo(0.9 * 5 * 0.1, 12)
+  })
+})
+
 describe('scan, against jobs/extract.py', () => {
   it('finds the same files', () => {
     const files = transcriptFiles(projectsRoot(FIXTURE_HOME))
@@ -103,7 +136,17 @@ describe('scan, against jobs/extract.py', () => {
       expect(got!.priced).toBe(row.priced)
       expect([got!.in, got!.cw1h, got!.cw5m, got!.cr, got!.out]).toEqual([row.in, row.cw1h, row.cw5m, row.cr, row.out])
       expect(got!.cost).toBeCloseTo(row.cost, 10)
+      expect(got!.effort).toBe(row.effort ?? null)
     }
+  })
+
+  it('reads the effort level, and leaves it null where the transcript recorded none', async () => {
+    const { records } = await scan(0, 9_999_999_999, projectsRoot(FIXTURE_HOME))
+    const levels = new Set(records.map((r) => r.effort))
+    // the fixture holds requests from before and after claude code wrote the field
+    expect(levels.has(null)).toBe(true)
+    expect(levels.has('high')).toBe(true)
+    expect(levels.has('medium')).toBe(true)
   })
 
   it('folds a subagent into its parent session, where extract.py kept the agent file name', async () => {

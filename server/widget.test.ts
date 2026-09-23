@@ -14,6 +14,7 @@ import {
   removeWidget,
   writeWidget,
 } from './widget'
+import { UsageTally } from './usage'
 
 const FIXTURE_HOME = join(import.meta.dirname, '..', 'test', 'fixtures', 'home')
 const NOW = 1789138000
@@ -77,6 +78,7 @@ describe('renderWidget', () => {
       totalCost: 1.5,
       costBeforeFirstSample: 0,
       costAfterLastSample: 0,
+      usage: new UsageTally().summary(),
       sessions: [
         {
           sessionId: 'session-1',
@@ -96,6 +98,10 @@ describe('renderWidget', () => {
           color: '#d94f2a',
           fableShare: null,
           fablePoints: null,
+          models: [],
+          effort: [],
+          buckets: { in: 0, cw1h: 0, cw5m: 0, cr: 0, out: 0 },
+          shortTitle: null,
         },
         {
           sessionId: 'session-2',
@@ -115,6 +121,10 @@ describe('renderWidget', () => {
           color: '#b5836a',
           fableShare: null,
           fablePoints: null,
+          models: [],
+          effort: [],
+          buckets: { in: 0, cw1h: 0, cw5m: 0, cr: 0, out: 0 },
+          shortTitle: null,
         },
       ],
     }

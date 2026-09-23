@@ -88,7 +88,7 @@ export function segmentsOfTimes(times: number[], gap = LANE_GAP): ThreadSegment[
  * Claude threads are excluded because the same work already appears in the
  * split, off its transcript, with real numbers on it.
  */
-export function otherThreads(from: number, to: number, path = statePath()): Thread[] {
+export function otherThreads(from: number, to: number, path = statePath(), gap = LANE_GAP): Thread[] {
   let db: DatabaseSync
   try {
     db = new DatabaseSync(path, { readOnly: true })
@@ -118,7 +118,7 @@ export function otherThreads(from: number, to: number, path = statePath()): Thre
       // bar from creation to now: nothing says it was busy in between
       const inWindow = own.length ? own.filter((t) => t >= from && t < to) : updated >= from && updated < to ? [updated] : []
       if (!inWindow.length) continue
-      const segments = segmentsOfTimes(inWindow)
+      const segments = segmentsOfTimes(inWindow, gap)
       const first = own.length ? Math.min(...own) : created
       out.push({
         id,
@@ -141,4 +141,47 @@ export function otherThreads(from: number, to: number, path = statePath()): Thre
   } finally {
     db.close()
   }
+}
+
+/**
+ * T3 thread titles keyed by the Claude session id each thread resumes.
+ *
+ * a Claude thread's `provider_session_runtime.resume_cursor_json` carries
+ * `resume`, the session id of the transcript under `~/.claude/projects`. only
+ * the thread's current session is recorded there, so a thread that moved to a
+ * new session names that one alone, and a session T3 never ran maps to
+ * nothing. empty when there is no T3 db or its schema has no runtime table.
+ */
+export function claudeThreadTitles(path = statePath()): Map<string, string> {
+  const out = new Map<string, string>()
+  let db: DatabaseSync
+  try {
+    db = new DatabaseSync(path, { readOnly: true })
+  } catch {
+    return out
+  }
+  try {
+    const rows = db
+      .prepare(
+        `SELECT t.title AS title, r.resume_cursor_json AS cursor
+           FROM provider_session_runtime r
+           JOIN projection_threads t ON t.thread_id = r.thread_id
+          WHERE r.provider_name = 'claudeAgent' AND t.deleted_at IS NULL`,
+      )
+      .all() as { title: unknown; cursor: unknown }[]
+    for (const row of rows) {
+      if (typeof row.title !== 'string' || !row.title.trim()) continue
+      try {
+        const resume = JSON.parse(String(row.cursor ?? '{}')).resume
+        if (typeof resume === 'string' && resume) out.set(resume, row.title.trim())
+      } catch {
+        // a runtime row without a resume cursor has not started a Claude session
+      }
+    }
+  } catch {
+    // an older T3 schema without the runtime table: no short titles
+  } finally {
+    db.close()
+  }
+  return out
 }

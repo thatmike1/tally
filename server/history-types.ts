@@ -6,6 +6,7 @@
 // token count is raw. `null` always means "not measured" and the ui must say so
 // rather than draw a zero.
 import type { Family, Tokens } from './prices'
+import type { Effort } from './transcripts'
 
 /** cache read against uncached input, cache write against read; one small line per window */
 export interface CacheRatio {
@@ -200,6 +201,8 @@ export interface RequestPoint {
   cost: number
   tokens: Tokens
   priced: boolean
+  /** the effort level a Claude transcript recorded; null when it recorded none, absent on a Codex call */
+  effort?: Effort | null
 }
 
 /** the parent transcript or one subagent transcript of a session */
@@ -253,6 +256,8 @@ export interface Lane {
   /** `claude`, or T3's provider name for the others: `antigravity`, `codex`, `opencode` */
   kind: string
   title: string
+  /** a Claude lane's T3 Code thread title when T3 ran the session, else null; fall back to `title` */
+  shortTitle: string | null
   project: string
   start: number
   end: number
@@ -283,4 +288,10 @@ export interface IndexProgress {
    * completed pass with a non-zero count is incomplete, and the page says so.
    */
   failed: number
+  /**
+   * files indexed under an older parser and not reread yet. their requests are
+   * in every figure but carry `effort: null` until the reread reaches them, so
+   * while this is above 0 a null effort may still fill in. 0 once they are done.
+   */
+  stale: number
 }

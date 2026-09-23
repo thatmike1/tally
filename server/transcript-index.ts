@@ -11,6 +11,11 @@
 // indexed within seconds of a cold start; `covers()` says how far back the
 // build has reached and `buildState` falls back to a live `scan()` until it is
 // deep enough.
+//
+// a parser change that adds a field bumps `PARSER_VERSION`. every file stored
+// under an older one is reread in the background, newest first, a few seconds
+// at a time between the ordinary passes, so the page keeps answering off the
+// old rows (the new field null on them) while the index fills.
 import { existsSync, mkdirSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -49,8 +54,25 @@ export interface RefreshCounts {
   failed: number
   /** records written by this pass */
   records: number
+  /** files reread only because they were stored under an older `PARSER_VERSION` */
+  reread: number
+  /**
+   * files still stored under an older `PARSER_VERSION` when the pass ended. the
+   * reread stops after `REREAD_BUDGET` seconds so a new request is never kept
+   * waiting behind it; the caller runs another pass while this is above 0.
+   */
+  stale: number
   seconds: number
 }
+
+/**
+ * the parser generation the stored rows were written under. 1 added `effort`;
+ * a file stored under an older one is reread even when its mtime and size match.
+ */
+export const PARSER_VERSION = 1
+
+/** seconds one pass spends rereading files stored under an older parser */
+export const REREAD_BUDGET = 10
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS files (
@@ -65,7 +87,8 @@ CREATE TABLE IF NOT EXISTS files (
   cwd TEXT,
   first_t REAL,
   last_t REAL,
-  lines INTEGER
+  lines INTEGER,
+  parser INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS files_session ON files(session_id);
 CREATE INDEX IF NOT EXISTS files_mtime ON files(mtime);
@@ -83,6 +106,7 @@ CREATE TABLE IF NOT EXISTS requests (
   cw5m INTEGER NOT NULL,
   cr INTEGER NOT NULL,
   tout INTEGER NOT NULL,
+  effort TEXT,
   PRIMARY KEY (file_id, mid)
 );
 CREATE INDEX IF NOT EXISTS requests_t ON requests(t);
@@ -120,13 +144,14 @@ function toRecord(row: Record<string, any>): RequestRecord {
     cw5m: Number(row.cw5m),
     cr: Number(row.cr),
     out: Number(row.tout),
+    effort: row.effort === null || row.effort === undefined ? null : String(row.effort),
   }
 }
 
 const RECORD_COLUMNS = `f.path AS path, f.session_id AS session_id, f.project AS project,
   r.mid AS mid, r.t AS t, r.agent AS agent, r.model AS model, r.family AS family,
   r.priced AS priced, r.cost AS cost, r.tin AS tin, r.cw1h AS cw1h, r.cw5m AS cw5m,
-  r.cr AS cr, r.tout AS tout`
+  r.cr AS cr, r.tout AS tout, r.effort AS effort`
 
 export interface IndexOptions {
   /** `~/.claude/projects` unless a test points elsewhere */
@@ -167,6 +192,8 @@ export class TranscriptIndex {
   private failed = 0
   /** the oldest mtime this build has reached; everything newer is indexed */
   private frontier = Number.POSITIVE_INFINITY
+  /** files stored under an older `PARSER_VERSION`, as of the last pass */
+  private stale = 0
   private running: Promise<RefreshCounts> | null = null
 
   constructor(options: IndexOptions = {}) {
@@ -178,23 +205,24 @@ export class TranscriptIndex {
     this.db.exec('PRAGMA journal_mode = WAL')
     this.db.exec('PRAGMA synchronous = NORMAL')
     this.db.exec(SCHEMA)
+    this.migrate()
     this.statements = {
-      fileByPath: this.db.prepare('SELECT id, mtime, size, title, cwd FROM files WHERE path = ?'),
+      fileByPath: this.db.prepare('SELECT id, mtime, size, title, cwd, parser FROM files WHERE path = ?'),
       insertFile: this.db.prepare(
-        `INSERT INTO files (path, session_id, project, agent, mtime, size, title, cwd, first_t, last_t, lines)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO files (path, session_id, project, agent, mtime, size, title, cwd, first_t, last_t, lines, parser)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       ),
       updateFile: this.db.prepare(
         `UPDATE files SET session_id = ?, project = ?, agent = ?, mtime = ?, size = ?, title = ?, cwd = ?,
-         first_t = ?, last_t = ?, lines = ? WHERE id = ?`,
+         first_t = ?, last_t = ?, lines = ?, parser = ? WHERE id = ?`,
       ),
       deleteRequests: this.db.prepare('DELETE FROM requests WHERE file_id = ?'),
       insertRequest: this.db.prepare(
-        `INSERT INTO requests (file_id, mid, t, agent, model, family, priced, cost, tin, cw1h, cw5m, cr, tout)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO requests (file_id, mid, t, agent, model, family, priced, cost, tin, cw1h, cw5m, cr, tout, effort)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       ),
       deleteFile: this.db.prepare('DELETE FROM files WHERE id = ?'),
-      allFiles: this.db.prepare('SELECT id, path, mtime, size FROM files'),
+      allFiles: this.db.prepare('SELECT id, path, mtime, size, parser FROM files'),
       window: this.db.prepare(
         `SELECT ${RECORD_COLUMNS} FROM requests r JOIN files f ON f.id = r.file_id
           WHERE r.t >= ? AND r.t < ? ORDER BY r.t`,
@@ -216,6 +244,38 @@ export class TranscriptIndex {
     const stored = this.statements.getMeta.get('built_at') as { value?: string } | undefined
     this.builtAt = stored?.value ? Number(stored.value) : null
     this.repriceIfStale()
+    this.stale = Number(
+      (this.db.prepare('SELECT COUNT(*) AS n FROM files WHERE parser < ?').get(PARSER_VERSION) as { n: number }).n,
+    )
+  }
+
+  /**
+   * brings a db written by an older tally up to the current schema in place.
+   *
+   * the columns are added rather than the db rebuilt, so the page keeps its
+   * whole history while the files are reread: an added `effort` reads null on
+   * every old row until its file is reread, and a file whose stored parser is
+   * older than `PARSER_VERSION` is reread by the next passes. a file that
+   * yielded no request at all has nothing a reread could add, so it is marked
+   * current straight away.
+   */
+  private migrate(): void {
+    const columns = (table: string) =>
+      new Set((this.db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]).map((c) => c.name))
+    this.db.exec('BEGIN IMMEDIATE')
+    try {
+      if (!columns('files').has('parser')) {
+        this.db.exec('ALTER TABLE files ADD COLUMN parser INTEGER NOT NULL DEFAULT 0')
+      }
+      if (!columns('requests').has('effort')) {
+        this.db.exec('ALTER TABLE requests ADD COLUMN effort TEXT')
+        this.db.exec('UPDATE files SET parser = 1 WHERE parser < 1 AND first_t IS NULL')
+      }
+      this.db.exec('COMMIT')
+    } catch (error) {
+      this.db.exec('ROLLBACK')
+      throw error
+    }
   }
 
   /**
@@ -258,6 +318,7 @@ export class TranscriptIndex {
       builtAt: this.builtAt,
       cold: this.builtAt === null,
       failed: this.failed,
+      stale: this.stale,
     }
   }
 
@@ -287,9 +348,14 @@ export class TranscriptIndex {
     const started = Date.now()
     // newest first, so the block the page is showing lands in the index first
     const files = transcriptFiles(this.root).sort((a, b) => b.mtime - a.mtime)
-    const known = new Map<string, { id: number; mtime: number; size: number }>()
+    const known = new Map<string, { id: number; mtime: number; size: number; parser: number }>()
     for (const row of this.statements.allFiles.all() as Record<string, any>[]) {
-      known.set(String(row.path), { id: Number(row.id), mtime: Number(row.mtime), size: Number(row.size) })
+      known.set(String(row.path), {
+        id: Number(row.id),
+        mtime: Number(row.mtime),
+        size: Number(row.size),
+        parser: Number(row.parser),
+      })
     }
     this.building = true
     this.done = 0
@@ -299,30 +365,42 @@ export class TranscriptIndex {
     let skipped = 0
     let records = 0
     let dropped = 0
+    let reread = 0
     this.failed = 0
+    // unchanged files stored under an older parser, newest first: their rows
+    // still answer every window, so they wait until the changed files are in
+    const older: { file: TranscriptFile; id: number }[] = []
+
+    /** parse and store one file; false when it could not be read */
+    const read = async (file: TranscriptFile, id: number | null): Promise<boolean> => {
+      try {
+        const result = await parseTranscript(file)
+        this.store(file, result, id)
+        records += result.records.length
+        return true
+      } catch {
+        // nothing was written: `store` rolls back. a file that is still on disk
+        // is a failure: its old rows go too, so nothing claims it is indexed and
+        // the next pass reads it again. a file that vanished mid-pass is not a
+        // failure, it is gone, and it is dropped like any other missing file
+        if (id !== null) {
+          this.statements.deleteRequests.run(id)
+          this.statements.deleteFile.run(id)
+        }
+        if (existsSync(file.path)) this.failed++
+        else dropped++
+        return false
+      }
+    }
+
     for (const file of files) {
       const row = known.get(file.path)
       known.delete(file.path)
       if (row && row.mtime === file.mtime && row.size === file.size) {
         skipped++
-      } else {
-        try {
-          const result = await parseTranscript(file)
-          this.store(file, result, row?.id ?? null)
-          records += result.records.length
-          parsed++
-        } catch {
-          // nothing was written: `store` rolls back. a file that is still on disk
-          // is a failure: its old rows go too, so nothing claims it is indexed and
-          // the next pass reads it again. a file that vanished mid-pass is not a
-          // failure, it is gone, and it is dropped like any other missing file
-          if (row) {
-            this.statements.deleteRequests.run(row.id)
-            this.statements.deleteFile.run(row.id)
-          }
-          if (existsSync(file.path)) this.failed++
-          else dropped++
-        }
+        if (row.parser < PARSER_VERSION) older.push({ file, id: row.id })
+      } else if (await read(file, row?.id ?? null)) {
+        parsed++
       }
       this.done++
       this.frontier = file.mtime
@@ -336,6 +414,22 @@ export class TranscriptIndex {
     // pass completes and `progress().failed` carries what it could not index
     this.builtAt = Math.round(Date.now() / 1000)
     this.statements.setMeta.run('built_at', String(this.builtAt), String(this.builtAt))
+    // every file is indexed from here on; what is left only fills a new field in
+    this.building = false
+
+    this.stale = older.length
+    const budgetEnds = Date.now() + REREAD_BUDGET * 1000
+    for (const { file, id } of older) {
+      if (Date.now() >= budgetEnds) break
+      if (await read(file, id)) {
+        skipped--
+        parsed++
+        reread++
+      }
+      // a failed reread has had its rows removed, so it is no longer stale either
+      this.stale--
+      await new Promise<void>((resolve) => setImmediate(resolve))
+    }
     return {
       seen: files.length,
       parsed,
@@ -343,6 +437,8 @@ export class TranscriptIndex {
       dropped: known.size + dropped,
       failed: this.failed,
       records,
+      reread,
+      stale: this.stale,
       seconds: (Date.now() - started) / 1000,
     }
   }
@@ -371,6 +467,7 @@ export class TranscriptIndex {
           first,
           last,
           parsed.lines,
+          PARSER_VERSION,
         )
         fileId = Number(inserted.lastInsertRowid)
       } else {
@@ -385,6 +482,7 @@ export class TranscriptIndex {
           first,
           last,
           parsed.lines,
+          PARSER_VERSION,
           fileId,
         )
         this.statements.deleteRequests.run(fileId)
@@ -404,6 +502,7 @@ export class TranscriptIndex {
           record.cw5m,
           record.cr,
           record.out,
+          record.effort,
         )
       }
       this.db.exec('COMMIT')

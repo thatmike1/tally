@@ -10,12 +10,17 @@ import type { RequestRecord, SessionMeta } from './transcripts'
 import { isWeekend, dayKey, workdaysBetween } from './time'
 import type { Family } from './prices'
 import type { Sample } from './samples'
+import { UsageTally, type RowUsage, type SplitUsage } from './usage'
 
 /** shown wherever a points figure appears */
 export const CAVEAT =
   'Split by list-price cost across the block’s measured jump. Approximate to about a quarter of each figure.'
 
-export interface SessionSplit {
+/**
+ * one session's part of a split. `models`, `effort` and `buckets` (from
+ * `RowUsage`) cover the same requests as `cost`, `requests` and `tokens`.
+ */
+export interface SessionSplit extends RowUsage {
   sessionId: string
   project: string
   title: string | null
@@ -44,6 +49,8 @@ export interface BlockSplit {
   costBeforeFirstSample: number
   /** requests since the last sample: the meter has not been read over them yet */
   costAfterLastSample: number
+  /** tokens and list cost over `from..to`, the requests the rows cover; the rows add up to it */
+  usage: SplitUsage
 }
 
 /**
@@ -70,7 +77,9 @@ export function splitBlock(
   const { from, to, delta } = opts
   const blockStart = opts.blockStart ?? from
   const weigh = opts.weigh ?? ((record: RequestRecord) => record.cost)
-  const byId = new Map<string, SessionSplit & { agentFiles: Set<string>; weight: number }>()
+  type Building = Omit<SessionSplit, keyof RowUsage> & { agentFiles: Set<string>; weight: number; tally: UsageTally }
+  const byId = new Map<string, Building>()
+  const window = new UsageTally()
   let totalCost = 0
   let totalWeight = 0
   let costBeforeFirstSample = 0
@@ -97,6 +106,7 @@ export function splitBlock(
         unpriced: false,
         agentFiles: new Set<string>(),
         weight: 0,
+        tally: new UsageTally(),
       }
       byId.set(record.sessionId, row)
     }
@@ -108,17 +118,29 @@ export function splitBlock(
     row.end = Math.max(row.end, record.t)
     if (!record.priced) row.unpriced = true
     if (record.agent) row.agentFiles.add(record.file)
+    row.tally.add(record)
+    window.add(record)
     totalCost += record.cost
     totalWeight += weigh(record)
   }
-  const list: SessionSplit[] = [...byId.values()].map(({ agentFiles, weight, ...row }) => ({
+  const list: SessionSplit[] = [...byId.values()].map(({ agentFiles, weight, tally, ...row }) => ({
     ...row,
+    ...tally.row(),
     subagents: agentFiles.size,
     share: totalWeight > 0 ? weight / totalWeight : 0,
     points: delta === null || totalWeight <= 0 ? null : (weight / totalWeight) * delta,
   }))
   list.sort((a, b) => b.share - a.share)
-  return { from, to, delta, totalCost, sessions: list, costBeforeFirstSample, costAfterLastSample }
+  return {
+    from,
+    to,
+    delta,
+    totalCost,
+    sessions: list,
+    costBeforeFirstSample,
+    costAfterLastSample,
+    usage: window.summary(),
+  }
 }
 
 /** shown under the weekly and Fable strips */
@@ -245,6 +267,7 @@ function splitWindow(
       sessions: [],
       costBeforeFirstSample: 0,
       costAfterLastSample: 0,
+      usage: new UsageTally().summary(),
       startPct: first.pct,
       endPct: last.pct,
       crossedReset: true,
