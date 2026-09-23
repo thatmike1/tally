@@ -16,7 +16,7 @@ import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { DatabaseSync, type StatementSync } from 'node:sqlite'
 import type { IndexProgress } from './history-types'
-import { familyOf } from './prices'
+import { costOf, familyOf, PRICE_TABLE_KEY, priceFor } from './prices'
 import {
   parseTranscript,
   projectsRoot,
@@ -215,6 +215,38 @@ export class TranscriptIndex {
     }
     const stored = this.statements.getMeta.get('built_at') as { value?: string } | undefined
     this.builtAt = stored?.value ? Number(stored.value) : null
+    this.repriceIfStale()
+  }
+
+  /**
+   * a stored cost is frozen at the price table it was parsed under, and an
+   * unchanged file is never reread, so a price edit reprices every row from the
+   * tokens it kept. runs once per table change, keyed in `meta`.
+   */
+  private repriceIfStale(): void {
+    const stored = this.statements.getMeta.get('prices') as { value?: string } | undefined
+    if (stored?.value === PRICE_TABLE_KEY) return
+    const rows = this.db.prepare('SELECT rowid, model, tin, cw1h, cw5m, cr, tout FROM requests').all()
+    const update = this.db.prepare('UPDATE requests SET priced = ?, cost = ? WHERE rowid = ?')
+    this.db.exec('BEGIN')
+    try {
+      for (const row of rows) {
+        const model = String(row.model)
+        const cost = costOf(model, {
+          in: Number(row.tin),
+          cw1h: Number(row.cw1h),
+          cw5m: Number(row.cw5m),
+          cr: Number(row.cr),
+          out: Number(row.tout),
+        })
+        update.run(priceFor(model) !== null ? 1 : 0, cost, Number(row.rowid))
+      }
+      this.statements.setMeta.run('prices', PRICE_TABLE_KEY, PRICE_TABLE_KEY)
+      this.db.exec('COMMIT')
+    } catch (error) {
+      this.db.exec('ROLLBACK')
+      throw error
+    }
   }
 
   /** what `/api/state` prints while the tree is being read */

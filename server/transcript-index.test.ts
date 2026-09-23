@@ -4,6 +4,7 @@ import { chmodSync, cpSync, mkdtempSync, appendFileSync, rmSync, statSync, utime
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
+import { DatabaseSync } from 'node:sqlite'
 import { TranscriptIndex } from './transcript-index'
 import { projectsRoot, scan, transcriptFiles, type RequestRecord } from './transcripts'
 
@@ -51,6 +52,24 @@ describe('TranscriptIndex', () => {
     expect([...indexed.sessions.keys()].sort()).toEqual([...live.sessions.keys()].sort())
     for (const [id, meta] of indexed.sessions) expect(meta.title).toBe(live.sessions.get(id)!.title)
     index.close()
+  })
+
+  it('reprices stored rows when the price table changes, without rereading files', async () => {
+    const root = copyRoot()
+    const path = join(root, '..', 'index.sqlite')
+    const first = new TranscriptIndex({ root, path })
+    await first.refresh()
+    first.close()
+
+    // a db written under an older table: every cost wrong, a different table key
+    const raw = new DatabaseSync(path)
+    raw.exec("UPDATE requests SET cost = 0; UPDATE meta SET value = 'stale' WHERE key = 'prices'")
+    raw.close()
+
+    const reopened = new TranscriptIndex({ root, path })
+    const live = await scan(0, 9_999_999_999, root)
+    expect(sorted(reopened.query(0, 9_999_999_999).records)).toEqual(sorted(live.records))
+    reopened.close()
   })
 
   it('never reads an unchanged file twice', async () => {

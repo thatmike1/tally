@@ -49,6 +49,22 @@ describe('prices', () => {
     expect(priceFor('<synthetic>')).toBeNull()
   })
 
+  it('prices the 23 Sep 2026 table: opus 5.5, fable 5.1 and sonnet 5 on their own rows', () => {
+    expect(priceFor('claude-opus-5-5')).toEqual([4.0, 20.0])
+    expect(priceFor('claude-opus-5')).toEqual([5.0, 25.0])
+    expect(priceFor('claude-fable-5-1')).toEqual([10.0, 50.0])
+    expect(priceFor('claude-sonnet-5')).toEqual([2.0, 10.0])
+  })
+
+  it('reads cache hits at 0.025x on fable 5.1 and 0.05x on opus 5.5', () => {
+    const read = { in: 0, cw1h: 0, cw5m: 0, cr: 1e6, out: 0 }
+    expect(costOf('claude-fable-5-1', read)).toBeCloseTo(0.25, 9)
+    expect(costOf('claude-fable-5', read)).toBeCloseTo(1.0, 9)
+    expect(costOf('claude-opus-5-5', read)).toBeCloseTo(0.2, 9)
+    // cache writes keep the usual multipliers
+    expect(costOf('claude-opus-5-5', { in: 0, cw1h: 1e6, cw5m: 1e6, cr: 0, out: 0 })).toBeCloseTo(8 + 5, 9)
+  })
+
   it('prices the cache buckets at their own multipliers', () => {
     // 1M cache-read opus tokens is a tenth of the 5.00 input price
     expect(costOf('claude-opus-5', { in: 0, cw1h: 0, cw5m: 0, cr: 1e6, out: 0 })).toBeCloseTo(0.5, 9)

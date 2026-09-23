@@ -8,6 +8,8 @@ describe('openAiPrice', () => {
     expect(openAiPrice('gpt-5.6-sol')).toEqual({ input: 4.0, cachedInput: 0.4, output: 20.0 })
     expect(openAiPrice('gpt-6-astra')).toEqual({ input: 10.0, cachedInput: 1.0, output: 50.0 })
     expect(openAiPrice('gpt-5.3-codex')).toEqual({ input: 1.75, cachedInput: 0.175, output: 14.0 })
+    expect(openAiPrice('gpt-6-sol')).toEqual({ input: 2.0, cachedInput: 0.2, output: 10.0 })
+    expect(openAiPrice('gpt-6-luna')).toEqual({ input: 0.1, cachedInput: 0.01, output: 0.5 })
   })
 
   it('matches a spaced or dated id by its base row', () => {

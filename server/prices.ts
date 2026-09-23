@@ -1,13 +1,17 @@
-// the list-price table, ported from cc-browse's `ccbrowse.py` (`PRICES`,
-// `usage_cost`) and `projects/tally/jobs/extract.py`. list price is the divider
-// the attribution proof settled on, so it has to agree with both to the cent.
+// the list-price table, first ported from cc-browse's `ccbrowse.py` (`PRICES`,
+// `usage_cost`). list price is the divider the attribution proof settled on.
+// read from https://platform.claude.com/docs/en/about-claude/pricing on 23 Sep
+// 2026; standard speed only, fast mode is not modelled.
 
 /** usd per million tokens, as (input, output), keyed by model-id prefix */
 export const PRICES: Record<string, readonly [number, number]> = {
+  'claude-fable-5-1': [10.0, 50.0],
   'claude-fable-5': [10.0, 50.0],
+  'claude-mythos-5-1': [10.0, 50.0],
   'claude-mythos-5': [10.0, 50.0],
+  'claude-opus-5-5': [4.0, 20.0],
   'claude-opus-': [5.0, 25.0],
-  'claude-sonnet-5': [3.0, 15.0],
+  'claude-sonnet-5': [2.0, 10.0],
   'claude-sonnet-4-6': [3.0, 15.0],
   'claude-sonnet-4-5': [3.0, 15.0],
   'claude-haiku-4-5': [1.0, 5.0],
@@ -18,6 +22,16 @@ export const PRICES: Record<string, readonly [number, number]> = {
 export const CACHE_WRITE_1H_MULT = 2.0
 export const CACHE_WRITE_5M_MULT = 1.25
 export const CACHE_READ_MULT = 0.1
+
+/** models whose cache reads break the 0.1x rule, keyed by the same prefixes as `PRICES` */
+export const CACHE_READ_MULT_BY_PREFIX: Record<string, number> = {
+  'claude-fable-5-1': 0.025,
+  'claude-mythos-5-1': 0.025,
+  'claude-opus-5-5': 0.05,
+}
+
+/** changes whenever a price does, so the transcript index knows to reprice its stored costs */
+export const PRICE_TABLE_KEY = JSON.stringify([PRICES, CACHE_READ_MULT_BY_PREFIX, CACHE_WRITE_1H_MULT, CACHE_WRITE_5M_MULT, CACHE_READ_MULT])
 
 export const FAMILIES = ['fable', 'mythos', 'opus', 'sonnet', 'haiku', 'other'] as const
 export type Family = (typeof FAMILIES)[number]
@@ -30,17 +44,24 @@ export interface Tokens {
   out: number
 }
 
-/** longest matching prefix wins, so `claude-sonnet-4-5` beats `claude-sonnet-` */
-export function priceFor(model: string): readonly [number, number] | null {
-  let best: readonly [number, number] | null = null
-  let bestLen = -1
-  for (const [prefix, price] of Object.entries(PRICES)) {
-    if (model.startsWith(prefix) && prefix.length > bestLen) {
-      best = price
-      bestLen = prefix.length
-    }
+/** longest matching prefix wins, so `claude-opus-5-5` beats `claude-opus-` */
+function pricePrefix(model: string): string | null {
+  let best: string | null = null
+  for (const prefix of Object.keys(PRICES)) {
+    if (model.startsWith(prefix) && (best === null || prefix.length > best.length)) best = prefix
   }
   return best
+}
+
+export function priceFor(model: string): readonly [number, number] | null {
+  const prefix = pricePrefix(model)
+  return prefix ? PRICES[prefix]! : null
+}
+
+/** the cache-read multiplier on base input, 0.1x unless the model has its own */
+export function cacheReadMult(model: string): number {
+  const prefix = pricePrefix(model)
+  return (prefix === null ? undefined : CACHE_READ_MULT_BY_PREFIX[prefix]) ?? CACHE_READ_MULT
 }
 
 export function familyOf(model: string): Family {
@@ -59,7 +80,7 @@ export function costOf(model: string, t: Tokens): number {
     (t.in * base +
       t.cw1h * base * CACHE_WRITE_1H_MULT +
       t.cw5m * base * CACHE_WRITE_5M_MULT +
-      t.cr * base * CACHE_READ_MULT +
+      t.cr * base * cacheReadMult(model) +
       t.out * out) /
     1e6
   )

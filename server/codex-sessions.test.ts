@@ -61,6 +61,8 @@ function rollout(id: string, calls: [response: string, t: number, credits: numbe
 describe('codexRate', () => {
   it('prices a dated or spaced model name by its rate-card row', () => {
     expect(codexRate('GPT-6 Astra')).toMatchObject({ priced: true, rate: { input: 250 } })
+    expect(codexRate('gpt-6-sol')).toMatchObject({ priced: true, rate: { input: 50, cached: 5, output: 250 } })
+    expect(codexRate('gpt-6-luna')).toMatchObject({ priced: true, rate: { input: 2.5, cached: 0.25, output: 12.5 } })
     expect(codexRate('gpt-5.6-luna-2026-08-01')).toMatchObject({ priced: true, rate: { output: 30 } })
   })
 

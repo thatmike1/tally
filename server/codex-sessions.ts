@@ -15,9 +15,11 @@ import { DatabaseSync } from 'node:sqlite'
 import { CODEX_WEEK_MINUTES } from './codex-usage'
 import { agentsviewUrl } from './session-detail'
 
-/** credits per million tokens, from https://help.openai.com/en/articles/20001106-codex-rate-card (read 15 Sep 2026) */
+/** credits per million tokens, from https://help.openai.com/en/articles/20001106-codex-rate-card (read 23 Sep 2026) */
 export const CODEX_RATES: Record<string, { input: number; cached: number; output: number }> = {
   'gpt-6-astra': { input: 250, cached: 25, output: 1250 },
+  'gpt-6-sol': { input: 50, cached: 5, output: 250 },
+  'gpt-6-luna': { input: 2.5, cached: 0.25, output: 12.5 },
   'gpt-5.6-sol': { input: 100, cached: 10, output: 500 },
   'gpt-5.6-terra': { input: 50, cached: 5, output: 300 },
   'gpt-5.6-luna': { input: 5, cached: 0.5, output: 30 },

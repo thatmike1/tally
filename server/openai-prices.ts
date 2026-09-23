@@ -13,15 +13,18 @@ import type { OpenAiPrice } from './history-types'
 export const OPENAI_PRICE_SOURCE = 'https://platform.openai.com/docs/pricing'
 
 /** the day the table was read, ISO; a stale table is a wrong dollar figure */
-export const OPENAI_PRICE_READ_AT = '2026-09-16'
+export const OPENAI_PRICE_READ_AT = '2026-09-23'
 
 /**
- * usd per million tokens, keyed by the model id Codex reports. the four
- * flagship rows and `gpt-5.6-cyber` come from the pricing page itself, the rest
- * from each model's page under `/docs/models/<id>` (same site, same day).
+ * usd per million tokens, keyed by the model id Codex reports. the three
+ * gpt-6 rows, `gpt-5.6-sol`, `gpt-5.6-cyber` and `gpt-5.3-codex` come from the
+ * pricing page itself (23 Sep), the rest from each model's page under
+ * `/docs/models/<id>` (16 Sep).
  */
 export const OPENAI_PRICES: Record<string, OpenAiPrice> = {
   'gpt-6-astra': { input: 10.0, cachedInput: 1.0, output: 50.0 },
+  'gpt-6-sol': { input: 2.0, cachedInput: 0.2, output: 10.0 },
+  'gpt-6-luna': { input: 0.1, cachedInput: 0.01, output: 0.5 },
   'gpt-5.6-sol': { input: 4.0, cachedInput: 0.4, output: 20.0 },
   'gpt-5.6-terra': { input: 2.0, cachedInput: 0.2, output: 12.0 },
   'gpt-5.6-luna': { input: 0.2, cachedInput: 0.02, output: 1.2 },
