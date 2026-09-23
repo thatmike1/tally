@@ -11,6 +11,7 @@ import {
 import { dayDate, dayKey, hm, money, pct, rate } from '../format'
 import { blockHref, weekHref } from '../route'
 import { ChatsShareChart, CodexRateChart, CostPerPercentChart } from './charts'
+import { useTip } from './tip'
 
 /**
  * the history overview: every 5-hour block and every weekly window since the
@@ -213,7 +214,6 @@ function DayRows({ blocks, max }: { blocks: BlockSummary[]; max: number }) {
                 key={block.resetKey}
                 href={blockHref(block.resetKey)}
                 style={{ left: `${(hourOfDay(block.start) / AXIS_HOURS) * 100}%` }}
-                title={`${block.usage.requests} requests${block.measured ? '' : ' · no dollars per point from this one'}`}
               >
                 <b>
                   {pct(block.endPct)}
@@ -246,20 +246,22 @@ function DayRows({ blocks, max }: { blocks: BlockSummary[]; max: number }) {
 }
 
 function Weeks({ weeks }: { weeks: WeekSummary[] }) {
+  const tip = useTip()
   if (!weeks.length) return null
   const max = Math.max(0.01, ...weeks.map((week) => week.usage.cost))
   return (
     <>
       <h2 style={{ marginTop: 44 }}>every weekly window</h2>
+      {tip.layer}
       <div className="htiles">
         {weeks.map((week) => (
           <a
             className="tile wide"
             key={week.resetsAt}
             href={weekHref(week.resetsAt)}
-            title={`${dayDate(week.start)} to ${dayDate(week.end)} · ${money(week.usage.cost)} over ${
+            {...tip.bind(`${dayDate(week.start)} to ${dayDate(week.end)} · ${money(week.usage.cost)} over ${
               week.usage.requests
-            } requests${week.fable.model ? ` · ${week.fable.model} ${week.fable.endPct === null ? 'not read' : pct(week.fable.endPct)}` : ''}`}
+            } requests${week.fable.model ? ` · ${week.fable.model} ${week.fable.endPct === null ? 'not read' : pct(week.fable.endPct)}` : ''}`)}
           >
             <em>
               {dayDate(week.resetsAt)} {hm(week.resetsAt)}

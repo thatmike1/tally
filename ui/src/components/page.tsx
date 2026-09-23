@@ -1,31 +1,18 @@
-import { useEffect, useState } from 'react'
+import type { ReactNode } from 'react'
 import type { State, WeekMode } from '../api'
-import { ago } from '../format'
-import { Codex, CodexThreads } from './codex'
-import { Day } from './day'
-import { Hero } from './hero'
-import { BlockSplit } from './split'
-import { Week } from './week'
-
-/** past this width Codex gets its own column beside the Claude page */
-const WIDE_QUERY = '(min-width: 1900px)'
-
-export function useWide(): boolean {
-  const [wide, setWide] = useState(() => window.matchMedia(WIDE_QUERY).matches)
-  useEffect(() => {
-    const query = window.matchMedia(WIDE_QUERY)
-    const update = () => setWide(query.matches)
-    query.addEventListener('change', update)
-    return () => query.removeEventListener('change', update)
-  }, [])
-  return wide
-}
+import { hm, money } from '../format'
+import { BlockSection, WeekSection } from './block'
+import { CodexSection } from './codex'
+import { Letter } from './letter'
+import { Question, Statement } from './ledger'
+import { WhenSection } from './when'
+import { listOf, plural, rowName } from './words'
 
 /**
  * the whole page for one state: live at `#/`, or frozen at a past window in the
- * history drill-in. a frozen page has no week-mode buttons (the server answers
- * `?at=` with the whole window) and asks for no takeaway, since the model would
- * be writing a line about right now over a picture of last Tuesday.
+ * history drill-in. the letter on the left answers; the column on the right
+ * holds the evidence, one question per section. a frozen page has no week-mode
+ * buttons, since the server answers `?at=` with the whole window.
  */
 export function PageBody({
   state,
@@ -33,102 +20,169 @@ export function PageBody({
   onWeekMode,
   frozen = false,
   focus,
+  header,
 }: {
   state: State
   weekMode: WeekMode
   onWeekMode?: (mode: WeekMode) => void
   frozen?: boolean
-  /** a frozen 5-hour block folds the week-wide sections away: they are not about that block */
+  /** a frozen week leads with the week's own ledger; a frozen block reads like today */
   focus?: 'block' | 'week'
+  /** the frozen page's bar, set at the top of the evidence column */
+  header?: ReactNode
 }) {
-  const wide = useWide()
-  const week = <Week state={state} mode={weekMode} {...(onWeekMode ? { onMode: onWeekMode } : {})} />
-  if (focus === 'block') {
-    return (
-      <>
-        <Hero state={state} frozen={frozen} />
-        <BlockSplit state={state} />
-        <Day state={state} />
-        <details className="fold">
-          <summary>the week as it stood at that moment · Claude weekly, Fable and Codex</summary>
-          {week}
-          <Codex state={state} frozen={frozen} />
-          <CodexThreads state={state} frozen={frozen} />
-        </details>
-      </>
-    )
-  }
-  if (focus === 'week') {
-    // the week's own split leads; the block that happened to be running at the reset is a footnote
-    return (
-      <>
-        {week}
-        <Codex state={state} frozen={frozen} />
-        <CodexThreads state={state} frozen={frozen} />
-        <details className="fold">
-          <summary>the 5-hour block and the day the week closed on</summary>
-          <Hero state={state} frozen={frozen} />
-          <BlockSplit state={state} />
-          <Day state={state} />
-        </details>
-      </>
-    )
-  }
+  const ended = !frozen && state.fiveHour?.ended
+  const block = (
+    <BlockSection
+      state={state}
+      frozen={frozen}
+      weekMode={weekMode}
+      onWeekMode={onWeekMode}
+      title={focus === 'week' ? 'The block the week closed on' : ended ? 'What ate the last block' : 'What ate this block'}
+    />
+  )
   return (
-    <>
-      <div className="legend">
-        <b>Real:</b> the meters, the day's meter line, every reset time, the lanes, the other agents' titles.{' '}
-        <b>Computed from real:</b> the splits, the projection, the weekly verdicts.{' '}
-        <b>Not shown:</b> points for any stretch the sampler did not measure.
-        {state.fiveHour && !frozen ? ` Meter read ${ago(state.fiveHour.ageSeconds)}.` : ''}
-      </div>
-      {state.index.building ? (
-        <p className="warn">
-          the transcript index is building ({state.index.done} of {state.index.total} files
-          {state.index.cold ? ', first run' : ''}). the lanes and the split read the tree directly until it catches
-          up.
-        </p>
-      ) : null}
-      {state.index.failed > 0 ? (
-        <p className="warn">
-          {state.index.failed} {state.index.failed === 1 ? 'file' : 'files'} could not be read, so the index is
-          missing them; every pass tries again.
-        </p>
-      ) : null}
-      {state.fiveHour?.expired && !frozen ? (
-        <p className="warn">
-          the block reset over ten minutes ago and nothing has read the account since: the sampler is behind, so this
-          page is stale. check <code>systemctl --user list-timers tally-sampler.timer</code>.
-        </p>
-      ) : null}
-      {state.notes.map((note) => (
-        <p className="warn" key={note}>
-          {note}
-        </p>
-      ))}
-      {wide ? (
-        <div className="columns">
-          <main>
-            <Hero state={state} frozen={frozen} />
-            <BlockSplit state={state} />
-            <Week state={state} mode={weekMode} {...(onWeekMode ? { onMode: onWeekMode } : {})} />
-            <Day state={state} />
-          </main>
-          <aside className="codex-col">
-            <Codex state={state} frozen={frozen} />
-            <CodexThreads state={state} frozen={frozen} beside />
-          </aside>
+    <div className="answer">
+      <Letter state={state} frozen={frozen} focus={focus} />
+      <main className="rows">
+        {header}
+        {focus === 'week' ? (
+          <>
+            <WeekSection state={state} frozen={frozen} />
+            <CodexSection state={state} frozen={frozen} />
+            {block}
+            <WhenSection state={state} frozen={frozen} />
+          </>
+        ) : (
+          <>
+            {block}
+            <CodexSection state={state} frozen={frozen} />
+            <WhenSection state={state} frozen={frozen} />
+          </>
+        )}
+        <Ground state={state} frozen={frozen} />
+        <div className="coda">
+          <span className="say">Earlier blocks and weeks read the same way.</span>
+          <a className="go" href="#/history">
+            history →
+          </a>
         </div>
-      ) : (
-        <>
-          <Hero state={state} frozen={frozen} />
-          <Codex state={state} frozen={frozen} />
-          <BlockSplit state={state} />
-          <Week state={state} mode={weekMode} {...(onWeekMode ? { onMode: onWeekMode } : {})} />
-          <CodexThreads state={state} frozen={frozen} />
-          <Day state={state} />
-        </>
-      )}
-    </>
+      </main>
+    </div>
+  )
+}
+
+/** what the page stands on: what was read, what was worked out, and what it cannot see */
+function Ground({ state, frozen }: { state: State; frozen: boolean }) {
+  const five = state.fiveHour
+  const split = state.split
+  const index = state.index
+  const unpriced = (split?.sessions ?? []).filter((row) => row.unpriced && row.share > 0)
+  const statements: ReactNode[] = []
+
+  statements.push(
+    <Statement key="measured" line={<><b>Measured:</b> the meters, every reset time, the meter line, the lanes, the titles</>}>
+      <p>
+        The Claude meters come from Anthropic’s usage endpoint every five minutes
+        {five ? `, last read ${hm(five.sampledAt)}; the largest gap between readings in this block was ${Math.round(five.maxGap / 60)} min` : ''}
+        .{state.codex.sampledAt !== null ? ` Codex was read ${hm(state.codex.sampledAt)}.` : ''} The lanes come from the
+        transcripts ({index.done.toLocaleString('en-US')} files indexed
+        {index.builtAt === null ? '' : `, last pass ${hm(index.builtAt)}`}) and T3 Code’s thread messages.
+      </p>
+      <dl className="kv">
+        <dt>meters</dt>
+        <dd>{state.sources.limits}</dd>
+        <dt>transcripts</dt>
+        <dd>{state.sources.transcripts}</dd>
+        <dt>index</dt>
+        <dd>{state.sources.index}</dd>
+        <dt>T3</dt>
+        <dd>{state.sources.t3}</dd>
+      </dl>
+    </Statement>,
+  )
+  statements.push(
+    <Statement key="computed" line={<><b>Computed:</b> the shares, the points, the projection, the verdicts, list-price cost</>}>
+      <p>
+        {state.caveat} {state.week.caveat} The projection and the verdicts are arithmetic on the readings, no model
+        involved. List price is what the same tokens would cost on the API; it is a yardstick, not a bill.
+      </p>
+    </Statement>,
+  )
+  if (split && (split.costBeforeFirstSample > 0.01 || split.costAfterLastSample > 0.01)) {
+    const before = split.costBeforeFirstSample > 0.01
+    statements.push(
+      <Statement
+        key="gap"
+        line={
+          <>
+            <b>Not on the meter:</b>{' '}
+            {before
+              ? `${money(split.costBeforeFirstSample)} ran before the first reading at ${hm(split.from)}`
+              : `${money(split.costAfterLastSample)} since the last reading at ${hm(split.to)}`}
+          </>
+        }
+      >
+        <p>
+          No meter delta covers {before ? 'it' : 'that stretch'}, so it gets no share and no points.
+          {before && split.costAfterLastSample > 0.01
+            ? ` ${money(split.costAfterLastSample)} ran after the last reading (${hm(split.to)}) and ${frozen || five?.ended ? 'no reading covers it' : 'is not on the meter yet'}.`
+            : ''}
+        </p>
+      </Statement>,
+    )
+  }
+  if (unpriced.length) {
+    statements.push(
+      <Statement
+        key="unpriced"
+        line={
+          <>
+            <b>Short:</b> {listOf(unpriced.map((row) => rowName(row)))} {unpriced.length === 1 ? 'has' : 'have'} requests
+            with no price row
+          </>
+        }
+      >
+        <p>The cost marked * is a floor, and its share is correspondingly low. Nothing is priced as zero on purpose.</p>
+      </Statement>,
+    )
+  }
+  if (index.building || index.cold) {
+    statements.push(
+      <Statement key="building" line={<><b>Still indexing:</b> {index.done} of {index.total} transcript files</>}>
+        <p>Until the index catches up, the lanes and the split read the transcript tree directly.</p>
+      </Statement>,
+    )
+  }
+  if (index.failed > 0) {
+    statements.push(
+      <Statement key="failed" line={<><b>Missing:</b> {plural(index.failed, 'transcript file')} could not be read</>}>
+        <p>The index is missing them, so every figure here is short by whatever they hold; every pass tries again.</p>
+      </Statement>,
+    )
+  }
+  if (index.stale > 0) {
+    statements.push(
+      <Statement key="stale" line={<><b>Effort filling in:</b> {plural(index.stale, 'file')} indexed before effort was recorded</>}>
+        <p>Their requests are in every figure but carry no effort level until the index rereads them.</p>
+      </Statement>,
+    )
+  }
+  for (const note of state.notes) {
+    statements.push(
+      <Statement key={note} line={<><b>Unmodelled:</b> {note}</>}>
+        <p>The sampler saw a field the page does not compute on; it is shown here so a new limit is not missed.</p>
+      </Statement>,
+    )
+  }
+
+  return (
+    <Question
+      id="q-ground"
+      title="What this stands on"
+      lead="Everything above is either read off a meter or worked out from one. Here is which, and what the page cannot see."
+    >
+      {statements}
+    </Question>
   )
 }

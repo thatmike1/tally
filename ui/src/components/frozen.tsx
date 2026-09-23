@@ -12,6 +12,7 @@ import { dayDate, hm, money, pct, rate, ratio, tokens } from '../format'
 import { blockHref, weekHref } from '../route'
 import { Blocks } from './history'
 import { PageBody } from './page'
+import { Tip } from './tip'
 
 /**
  * the drill-in: today's page, frozen at the last meter sample of a past window.
@@ -75,46 +76,53 @@ export function Frozen({ kind, resetKey }: { kind: 'block' | 'week'; resetKey: n
     }
   }, [kind, resetKey])
 
-  return (
-    <>
-      <div className="frozen">
-        <div className="fz-title">
-          <span className="fz-tag" title="every number below is this window's, read at the meter sample it closed on. nothing on it is live">past · not live</span>
-          {block ? (
-            <>
-              5-hour block · {dayDate(block.start)} {hm(block.start)}–{hm(block.resetKey)}
-            </>
-          ) : week ? (
-            <>
-              week to {dayDate(week.resetsAt)} {hm(week.resetsAt)}
-              {week.partial ? ' · still running' : ''}
-            </>
-          ) : (
-            <>
-              {kind === 'block' ? '5-hour block' : 'week'} · {dayDate(resetKey)} {hm(resetKey)}
-            </>
-          )}
-          <span className="fz-step">
-            {around.prev ? <a href={around.prev}>← earlier</a> : <i>← earlier</i>}
-            {around.next ? <a href={around.next}>later →</a> : <i>later →</i>}
-            <a href="#/history">all windows</a>
-            <a href="#/">back to now</a>
-          </span>
-        </div>
-        {block ? <BlockLine block={block} /> : week ? <WeekLine week={week} /> : null}
-        {historyError ? (
-          <div className="fz-note warn">
-            the history endpoint is not answering ({historyError}), so this window has no summary line; the page below
-            is still frozen at {hm(resetKey)}.
-          </div>
-        ) : !block && !week ? (
-          <div className="fz-note warn">no window with this key is in the history answer.</div>
-        ) : null}
+  const header = (
+    <div className="frozen">
+      <div className="fz-title">
+        <Tip tip="every number on this page is this window’s, read at the meter sample it closed on. nothing on it is live">
+          <span className="fz-tag">past · not live</span>
+        </Tip>
+        {block ? (
+          <>
+            5-hour block · {dayDate(block.start)} {hm(block.start)}–{hm(block.resetKey)}
+          </>
+        ) : week ? (
+          <>
+            week to {dayDate(week.resetsAt)} {hm(week.resetsAt)}
+            {week.partial ? ' · still running' : ''}
+          </>
+        ) : (
+          <>
+            {kind === 'block' ? '5-hour block' : 'week'} · {dayDate(resetKey)} {hm(resetKey)}
+          </>
+        )}
+        <span className="fz-step">
+          {around.prev ? <a href={around.prev}>← earlier</a> : <i>← earlier</i>}
+          {around.next ? <a href={around.next}>later →</a> : <i>later →</i>}
+          <a href="#/history">all windows</a>
+          <a href="#/">back to now</a>
+        </span>
       </div>
+      {block ? <BlockLine block={block} /> : week ? <WeekLine week={week} /> : null}
+      {historyError ? (
+        <div className="fz-note warn">
+          the history endpoint is not answering ({historyError}), so this window has no summary line; the page below is
+          still frozen at {hm(resetKey)}.
+        </div>
+      ) : !block && !week ? (
+        <div className="fz-note warn">no window with this key is in the history answer.</div>
+      ) : null}
       {error ? <p className="warn">tally: {error}</p> : null}
       {inside.length ? <Blocks blocks={inside} title={`the ${inside.length} blocks inside this week`} /> : null}
-      {state ? <PageBody state={state} weekMode="whole" frozen focus={kind} /> : error ? null : <p className="loading">reading the window…</p>}
-    </>
+    </div>
+  )
+
+  if (state) return <PageBody state={state} weekMode="whole" frozen focus={kind} header={header} />
+  return (
+    <div className="frozen-wait">
+      {header}
+      {error ? null : <p className="loading">reading the window…</p>}
+    </div>
   )
 }
 

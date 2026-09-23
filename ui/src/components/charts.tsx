@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type RefObject } from 'react'
 import type { BlockSummary, ClaudeHistory, CodexWindow, WeekSummary } from '../api'
 import { dayDate, dayKey, hm, money, pct, rate } from '../format'
+import { useTip } from './tip'
 
 /**
  * the history charts, drawn the way `day.tsx` draws the meter line: a plain
@@ -289,18 +290,20 @@ export function CostPerPercentChart({ history }: { history: ClaudeHistory }) {
 
 /** chart (d): how much of each week's meter went to Chats, which leave no transcript */
 export function ChatsShareChart({ weeks }: { weeks: WeekSummary[] }) {
+  const tip = useTip()
   if (!weeks.length) return null
   const known = weeks.filter((week) => week.chatsPercent !== null)
   const top = niceMax(Math.max(...known.map((week) => week.chatsPercent ?? 0), 10))
   return (
     <div>
       <h2 style={{ marginTop: 44 }}>chats share of the weekly meter</h2>
+      {tip.layer}
       <div className="ch-cols">
         {weeks.map((week) => {
           const share = week.chatsPercent
           return (
             <div className="ch-col" key={week.resetsAt}>
-              <div className="ch-bar" title={breakdownTitle(week)}>
+              <div className="ch-bar" {...tip.bind(breakdownTitle(week))}>
                 {share === null ? (
                   <u />
                 ) : (

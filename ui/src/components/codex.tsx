@@ -1,201 +1,314 @@
-import type { State } from '../api'
+import type { ReactNode } from 'react'
+import { agentsview, type State } from '../api'
+import { ago, dayClock, days, hm } from '../format'
 import { sessionHref } from '../route'
-import { ago, dayClock, days, hm, labelOn, pct } from '../format'
+import { Ledger, Question, Strip, type LedgerRow } from './ledger'
+import { capital, clip, countWord, listOf, plural, points, share } from './words'
 
 type CodexView = State['codex']
+type Thread = NonNullable<CodexView['split']>['threads'][number]
 
-/** the chart's own coordinate space; it stretches to the column, strokes stay one pixel */
-const W = 1000
-const H = 100
+/** threads under this share fold into one row; there is always a tail of tiny ones */
+const SMALL_SHARE = 0.03
 
-/**
- * Codex's weekly allowance, beside the Claude meters rather than inside them:
- * there is no cost model for Codex, so nothing here splits or attributes.
- */
-export function Codex({ state, frozen = false }: { state: State; frozen?: boolean }) {
-  const codex = state.codex
-  // no codex on this machine: no band, no empty section, nothing about Codex at all
-  if (codex.status === 'absent') return null
-  if (codex.status === 'unavailable') {
-    return (
-      <section className="codex quiet">
-        <h2>codex · this week</h2>
-        <p className="calc">{codex.line.replace(/^Codex · /, '')}</p>
-      </section>
-    )
-  }
-
-  const stale = codex.status === 'stale'
-  return (
-    <section className="codex">
-      <div className="cx-num">
-        <h2>codex · this week</h2>
-        {stale || codex.usedPercent === null ? '–' : pct(codex.usedPercent)}
-        <small>
-          {codex.resetsAt === null ? '' : `resets ${dayClock(codex.resetsAt)}, in ${days(codex.resetsAt - state.now)} · `}
-          {/* frozen, the age would be counted from the page's past instant, so say when it was read */}
-          {codex.sampledAt !== null && frozen
-            ? `sampled ${hm(codex.sampledAt)}`
-            : codex.ageSeconds === null
-              ? 'never read'
-              : `read ${ago(codex.ageSeconds)}`}
-        </small>
-      </div>
-      <Verdict codex={codex} />
-      <WeekChart codex={codex} />
-    </section>
-  )
-}
-
-/** rows past this fold into a count */
-const THREAD_ROWS = 10
-
-/** `1,240 credits` */
+/** `1,204` */
 function credits(value: number): string {
-  return `${Math.round(value).toLocaleString('en-US')} credits`
+  return Math.round(value).toLocaleString('en-US')
 }
 
-/** which Codex threads moved the weekly meter, split by credits off the rollout files */
-export function CodexThreads({ state, frozen = false, beside = false }: { state: State; frozen?: boolean; beside?: boolean }) {
-  // under the Codex meter in its own column the section needs no "codex" in its name
-  const name = beside ? 'what moved it' : 'codex this week'
-  const split = state.codex.split
-  if (state.codex.status === 'absent' || !split) return null
-  const rows = split.threads.filter((row) => row.credits > 0)
-  if (!rows.length) {
-    return (
-      <div className="cx-threads">
-        <h2>{name}</h2>
-        <p className="stripcap">no Codex calls in this week's rollouts yet</p>
-      </div>
-    )
-  }
-  const shown = rows.slice(0, THREAD_ROWS)
-  const clock = (t: number) => (t < state.day.start ? dayClock(t) : hm(t))
-  return (
-    <div className="cx-threads">
-      <h2>
-        {name} · since {dayClock(split.from)} · {Math.round(split.pct)} points
-      </h2>
-      <div className="strip">
-        {rows.map((row) => (
-          <i key={row.id} style={{ width: `${row.share * 100}%`, background: row.color, color: labelOn(row.color) }}>
-            {row.share >= 0.06 && row.points !== null ? row.points.toFixed(1) : ''}
-          </i>
-        ))}
-      </div>
-      <div className="stripcap">
-        the {Math.round(split.pct)} points, split by credits from OpenAI's Codex rate card
-        {split.creditsPerPoint === null ? '' : ` · this week a point is about ${credits(split.creditsPerPoint)}`}
-      </div>
-      {split.pendingCredits > 1 ? (
-        <p className="warn">{credits(split.pendingCredits)} since the last reading ({hm(split.to)}) is not on the meter yet.</p>
-      ) : null}
-      {shown.map((row) => (
-        <div className="row" key={row.id}>
-          <div className="pts">
-            <s style={{ background: row.color }} />
-            <span className="share">{pct(row.share * 100)}</span>
-          </div>
-          <div className="name">
-            <a href={sessionHref(`codex:${row.id}`, frozen ? state.now : undefined)} title={`${row.calls} calls · ${row.models.join(', ')}`}>
-              {row.title}
-            </a>
-            <span className="meta">
-              codex · {row.via}
-              {row.points === null ? '' : <> · <span className="approx">~{row.points.toFixed(1)} pts</span></>}
-              {` · ${credits(row.credits)}`}
-              {row.unpriced ? ' (a model is not on the rate card, priced as Sol)' : ''}
-              {row.subagents ? ` · ${row.subagents} subagent${row.subagents === 1 ? '' : 's'}` : ''}
-              {row.live ? <> · <b className="lv">live</b></> : ''}
-              {` · ${clock(row.start)}–${hm(row.end)}`}
-            </span>
-          </div>
-        </div>
-      ))}
-      {rows.length > shown.length ? (
-        <span className="more">… {rows.length - shown.length} more with a smaller share</span>
-      ) : null}
-      <p className="caveat">
-        Split by credits across the meter's movement since the week opened, priced per model from the rate card.
-        {split.pointSteps
-          ? ` Single points ran ${Math.round(split.pointSteps.min)} to ${Math.round(split.pointSteps.max)} credits across ${split.pointSteps.count} steps this week, so each thread's points are approximate.`
-          : ' Too few point steps yet to say how steady a point is.'}
-      </p>
-    </div>
-  )
+/** a clock time that says the day when it is not today */
+function when(state: State, t: number): string {
+  return t < state.day.start ? dayClock(t) : hm(t)
 }
 
-function Verdict({ codex }: { codex: CodexView }) {
+/** the Codex verdict as the letter and the section both say it */
+export function codexVerdict(codex: CodexView): { tone: string; head: string; rest: ReactNode } {
   const pace = codex.pace
   if (codex.status === 'stale' || !pace) {
+    return { tone: 'bad', head: 'reading is stale,', rest: 'so there is no pace from an old number' }
+  }
+  if (!pace.ready) return { tone: 'mute', head: 'no pace yet,', rest: pace.reason ?? '' }
+  if (pace.hitsHundredAt !== null) {
+    return { tone: 'bad', head: `hits 100% ${dayClock(pace.hitsHundredAt)},`, rest: 'before the reset' }
+  }
+  return {
+    tone: 'ok',
+    head: 'fits,',
+    rest: (
+      <>
+        <span className="cmp">≈ {Math.round(pace.pctAtReset ?? 0)}%</span> at reset
+        {pace.provisional ? ' (provisional)' : ''}
+      </>
+    ),
+  }
+}
+
+/** the reading's age, or its clock time on a frozen page where an age would count from the past */
+export function codexRead(codex: CodexView, frozen: boolean): string {
+  if (codex.sampledAt !== null && frozen) return `sampled ${hm(codex.sampledAt)}`
+  return codex.ageSeconds === null ? 'never read' : `read ${ago(codex.ageSeconds)}`
+}
+
+/**
+ * "what ate the codex week": the same ledger as the Claude block, over the Codex
+ * weekly meter, split by rate-card credits off the rollout files. there is no
+ * dollar figure here on purpose; Codex is counted in credits.
+ */
+export function CodexSection({ state, frozen }: { state: State; frozen: boolean }) {
+  const codex = state.codex
+  if (codex.status === 'absent') return null
+  const split = codex.split
+  if (codex.status === 'unavailable' || !split) {
     return (
-      <div className="cx-v">
-        <b className="over">reading is stale</b>
-        <span>the Codex reader has not reported a fresh number, so there is no pace from an old one</span>
-      </div>
+      <Question id="q-codex" title="What ate the codex week" lead={codex.line.replace(/^Codex · /, '')}>
+        {null}
+      </Question>
     )
   }
-  if (!pace.ready) {
-    return (
-      <div className="cx-v">
-        <b className="n">no pace yet</b>
-        <span>{pace.reason}</span>
-      </div>
-    )
-  }
-  const basis = pace.provisional
-    ? `every workday uses what today has so far (${pct(pace.typicalDay ?? 0)})`
-    : `every workday uses the median of ${pace.measuredDays} full workday${pace.measuredDays === 1 ? '' : 's'} (${pct(pace.typicalDay ?? 0)})`
+  const threads = split.threads.filter((thread) => thread.credits > 0)
+  const big = threads.filter((thread) => thread.share >= SMALL_SHARE)
+  const small = threads.filter((thread) => thread.share < SMALL_SHARE)
+  const pct = codex.usedPercent
+  const verdict = codexVerdict(codex)
+  const rows: LedgerRow[] = big.map((thread) => threadRow(state, thread, frozen))
+  if (small.length) rows.push(smallRow(state, small))
+
+  const columns = [
+    {
+      head: (
+        <>
+          of the week
+          <br />
+          {Math.round(split.pct)} pts since {dayClock(split.from).slice(0, 3)}
+        </>
+      ),
+      width: '132px',
+    },
+    { head: 'credits', width: '92px' },
+    { head: 'when', width: '118px' },
+  ]
+
+  const lead: ReactNode = (
+    <>
+      Codex is at <b>{pct === null ? '–' : `${Math.round(pct)}%`}</b>
+      {codex.resetsAt !== null ? ` with ${days(codex.resetsAt - state.now)} to go` : ''};{' '}
+      <span className={verdict.tone}>{verdict.head}</span> {verdict.rest}.{' '}
+      {big[0] ? (
+        <>
+          {clip(big[0].title, 48)} ate <b className="cmp">{share(big[0].share)}</b> of the week
+          {big[1] ? (
+            <>
+              , {clip(big[1].title, 48)} <b className="cmp">{share(big[1].share)}</b>
+            </>
+          ) : null}
+          .
+        </>
+      ) : (
+        'No Codex calls in this week’s rollouts yet.'
+      )}
+    </>
+  )
+
   return (
-    <div className="cx-v">
-      <b className={pace.hitsHundredAt !== null ? 'over' : ''}>{pace.phrase.replace(/, provisional$/, '')}</b>
-      <span>
-        {pace.provisional ? 'provisional · ' : ''}if {basis} until the reset, weekends free
-      </span>
-    </div>
+    <Question
+      id="q-codex"
+      title="What ate the codex week"
+      lead={lead}
+      aside={
+        <div className="aside">
+          Counted in rate-card credits, not dollars.
+          {split.creditsPerPoint === null ? '' : ` A point cost about ${credits(split.creditsPerPoint)} credits this week`}
+          {split.pointSteps
+            ? `, single steps ran ${credits(split.pointSteps.min)} to ${credits(split.pointSteps.max)}, so each thread’s points are approximate.`
+            : '. Too few point steps yet to say how steady a point is.'}
+          {split.pendingCredits > 1 ? ` ${credits(split.pendingCredits)} credits since the last reading (${hm(split.to)}) are not on the meter yet.` : ''}
+        </div>
+      }
+    >
+      <div className="two">
+        <div>
+          <Strip
+            parts={threads.map((thread) => ({
+              key: thread.id,
+              share: thread.share,
+              color: thread.color,
+              tip: (
+                <>
+                  <b>{thread.title}</b>
+                  <br />
+                  {share(thread.share)} of the week{thread.points === null ? '' : `, ${points(thread.points)} points`}
+                </>
+              ),
+            }))}
+          />
+          {rows.length ? <Ledger first="thread · models" columns={columns} rows={rows} /> : null}
+        </div>
+        <div>
+          <WeekChart codex={codex} now={frozen ? null : state.now} />
+        </div>
+      </div>
+    </Question>
   )
 }
 
-/** the window from open to reset: readings, and the expected path to it with weekends flat */
-function WeekChart({ codex }: { codex: CodexView }) {
-  const { windowStart, resetsAt, history, pace } = codex
-  if (windowStart === null || resetsAt === null) return <div />
-  const x = (t: number) => ((t - windowStart) / (resetsAt - windowStart)) * W
-  const y = (value: number) => H - Math.min(100, Math.max(0, value)) * (H / 100)
-
-  // a gap splits the line; the dotted bridge says the meter moved while nobody read it
-  const runs: string[][] = []
-  const bridges: string[] = []
-  for (const [index, point] of history.entries()) {
-    const previous = history[index - 1]
-    const at = `${x(point.t)},${y(point.pct)}`
-    if (!previous || point.afterGap) {
-      if (previous) bridges.push(`${x(previous.t)},${y(previous.pct)} ${at}`)
-      runs.push([])
-    }
-    runs.at(-1)!.push(at)
+function threadRow(state: State, thread: Thread, frozen: boolean): LedgerRow {
+  const transcript = agentsview(state.agentsviewUrl, `codex:${thread.id}`)
+  return {
+    key: thread.id,
+    color: thread.color,
+    name: clip(thread.title, 56),
+    tags: thread.live ? <span className="live">live</span> : undefined,
+    subtitle: [
+      `via ${thread.via}`,
+      thread.subagents ? plural(thread.subagents, 'subagent') : '',
+      thread.models.join(' + ') || 'no model recorded',
+    ]
+      .filter(Boolean)
+      .join(' · '),
+    cells: [
+      {
+        main: <span className="cmp">{share(thread.share)}</span>,
+        sub: thread.points === null ? 'no points' : `${points(thread.points)} pts`,
+      },
+      { main: credits(thread.credits), sub: plural(thread.calls, 'call'), small: true },
+      { main: when(state, thread.start), sub: `to ${when(state, thread.end)}`, small: true },
+    ],
+    more: (
+      <div>
+        <p>
+          It ran via {thread.via} from {when(state, thread.start)} to {when(state, thread.end)}:{' '}
+          {plural(thread.calls, 'call')} on {listOf(thread.models)}
+          {thread.subagents ? `, ${plural(thread.subagents, 'subagent')} among them` : ''}. {credits(thread.credits)}{' '}
+          rate-card credits, <span className="cmp">{share(thread.share)}</span> of the week’s movement
+          {thread.points === null ? '' : (
+            <>
+              , about <span className="cmp">{points(thread.points)}</span> points
+            </>
+          )}
+          .{thread.unpriced ? ' A model it used is not on the rate card, so it is priced as Sol.' : ''}
+        </p>
+        <div className="links">
+          <a href={sessionHref(`codex:${thread.id}`, frozen ? state.now : undefined)}>open the thread →</a>
+          {transcript ? (
+            <a href={transcript} target="_blank" rel="noopener">
+              transcript in AgentsView ↗
+            </a>
+          ) : null}
+        </div>
+      </div>
+    ),
   }
-  const projection = pace?.ready && pace.path.length > 1 ? pace.path.map((point) => `${x(point.t)},${y(point.pct)}`).join(' ') : null
+}
 
+/** the tail of tiny threads as one row that opens into a line each */
+function smallRow(state: State, small: Thread[]): LedgerRow {
+  const total = small.reduce((sum, thread) => sum + thread.share, 0)
+  return {
+    key: 'small',
+    color: small[0]!.color,
+    name: `${capital(countWord(small.length))} small threads`,
+    subtitle: listOf(small.map((thread) => thread.title)),
+    cells: [
+      { main: <span className="cmp">{share(total)}</span>, sub: 'together' },
+      {
+        main: credits(small.reduce((sum, thread) => sum + thread.credits, 0)),
+        sub: plural(
+          small.reduce((sum, thread) => sum + thread.calls, 0),
+          'call',
+        ),
+        small: true,
+      },
+      { main: '', small: true },
+    ],
+    more: (
+      <div>
+        {small.map((thread) => (
+          <p key={thread.id}>
+            <a href={sessionHref(`codex:${thread.id}`)}>{thread.title}</a>: <span className="cmp">{share(thread.share)}</span>,{' '}
+            {credits(thread.credits)} credits, {plural(thread.calls, 'call')} on {listOf(thread.models)},{' '}
+            {when(state, thread.start)}–{when(state, thread.end)}.
+          </p>
+        ))}
+      </div>
+    ),
+  }
+}
+
+/** the chart's own coordinate space; it stretches to the column */
+const W = 440
+const H = 190
+const LEFT = 34
+const RIGHT = 60
+const TOP = 16
+const PLOT = 140
+
+/** the window from open to reset: readings, and the expected path to it, flat and shaded on weekends */
+function WeekChart({ codex, now }: { codex: CodexView; now: number | null }) {
+  const { windowStart, resetsAt, history, pace } = codex
+  if (windowStart === null || resetsAt === null) return null
+  const x = (t: number) => LEFT + ((t - windowStart) / (resetsAt - windowStart)) * (W - LEFT - RIGHT)
+  const y = (value: number) => TOP + PLOT - (Math.min(100, Math.max(0, value)) / 100) * PLOT
+  const day = 86400
+  const dayStarts: number[] = []
+  // local midnights: step by hours and keep the ones where the date turns over
+  for (let t = windowStart; t < resetsAt; t += 3600) {
+    if (hm(t).startsWith('00:')) dayStarts.push(t - (Number(hm(t).slice(3)) * 60 + (Math.floor(t) % 60)))
+  }
+  const runs: string[] = []
+  for (const [index, point] of history.entries()) {
+    const at = `${x(point.t).toFixed(1)},${y(point.pct).toFixed(1)}`
+    runs.push(`${index === 0 || point.afterGap ? 'M' : 'L'}${at}`)
+  }
+  const last = history.at(-1)
+  const path = pace?.ready && pace.path.length > 1 ? pace.path.map((p, i) => `${i ? 'L' : 'M'}${x(p.t).toFixed(1)},${y(p.pct).toFixed(1)}`).join('') : null
+  const edges = [windowStart, ...dayStarts, resetsAt]
   return (
-    <div className="cx-chart">
-      <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" role="img" aria-label="Codex weekly meter over the week">
-        {[1, 2, 3, 4, 5, 6].map((day) => (
-          <line key={day} className="grid" x1={(W / 7) * day} x2={(W / 7) * day} y1={0} y2={H} />
+    <div className="chart cx-chart">
+      <svg viewBox={`0 0 ${W} ${H}`} width="100%" role="img" aria-label="Codex weekly meter over the week">
+        {edges.slice(0, -1).map((start, index) => {
+          const end = edges[index + 1]!
+          const name = dayClock(start + Math.min(day / 2, (end - start) / 2)).slice(0, 3)
+          const weekend = name === 'Sat' || name === 'Sun'
+          return (
+            <g key={start}>
+              {weekend ? <rect x={x(start)} y={TOP} width={x(end) - x(start)} height={PLOT} className="weekend" /> : null}
+              {index > 0 ? <line x1={x(start)} x2={x(start)} y1={TOP} y2={TOP + PLOT} className="grid" /> : null}
+              {x(end) - x(start) > 24 ? (
+                <text x={(x(start) + x(end)) / 2} y={TOP + PLOT + 18} textAnchor="middle" className="tk">
+                  {name}
+                </text>
+              ) : null}
+            </g>
+          )
+        })}
+        {[0, 50, 100].map((value) => (
+          <g key={value}>
+            <line x1={LEFT} x2={W - RIGHT} y1={y(value)} y2={y(value)} className="grid" />
+            <text x={LEFT - 8} y={y(value) + 4} textAnchor="end" className="tk">
+              {value}
+            </text>
+          </g>
         ))}
-        {bridges.map((points) => (
-          <polyline key={points} className="cx-gap" points={points} />
-        ))}
-        {runs.map((points) => (
-          // a lone reading repeats its point so the round cap draws it as a dot
-          <polyline key={points[0]} className="cx-line" points={(points.length === 1 ? [points[0], points[0]] : points).join(' ')} />
-        ))}
-        {projection ? <polyline className="cx-proj" points={projection} /> : null}
+        {path ? <path d={path} className="cx-proj" /> : null}
+        <path d={runs.join('')} className="cx-line" />
+        {last ? (
+          <>
+            <circle cx={x(last.t)} cy={y(last.pct)} r={4} className="cx-dot" />
+            <text x={x(last.t) + 8} y={y(last.pct) - 10} className="lbl-strong">
+              {Math.round(last.pct)}%{now === null ? '' : ' now'}
+            </text>
+          </>
+        ) : null}
+        {pace?.ready && pace.pctAtReset !== null ? (
+          <text x={W - RIGHT + 8} y={y(pace.pctAtReset) + 4} className="lbl">
+            ≈ {Math.round(pace.pctAtReset)}%
+          </text>
+        ) : null}
       </svg>
-      <div className="stripcap">
-        the week since {dayClock(windowStart)}{projection ? ' · dashed is the expected path, flat on weekends' : ''}
-        {history.some((point) => point.afterGap) ? ' · dotted where the reader missed a stretch' : ''}
+      <div className="foot">
+        The Codex meter since {dayClock(windowStart)}
+        {path ? '; dashed is the expected path, flat on the shaded weekend' : ''}
+        {history.some((point) => point.afterGap) ? '; a jump in the line is a stretch the reader missed' : ''}.
       </div>
     </div>
   )
