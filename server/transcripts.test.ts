@@ -7,7 +7,7 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { costOf, familyOf, priceFor } from './prices'
+import { costOf, familyOf, isPriced, priceFor } from './prices'
 import { projectsRoot, scan, transcriptFiles } from './transcripts'
 
 const FIXTURE_HOME = join(import.meta.dirname, '..', 'test', 'fixtures', 'home')
@@ -47,6 +47,8 @@ describe('prices', () => {
     expect(priceFor('claude-sonnet-4-5-20250929')).toEqual([3.0, 15.0])
     expect(priceFor('claude-opus-5')).toEqual([5.0, 25.0])
     expect(priceFor('<synthetic>')).toBeNull()
+    expect(isPriced('<synthetic>')).toBe(true)
+    expect(isPriced('gpt-5.5')).toBe(false)
   })
 
   it('prices the 23 Sep 2026 table: opus 5.5, fable 5.1 and sonnet 5 on their own rows', () => {

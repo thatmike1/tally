@@ -30,8 +30,15 @@ export const CACHE_READ_MULT_BY_PREFIX: Record<string, number> = {
   'claude-opus-5-5': 0.05,
 }
 
+/**
+ * ids that cost nothing by definition. claude code writes `<synthetic>` for its
+ * own zero-token messages (interrupts, api errors), so a session holding one is
+ * not missing a price.
+ */
+export const FREE_MODELS: readonly string[] = ['<synthetic>']
+
 /** changes whenever a price does, so the transcript index knows to reprice its stored costs */
-export const PRICE_TABLE_KEY = JSON.stringify([PRICES, CACHE_READ_MULT_BY_PREFIX, CACHE_WRITE_1H_MULT, CACHE_WRITE_5M_MULT, CACHE_READ_MULT])
+export const PRICE_TABLE_KEY = JSON.stringify([PRICES, CACHE_READ_MULT_BY_PREFIX, CACHE_WRITE_1H_MULT, CACHE_WRITE_5M_MULT, CACHE_READ_MULT, FREE_MODELS])
 
 export const FAMILIES = ['fable', 'mythos', 'opus', 'sonnet', 'haiku', 'other'] as const
 export type Family = (typeof FAMILIES)[number]
@@ -56,6 +63,11 @@ function pricePrefix(model: string): string | null {
 export function priceFor(model: string): readonly [number, number] | null {
   const prefix = pricePrefix(model)
   return prefix ? PRICES[prefix]! : null
+}
+
+/** false only for a model whose cost we cannot know, which makes any total it is in a floor */
+export function isPriced(model: string): boolean {
+  return FREE_MODELS.includes(model) || priceFor(model) !== null
 }
 
 /** the cache-read multiplier on base input, 0.1x unless the model has its own */

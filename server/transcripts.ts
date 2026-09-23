@@ -12,7 +12,7 @@ import { createReadStream, readdirSync, statSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { createInterface } from 'node:readline'
-import { costOf, familyOf, priceFor, type Family, type Tokens } from './prices'
+import { costOf, familyOf, isPriced, type Family, type Tokens } from './prices'
 
 export interface RequestRecord extends Tokens {
   /** unix seconds */
@@ -219,7 +219,7 @@ export async function parseTranscript(
         agent: file.agent || Boolean(line.isSidechain),
         model,
         family: familyOf(model),
-        priced: priceFor(model) !== null,
+        priced: isPriced(model),
         cost: costOf(model, tokens),
       })
     }

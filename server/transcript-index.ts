@@ -16,7 +16,7 @@ import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { DatabaseSync, type StatementSync } from 'node:sqlite'
 import type { IndexProgress } from './history-types'
-import { costOf, familyOf, PRICE_TABLE_KEY, priceFor } from './prices'
+import { costOf, familyOf, isPriced, PRICE_TABLE_KEY } from './prices'
 import {
   parseTranscript,
   projectsRoot,
@@ -239,7 +239,7 @@ export class TranscriptIndex {
           cr: Number(row.cr),
           out: Number(row.tout),
         })
-        update.run(priceFor(model) !== null ? 1 : 0, cost, Number(row.rowid))
+        update.run(isPriced(model) ? 1 : 0, cost, Number(row.rowid))
       }
       this.statements.setMeta.run('prices', PRICE_TABLE_KEY, PRICE_TABLE_KEY)
       this.db.exec('COMMIT')
