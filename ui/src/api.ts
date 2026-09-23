@@ -1,4 +1,6 @@
+import type { RangeLanes, RangeMeterSplit, RangeSplit } from '../../server/range'
 import type { State } from '../../server/state'
+import type { SplitUsage } from '../../server/usage'
 import type {
   AgentLane,
   BlockSummary,
@@ -11,7 +13,7 @@ import type {
   WindowUsage,
 } from '../../server/history-types'
 
-export type { State }
+export type { RangeLanes, RangeMeterSplit, RangeSplit, SplitUsage, State }
 export type {
   AgentLane,
   BlockSummary,

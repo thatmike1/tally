@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Frozen } from './components/frozen'
 import { History } from './components/history'
 import { Session } from './components/session'
+import { Timeline } from './components/timeline'
 import { Today } from './components/today'
 import { parseRoute, routeHref, type PageRoute, type Route } from './route'
 
@@ -71,6 +72,9 @@ function Nav({ route }: { route: PageRoute }) {
       <a href="#/" aria-current={route.kind === 'today' ? 'page' : undefined}>
         today
       </a>
+      <a href="#/timeline" aria-current={route.kind === 'timeline' ? 'page' : undefined}>
+        timeline
+      </a>
       <a href="#/history" aria-current={onHistory ? 'page' : undefined}>
         history
       </a>
@@ -95,6 +99,8 @@ export function App() {
       </div>
       {page.kind === 'history' ? (
         <History />
+      ) : page.kind === 'timeline' ? (
+        <Timeline from={page.from} to={page.to} />
       ) : page.kind === 'block' ? (
         // keyed on the route so a hash change between two windows remounts: without
         // it the previous window's banner and frozen page stay up under the new key

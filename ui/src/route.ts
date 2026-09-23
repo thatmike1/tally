@@ -4,6 +4,8 @@
 export type Route =
   | { kind: 'today' }
   | { kind: 'history' }
+  /** the time axis; `from`/`to` pin a picked range, absent means the current block */
+  | { kind: 'timeline'; from?: number; to?: number }
   /** one 5-hour block, identified by its reset key */
   | { kind: 'block'; resetKey: number }
   /** one weekly window, identified by the reset that closes it */
@@ -17,6 +19,7 @@ export type PageRoute = Exclude<Route, { kind: 'session' }>
 /** the hash that leads back to a page, used when the session drawer closes */
 export function routeHref(route: PageRoute): string {
   if (route.kind === 'history') return '#/history'
+  if (route.kind === 'timeline') return timelineHref(route.from, route.to)
   if (route.kind === 'block') return blockHref(route.resetKey)
   if (route.kind === 'week') return weekHref(route.resetsAt)
   return '#/'
@@ -43,12 +46,23 @@ export function parseRoute(hash: string): Route {
     if (second === 'week') return { kind: 'week', resetsAt: key }
     return { kind: 'history' }
   }
+  if (head === 'timeline') {
+    // `#/timeline/<from>/<to>`; a half-given or non-numeric range reads as no range
+    const from = Number(second)
+    const to = Number(third)
+    return Number.isFinite(from) && Number.isFinite(to) && to > from ? { kind: 'timeline', from, to } : { kind: 'timeline' }
+  }
   if (head === 'session' && second) {
     // `#/session/<id>/<at>`; an `at` that is not a number is dropped, not the session
     const at = third === undefined ? NaN : Number(third)
     return Number.isFinite(at) ? { kind: 'session', id: second, at } : { kind: 'session', id: second }
   }
   return TODAY
+}
+
+/** the href of the timeline tab, with a picked range when both ends are given */
+export function timelineHref(from?: number, to?: number): string {
+  return from !== undefined && to !== undefined ? `#/timeline/${Math.round(from)}/${Math.round(to)}` : '#/timeline'
 }
 
 /** the href a block tile points at */
