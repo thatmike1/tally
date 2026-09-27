@@ -302,16 +302,19 @@ describe('/api/takeaway endpoint', () => {
 })
 
 describe('resolveCommand and takeawayFromConfig', () => {
+  /** windows only runs a command through its extension */
+  const EXE = process.platform === 'win32' ? '.exe' : ''
+
   /** a directory holding one executable-looking file, as a PATH entry */
   function binDir(name: string): string {
     const dir = mkdtempSync(join(tmpdir(), 'tally-bin-'))
-    writeFileSync(join(dir, name), '')
+    writeFileSync(join(dir, `${name}${EXE}`), '')
     return dir
   }
 
   it('finds a command on the PATH and reports a missing one as null', () => {
     const dir = binDir('agy')
-    expect(resolveCommand('agy', { PATH: dir })).toBe(join(dir, 'agy'))
+    expect(resolveCommand('agy', { PATH: dir })).toBe(join(dir, `agy${EXE}`))
     expect(resolveCommand('agy', { PATH: '/nowhere' })).toBeNull()
   })
 
@@ -336,7 +339,7 @@ describe('resolveCommand and takeawayFromConfig', () => {
     )
     expect(refresher).not.toBeNull()
     await refresher!.refresh(await fixtureState())
-    expect(calls[0]!.cmd).toBe(join(dir, 'runner'))
+    expect(calls[0]!.cmd).toBe(join(dir, `runner${EXE}`))
     expect(calls[0]!.args).toContain('a-cheap-model')
     expect(refresher!.current()).toEqual({ text: 'the block went on one session', model: 'a-cheap-model' })
   })

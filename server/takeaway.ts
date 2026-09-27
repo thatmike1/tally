@@ -2,10 +2,9 @@
 // whether the reset is safe, using whatever cheap-model command the config
 // names, on a visible-page request.
 import { execFile } from 'node:child_process'
-import { existsSync } from 'node:fs'
-import { join } from 'node:path'
 import type { TakeawayConfig } from './config'
 import type { State } from './state'
+import { DIRECT_EXTENSIONS, findExecutable } from './which'
 
 export interface TakeawayResult {
   text: string | null
@@ -20,7 +19,7 @@ export type CommandRunner = (
 
 export const defaultExecRunner: CommandRunner = (cmd, args, timeoutMs) =>
   new Promise((resolve) => {
-    execFile(cmd, args, { timeout: timeoutMs }, (error, stdout, stderr) => {
+    execFile(cmd, args, { timeout: timeoutMs, windowsHide: true }, (error, stdout, stderr) => {
       if (error) {
         resolve(null)
       } else {
@@ -129,12 +128,8 @@ export interface TakeawayOptions {
 
 /** the command as a path, or null when this machine does not have it */
 export function resolveCommand(command: string, env: NodeJS.ProcessEnv = process.env): string | null {
-  if (command.includes('/')) return existsSync(command) ? command : null
-  for (const dir of (env.PATH ?? '').split(':').filter(Boolean)) {
-    const candidate = join(dir, command)
-    if (existsSync(candidate)) return candidate
-  }
-  return null
+  // `execFile` cannot start a windows `.cmd` shim, so only what it can start counts as installed
+  return findExecutable(command, { env, extensions: DIRECT_EXTENSIONS })
 }
 
 export interface TakeawayRefresher {

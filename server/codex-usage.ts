@@ -5,6 +5,7 @@ import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { median } from './split'
 import { dayBounds, dayKey, isWeekend, weekdayName } from './time'
+import { candidatesIn, DIRECT_EXTENSIONS, pathDirs, spawnTarget } from './which'
 
 export const CODEX_WEEK_MINUTES = 7 * 24 * 60
 export const CODEX_STALE_SECONDS = 15 * 60
@@ -371,12 +372,14 @@ function send(child: ChildProcessWithoutNullStreams, message: object): void {
 }
 
 /** finds Codex in the service's PATH or common user-level install locations; null when the machine has none */
-export function codexBinaryPath(home: string = homedir(), env: NodeJS.ProcessEnv = process.env): string | null {
+export function codexBinaryPath(home: string = homedir(), env: NodeJS.ProcessEnv = process.env, platform: NodeJS.Platform = process.platform): string | null {
+  // windows has `codex.exe` from bun or the standalone installer, and a `codex.cmd` shim from npm
+  const options = { env, platform, extensions: [...DIRECT_EXTENSIONS, '.cmd'] }
   const candidates = [
     env.CODEX_BIN,
-    ...(env.PATH ?? '').split(':').filter(Boolean).map((dir) => join(dir, 'codex')),
-    join(home, '.bun', 'bin', 'codex'),
-    join(home, '.local', 'bin', 'codex'),
+    ...pathDirs(env, platform).flatMap((dir) => candidatesIn(dir, 'codex', options)),
+    ...candidatesIn(join(home, '.bun', 'bin'), 'codex', options),
+    ...candidatesIn(join(home, '.local', 'bin'), 'codex', options),
   ]
   return candidates.find((candidate): candidate is string => Boolean(candidate && existsSync(candidate))) ?? null
 }
@@ -389,7 +392,8 @@ export function readCodexWeeklyUsage(options: { now?: number; timeoutMs?: number
   return new Promise((resolve, reject) => {
     // nothing to spawn: a machine with no Codex has no reading, not a failed one
     if (!binary) return reject(new Error('no codex binary on this machine'))
-    const child = spawn(binary, ['app-server', '--stdio'], { stdio: ['pipe', 'pipe', 'pipe'] })
+    const target = spawnTarget(binary)
+    const child = spawn(target.command, ['app-server', '--stdio'], { stdio: ['pipe', 'pipe', 'pipe'], shell: target.shell, windowsHide: true })
     let buffer = ''
     let settled = false
     const abort = () => finish(new Error('Codex usage reader stopped'))
