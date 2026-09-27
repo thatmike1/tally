@@ -32,9 +32,10 @@ interface Expected {
   effort?: string | null
 }
 
-/** the oracle was written from one checkout; key its paths on the fixture home so any checkout matches */
+/** the oracle was written from one checkout; key its paths on the fixture home so any checkout matches, windows ones too */
 function fromHome(path: string): string {
-  return path.slice(path.indexOf('/test/fixtures/home/'))
+  const posix = path.replace(/\\/g, '/')
+  return posix.slice(posix.indexOf('/test/fixtures/home/'))
 }
 
 function oracle(): Expected[] {
@@ -168,11 +169,11 @@ describe('scan, against jobs/extract.py', () => {
 
   it('folds a subagent into its parent session, where extract.py kept the agent file name', async () => {
     const { records } = await scan(0, 9_999_999_999, projectsRoot(FIXTURE_HOME))
-    const agents = records.filter((r) => r.agent && r.file.includes('/subagents/'))
+    const agents = records.filter((r) => r.agent && /[\\/]subagents[\\/]/.test(r.file))
     expect(agents.length).toBeGreaterThan(0)
     for (const record of agents) {
       // …/projects/<project>/<session id>/subagents/agent-x.jsonl
-      const parent = record.file.split('/').at(-3)
+      const parent = record.file.split(/[\\/]/).at(-3)
       expect(record.sessionId).toBe(parent)
     }
   })

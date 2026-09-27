@@ -49,7 +49,8 @@ function laneOf(file: TranscriptFile, records: RequestRecord[]): AgentLane {
     cost += record.cost
     tokens += totalTokens(record)
   }
-  const name = file.path.split('/').at(-1) ?? file.path
+  // either separator: the index holds windows paths on windows
+  const name = file.path.split(/[\\/]/).at(-1) ?? file.path
   return {
     file: file.path,
     agent: file.agent,

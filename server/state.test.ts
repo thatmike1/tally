@@ -201,7 +201,7 @@ describe('buildState', () => {
   it('names its sources, so a wrong number can be traced home', async () => {
     const built = await state()
     expect(built.sources.limits).toContain('limits.jsonl')
-    expect(built.sources.transcripts).toContain('.claude/projects')
+    expect(built.sources.transcripts).toContain(join('.claude', 'projects'))
   })
 })
 

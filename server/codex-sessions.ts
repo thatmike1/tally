@@ -612,7 +612,7 @@ export function codexLane(rollout: CodexRollout, seen: Set<string>): CodexLane {
  */
 export function threadSince(rootId: string, root: string | string[]): number | null {
   const lead = rolloutFiles(root).find((file) => file.path.endsWith(`-${rootId}.jsonl`))
-  const day = lead?.path.match(/\/(\d{4})\/(\d{2})\/(\d{2})\/[^/]+$/)
+  const day = lead?.path.match(/[\\/](\d{4})[\\/](\d{2})[\\/](\d{2})[\\/][^\\/]+$/)
   if (!lead || !day) return lead ? 0 : null
   return Date.UTC(Number(day[1]), Number(day[2]) - 1, Number(day[3])) / 1000 - 86400
 }

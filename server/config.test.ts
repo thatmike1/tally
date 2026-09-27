@@ -86,10 +86,10 @@ describe('loadConfig', () => {
 
 describe('defaultConfigPath', () => {
   it('sits under the home when XDG says nothing', () => {
-    expect(defaultConfigPath({}, '/home/someone')).toBe('/home/someone/.config/tally/config.json')
+    expect(defaultConfigPath({}, '/home/someone')).toBe(join('/home/someone', '.config', 'tally', 'config.json'))
   })
 
   it('follows XDG_CONFIG_HOME when it is set', () => {
-    expect(defaultConfigPath({ XDG_CONFIG_HOME: '/tmp/xdg' }, '/home/someone')).toBe('/tmp/xdg/tally/config.json')
+    expect(defaultConfigPath({ XDG_CONFIG_HOME: '/tmp/xdg' }, '/home/someone')).toBe(join('/tmp/xdg', 'tally', 'config.json'))
   })
 })

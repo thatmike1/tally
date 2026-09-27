@@ -35,7 +35,7 @@ describe('GET /api/session/:id', () => {
     const body = await detail()
     expect(body.sessionId).toBe(WITH_AGENTS)
     expect(body.subagents.length).toBeGreaterThan(0)
-    expect(body.subagents.every((lane) => lane.agent && lane.file.includes('/subagents/'))).toBe(true)
+    expect(body.subagents.every((lane) => lane.agent && /[\\/]subagents[\\/]/.test(lane.file))).toBe(true)
     expect(new Set(body.subagents.map((lane) => lane.file)).size).toBe(body.subagents.length)
     expect(body.parent.label).toBe('main')
     expect(body.parent.agent).toBe(false)

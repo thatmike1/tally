@@ -10,6 +10,8 @@ import { projectsRoot, scan, transcriptFiles, type RequestRecord } from './trans
 
 const FIXTURE_HOME = join(import.meta.dirname, '..', 'test', 'fixtures', 'home')
 const FIXTURE_ROOT = projectsRoot(FIXTURE_HOME)
+/** root reads a mode-000 file anyway, and windows ignores the mode bits, so neither can make a file unreadable */
+const CHMOD_CANNOT_HIDE = process.getuid?.() === 0 || process.platform === 'win32'
 
 const temps: string[] = []
 
@@ -126,7 +128,7 @@ describe('TranscriptIndex', () => {
   })
 
   // root reads a mode-000 file anyway, so the failure this test needs cannot happen there
-  it.skipIf(process.getuid?.() === 0)('counts a file it could not read and retries it next pass', async () => {
+  it.skipIf(CHMOD_CANNOT_HIDE)('counts a file it could not read and retries it next pass', async () => {
     const root = copyRoot()
     const unreadable = transcriptFiles(root).find((f) => !f.agent)!
     chmodSync(unreadable.path, 0o000)
@@ -153,7 +155,7 @@ describe('TranscriptIndex', () => {
     index.close()
   })
 
-  it.skipIf(process.getuid?.() === 0)('drops the old rows of an indexed file that changed and then could not be read', async () => {
+  it.skipIf(CHMOD_CANNOT_HIDE)('drops the old rows of an indexed file that changed and then could not be read', async () => {
     const root = copyRoot()
     const target = transcriptFiles(root).find((f) => !f.agent)!
     const index = new TranscriptIndex({ root, path: ':memory:' })
@@ -193,7 +195,7 @@ describe('TranscriptIndex', () => {
     const index = new TranscriptIndex({ root: FIXTURE_ROOT, path: ':memory:' })
     await index.refresh()
     const all = index.query(0, 9e9).records
-    const withAgents = all.find((record) => record.file.includes('/subagents/'))!
+    const withAgents = all.find((record) => /[\\/]subagents[\\/]/.test(record.file))!
     const session = index.sessionRecords(withAgents.sessionId)
     expect(session.length).toBe(all.filter((r) => r.sessionId === withAgents.sessionId).length)
     expect(new Set(session.map((r) => r.file)).size).toBeGreaterThan(1)

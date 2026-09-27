@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
 import { LANE_GAP } from './history-types'
-import { buildLanes, projectPath, segmentsOf } from './lanes'
+import { buildLanes, isSubagentFile, projectPath, segmentsOf } from './lanes'
 import type { Thread } from './t3'
 import type { RequestRecord, SessionMeta } from './transcripts'
 
@@ -63,7 +63,7 @@ describe('projectPath', () => {
     const project = join(dir, 'ccChat-general')
     mkdirSync(project)
     // the encoding Claude writes: every slash in the real path becomes a dash
-    expect(projectPath(project.replace(/\//g, '-'), null)).toBe(project)
+    expect(projectPath(project.replace(/[:\\/]/g, '-'), null)).toBe(project)
 
     // and the same walk with a stand-in filesystem, where only the long name exists
     const encoded = '-home-thatmike1-git-ccChat-general'
@@ -73,6 +73,18 @@ describe('projectPath', () => {
     expect(projectPath('-home-thatmike1-git-tally', null, onDisk([...tree, '/home/thatmike1/git/tally']))).toBe(
       '/home/thatmike1/git/tally',
     )
+  })
+
+  it('tells a subagent file by either separator', () => {
+    expect(isSubagentFile(AGENT_A)).toBe(true)
+    expect(isSubagentFile(LEAD)).toBe(false)
+    expect(isSubagentFile('C:\\Users\\me\\.claude\\projects\\I--git-tally\\s1\\subagents\\agent-a.jsonl')).toBe(true)
+  })
+
+  it('decodes a windows name off its drive and walks it with backslashes', () => {
+    const tree = ['I:\\git', 'I:\\git\\ccChat', 'I:\\git\\ccChat-general']
+    expect(projectPath('I--git-ccChat-general', null, onDisk(tree))).toBe('I:\\git\\ccChat-general')
+    expect(projectPath('I--git-gone', null, onDisk(tree))).toBe('I--git-gone')
   })
 
   it('hands back the encoded name when no path on disk matches it', () => {
