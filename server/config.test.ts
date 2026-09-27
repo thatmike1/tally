@@ -33,6 +33,7 @@ describe('loadConfig', () => {
           links: [{ name: 'beadside', url: 'http://127.0.0.1:1338', unit: 'beadside.service' }],
           toggles: [{ name: 'AgentsView', url: 'http://127.0.0.1:8080', unit: 'agentsview.service' }],
         },
+        python: 'py',
       }),
     )
     expect(loadConfig(path)).toEqual({
@@ -45,6 +46,7 @@ describe('loadConfig', () => {
         links: [{ name: 'beadside', url: 'http://127.0.0.1:1338', unit: 'beadside.service' }],
         toggles: [{ name: 'AgentsView', url: 'http://127.0.0.1:8080', unit: 'agentsview.service' }],
       },
+      python: 'py',
     })
   })
 
@@ -71,6 +73,7 @@ describe('loadConfig', () => {
           agentsviewUrl: '',
           takeaway: { command: 'agy' },
           tray: { links: 'beadside', toggles: [{ name: 'AgentsView' }] },
+          python: ['py', '-3'],
         }),
       ),
     )

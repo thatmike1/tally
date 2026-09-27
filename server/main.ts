@@ -7,13 +7,11 @@ import { serve } from '@hono/node-server'
 import { createApp } from './app'
 import { startCodexUsageReader } from './codex-usage'
 import { defaultConfig, tallyConfig } from './config'
+import { bootedBySystemd, inProcessSampler, systemdSampler } from './sampler'
 import { buildState } from './state'
 import { takeawayFromConfig } from './takeaway'
 import { TranscriptIndex, type RefreshCounts } from './transcript-index'
 import { removeWidget, writeWidget } from './widget'
-
-/** the unit the reset kick starts; `systemd/install.sh` writes it */
-const SAMPLER_UNIT = 'tally-sampler.service'
 
 export interface Options {
   port: number
@@ -109,6 +107,8 @@ function main(): void {
     }
   })
 
+  // systemd's timer samples on linux; anywhere else the server runs the sampler itself
+  const sampler = bootedBySystemd() ? systemdSampler() : inProcessSampler(config.python)
   let kickedFor: number | null = null
 
   // one state build a minute feeds the widget file and the reset kick. the
@@ -120,8 +120,7 @@ function main(): void {
       // the sampler runs every five minutes; a block that just reset gets read now instead
       if (five?.ended && state.now - five.ageSeconds < five.resetsAt && kickedFor !== five.resetsAt) {
         kickedFor = five.resetsAt
-        const child = spawn('systemctl', ['--user', 'start', '--no-block', SAMPLER_UNIT], { stdio: 'ignore' })
-        child.on('error', () => console.error(`tally: could not start ${SAMPLER_UNIT}`))
+        sampler.kick()
       }
       // the directory is resolved per tick, so installing T3 later starts the widget
       if (options.widget) writeWidget(state)
@@ -138,6 +137,7 @@ function main(): void {
 
   const stop = () => {
     clearInterval(tickInterval)
+    sampler.stop()
     codexUsage.stop()
     index.close()
     if (options.widget) {

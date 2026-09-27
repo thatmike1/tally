@@ -45,6 +45,11 @@ export interface TallyConfig {
   /** null turns the takeaway off, which is what a machine without the command wants */
   takeaway: TakeawayConfig | null
   tray: TrayConfig
+  /**
+   * the python 3 that runs the sampler where the server runs it itself (no
+   * systemd): a command or a full path, no arguments. null tries `python`, then `py -3`
+   */
+  python: string | null
 }
 
 /** what tally runs on with no config file at all */
@@ -56,6 +61,7 @@ export function defaultConfig(): TallyConfig {
     agentsviewUrl: null,
     takeaway: null,
     tray: { links: [], toggles: [] },
+    python: null,
   }
 }
 
@@ -140,6 +146,7 @@ export function loadConfig(path: string): TallyConfig {
     agentsviewUrl: baseUrl(raw.agentsviewUrl),
     takeaway: takeaway(raw.takeaway),
     tray: tray(raw.tray),
+    python: text(raw.python),
   }
 }
 
