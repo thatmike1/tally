@@ -44,6 +44,16 @@ export function parseOptions(argv: string[], defaultPort: number = defaultConfig
   }
 }
 
+/**
+ * how to open a url in the default browser: `xdg-open` on linux, and on windows
+ * the url protocol handler, which takes the url as one argument with no shell
+ * quoting to get wrong
+ */
+export function openCommand(url: string, platform: NodeJS.Platform = process.platform): { command: string; args: string[] } {
+  if (platform === 'win32') return { command: 'rundll32', args: ['url.dll,FileProtocolHandler', url] }
+  return { command: 'xdg-open', args: [url] }
+}
+
 /** the counts one index pass did, as one line in the server log */
 function logPass(counts: RefreshCounts): void {
   // the failed count is silent at zero, so a line that mentions it means something
@@ -101,8 +111,9 @@ function main(): void {
     console.log(`tally: ${url}`)
     console.log('press Ctrl-C to stop')
     if (options.open) {
-      const child = spawn('xdg-open', [url], { stdio: 'ignore', detached: true })
-      child.on('error', () => console.error('tally: could not run xdg-open; open the url yourself'))
+      const opener = openCommand(url)
+      const child = spawn(opener.command, opener.args, { stdio: 'ignore', detached: true })
+      child.on('error', () => console.error(`tally: could not run ${opener.command}; open the url yourself`))
       child.unref()
     }
   })
@@ -147,6 +158,11 @@ function main(): void {
   }
   process.on('SIGINT', stop)
   process.on('SIGTERM', stop)
+  if (process.platform === 'win32') {
+    // Ctrl-Break, and the console window closing; windows never sends SIGTERM
+    process.on('SIGBREAK', stop)
+    process.on('SIGHUP', stop)
+  }
 }
 
 // only run when executed, so tests can import the helpers
