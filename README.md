@@ -4,7 +4,8 @@ A local page that answers "I'm suddenly at 60% of my 5-hour limit, what ate it"
 in three seconds, and keeps every past block so you can see what a meter point
 actually costs you.
 
-Ubuntu, a Claude subscription, Node 22+ and Python 3. Everything else is
+Ubuntu (or Windows, see [Windows](#windows)), a Claude subscription, Node 22+
+and Python 3. Everything else is
 optional and detected: Codex, AgentsView, T3 Code, `agy`, and whatever local
 pages you want in the tray.
 
@@ -45,6 +46,7 @@ back, so you can delete the file and tally still runs.
 | `takeaway` | `null` | `{"command": "agy", "model": "..."}`. Off unless the command is on PATH |
 | `tray.links` | `[]` | rows that open a local page, starting the row's unit if the port is closed |
 | `tray.toggles` | `[]` | rows that start *and stop* a unit, for a service that costs something while it runs |
+| `python` | `null` | the python 3 that runs the sampler where the server runs it itself (Windows): a command or full path, no arguments. `null` tries `python`, then `py -3` |
 
 The `links` / `toggles` split is the whole tray design: beadside is an always-on
 service, so its row is just "open it". AgentsView costs about 7% of a core while
@@ -83,6 +85,31 @@ Flags: `--port <n>` (wins over the config), `--no-open`, `--no-widget`,
 `tray/tally-tray.py --print` dumps the tray label and rows without a tray, which
 is the fastest way to see what a given config produces; `TALLY_CONFIG=/tmp/c.json`
 points it at a scratch file.
+
+## Windows
+
+There is no installer and no tray on Windows; tally is one process you start
+and stop yourself. With no systemd to put the sampler on a timer, the server
+runs `sampler/usage-sample.py` itself on the same wall-clock five-minute marks,
+one run at a time, and once at startup when the newest reading is already five
+minutes old. It uses the config's `python`, else `python`, else `py -3`, and
+skips anything that does not answer as Python 3 (the Microsoft Store stub).
+Sampler failures land in the server's own output.
+
+```
+npm install
+npm run build
+node --import file:///C:/path/to/tally/node_modules/tsx/dist/loader.mjs C:\path\to\tally\server\main.ts --no-open
+```
+
+That command is the whole of tally in one `node.exe` and works from any
+directory. `npm run serve` and `bin/tally.mjs` work too, but each starts a
+second node process under the first, so killing the outer one leaves the
+server running. Write `%USERPROFILE%\.config\tally\config.json` by hand if
+you want one (the table above); everything else lives where it does on Linux,
+under `%USERPROFILE%\.cache\tally`, `.claude`, `.codex` and `.t3`. Ctrl-C and
+Ctrl-Break stop it cleanly; a hard kill (`Stop-Process`, `taskkill /F`) skips
+the cleanup, so the T3 sidebar keeps the last widget until the next start.
 
 ## Routes and endpoints
 
