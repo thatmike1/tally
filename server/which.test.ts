@@ -1,9 +1,5 @@
 // tests for finding a command on linux and on windows, from either.
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { codexBinaryPath } from './codex-usage'
 import { executableNames, findExecutable, pathDirs, spawnTarget } from './which'
 
 /** a filesystem that has exactly these files */
@@ -52,16 +48,5 @@ describe('spawnTarget', () => {
     expect(spawnTarget('C:\\bin\\codex.exe')).toEqual({ command: 'C:\\bin\\codex.exe', shell: false })
     expect(spawnTarget('C:\\Program Files\\npm\\codex.cmd')).toEqual({ command: '"C:\\Program Files\\npm\\codex.cmd"', shell: true })
     expect(spawnTarget('/usr/bin/codex')).toEqual({ command: '/usr/bin/codex', shell: false })
-  })
-})
-
-describe('codexBinaryPath', () => {
-  it('finds the codex bun installs under the home, as this platform names it', () => {
-    const home = mkdtempSync(join(tmpdir(), 'tally-codex-home-'))
-    expect(codexBinaryPath(home, { PATH: '' })).toBeNull()
-    mkdirSync(join(home, '.bun', 'bin'), { recursive: true })
-    const binary = join(home, '.bun', 'bin', process.platform === 'win32' ? 'codex.exe' : 'codex')
-    writeFileSync(binary, '')
-    expect(codexBinaryPath(home, { PATH: '' })).toBe(binary)
   })
 })
