@@ -181,7 +181,7 @@ def url_port(url: str) -> str | None:
 
 
 def open_label(name: str, url: str) -> str:
-    """`Open bd-board (1338)`, or without the port when the url does not name one."""
+    """`Open beadside (1338)`, or without the port when the url does not name one."""
     port = url_port(url)
     return f"Open {name} ({port})" if port else f"Open {name}"
 

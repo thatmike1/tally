@@ -46,7 +46,7 @@ back, so you can delete the file and tally still runs.
 | `tray.links` | `[]` | rows that open a local page, starting the row's unit if the port is closed |
 | `tray.toggles` | `[]` | rows that start *and stop* a unit, for a service that costs something while it runs |
 
-The `links` / `toggles` split is the whole tray design: bd-board is an always-on
+The `links` / `toggles` split is the whole tray design: beadside is an always-on
 service, so its row is just "open it". AgentsView costs about 7% of a core while
 sessions are writing, so its row starts and stops it.
 

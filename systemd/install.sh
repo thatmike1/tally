@@ -99,8 +99,8 @@ else
   fi
   # a tray row is only useful when the unit behind it exists: the row starts it
   links=
-  if unit_known bd-board.service; then
-    links='{ "name": "bd-board", "url": "http://127.0.0.1:1338", "unit": "bd-board.service" }'
+  if unit_known beadside.service; then
+    links='{ "name": "beadside", "url": "http://127.0.0.1:1338", "unit": "beadside.service" }'
   fi
   toggles=
   if unit_known agentsview.service; then

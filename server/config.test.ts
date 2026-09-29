@@ -30,7 +30,7 @@ describe('loadConfig', () => {
         agentsviewUrl: 'http://127.0.0.1:8080',
         takeaway: { command: 'agy', model: 'gemini-3.8-flash-low' },
         tray: {
-          links: [{ name: 'bd-board', url: 'http://127.0.0.1:1338', unit: 'bd-board.service' }],
+          links: [{ name: 'beadside', url: 'http://127.0.0.1:1338', unit: 'beadside.service' }],
           toggles: [{ name: 'AgentsView', url: 'http://127.0.0.1:8080', unit: 'agentsview.service' }],
         },
       }),
@@ -42,7 +42,7 @@ describe('loadConfig', () => {
       agentsviewUrl: 'http://127.0.0.1:8080',
       takeaway: { command: 'agy', model: 'gemini-3.8-flash-low' },
       tray: {
-        links: [{ name: 'bd-board', url: 'http://127.0.0.1:1338', unit: 'bd-board.service' }],
+        links: [{ name: 'beadside', url: 'http://127.0.0.1:1338', unit: 'beadside.service' }],
         toggles: [{ name: 'AgentsView', url: 'http://127.0.0.1:8080', unit: 'agentsview.service' }],
       },
     })
@@ -70,7 +70,7 @@ describe('loadConfig', () => {
           plan: { name: 42, usdPerMonth: -5 },
           agentsviewUrl: '',
           takeaway: { command: 'agy' },
-          tray: { links: 'bd-board', toggles: [{ name: 'AgentsView' }] },
+          tray: { links: 'beadside', toggles: [{ name: 'AgentsView' }] },
         }),
       ),
     )
