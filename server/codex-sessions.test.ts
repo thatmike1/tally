@@ -76,6 +76,20 @@ describe('codexRate', () => {
 })
 
 describe('parseRolloutLines', () => {
+  it('resets per-turn fast mode and respects the actual response tier after a downgrade', () => {
+    const parsed = parseRolloutLines('/r/a.jsonl', [
+      meta('a'),
+      JSON.stringify({ timestamp: iso(FROM), type: 'turn_context', payload: { model: 'gpt-6.1-sol', turn_id: 't1', service_tier: 'priority' } }),
+      usage('a', 'fast', FROM + 1, { input: 1_000_000, output: 0 }),
+      JSON.stringify({ timestamp: iso(FROM + 2), type: 'token_usage_record', payload: { thread_id: 'a', response_id: 'downgraded', service_tier: 'default', usage: { input_tokens: 1_000_000 } } }),
+      turn('gpt-6.1-sol', FROM + 3),
+      usage('a', 'unrecorded', FROM + 4, { input: 1_000_000, output: 0 }),
+    ])!
+    expect(parsed.calls.map((call) => [call.speed, call.credits, call.allowanceCredits])).toEqual([
+      ['fast', 100, 125], ['standard', 50, 50], [null, 50, 50],
+    ])
+  })
+
   it('reads calls with the model in force, the meter readings and the first typed prompt', () => {
     const parsed = parseRolloutLines('/r/a.jsonl', [
       meta('a'),

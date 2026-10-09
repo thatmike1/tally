@@ -116,12 +116,13 @@ export function CodexSection({ state, frozen }: { state: State; frozen: boolean 
       lead={lead}
       aside={
         <div className="aside">
-          Counted in rate-card credits, not dollars.
+          Counted in rate-card credits. Fast calls cost 2× credits and carry 2.5× weight in the allowance split.
           {split.creditsPerPoint === null ? '' : ` A point cost about ${credits(split.creditsPerPoint)} credits this week`}
           {split.pointSteps
             ? `, single steps ran ${credits(split.pointSteps.min)} to ${credits(split.pointSteps.max)}, so each thread’s points are approximate.`
             : '. Too few point steps yet to say how steady a point is.'}
           {split.pendingCredits > 1 ? ` ${credits(split.pendingCredits)} credits since the last reading (${hm(split.to)}) are not on the meter yet.` : ''}
+          {split.unknownSpeedCalls > 0 ? ` Speed was not recorded for ${plural(split.unknownSpeedCalls, 'call')}; those use standard-rate estimates.` : ''}
         </div>
       }
     >

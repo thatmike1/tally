@@ -96,6 +96,18 @@ and the "since you last looked" marker is neither read nor written.
 
 ## Where the numbers come from
 
+Claude prices include Sonnet 5.5's $0.10/M cache reads and Haiku 5.5's
+request-level 100,000-token prompt threshold. Cache reads and writes count
+towards the prompt threshold; output tokens do not. Stored transcript costs
+are recalculated from their original token buckets when the price table changes.
+
+Codex speed comes from recorded rollout tiers or T3's per-turn event history,
+including child agents through their root turn. Fast (`fast` or `priority`)
+costs 2x purchased credits and API list prices; its weight in the included
+allowance split is 2.5x. A later speed selection never reprices an earlier
+turn. Calls without a recorded speed use standard estimates and are flagged
+on the page. Today's CLI config is not used to guess old turns' speeds.
+
 **The meters** — `~/.cache/tally/limits.jsonl`, written by
 `sampler/usage-sample.py` off `GET /api/oauth/usage` on a five-minute systemd
 timer. Only rows with `"src": "api"` are read: a Claude Code statusline hook can

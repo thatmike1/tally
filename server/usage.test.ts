@@ -35,6 +35,18 @@ const records = [
 ]
 
 describe('UsageTally', () => {
+  it('adds Haiku request costs without repricing their combined prompt at the long-context rate', () => {
+    const short = { in: 60_000, cw1h: 0, cw5m: 0, cr: 0, out: 1_000 }
+    const usage = splitUsage([
+      request('h', 10, 'claude-haiku-5-5', short, null),
+      request('h', 20, 'claude-haiku-5-5', short, null),
+      request('h', 30, 'claude-haiku-5-5', { ...short, cr: 40_001 }, null),
+    ], 0, 100)
+    expect(usage.costByKind.in).toBeCloseTo(0.006 * 2 + 0.03)
+    expect(Object.values(usage.costByKind).reduce((sum, cost) => sum + cost, 0)).toBeCloseTo(usage.cost)
+    expect(usage.compare[0]?.predecessorCostByKind.in).toBeCloseTo(0.18)
+  })
+
   it('prices each bucket so the kinds add up to the cost', () => {
     const usage = splitUsage(records, 0, 100)
     const kinds = usage.costByKind

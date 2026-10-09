@@ -239,7 +239,7 @@ export async function buildState(options: Options = {}): Promise<State> {
   })
   let codexSplit: CodexWeekSplit | null = null
   if (codexView.windowStart !== null && codexView.resetsAt !== null) {
-    const rollouts = await scanRollouts(codexView.windowStart, options.codexSessions ?? codexSessionsRoot(home), frozen ? now : undefined)
+    const rollouts = await scanRollouts(codexView.windowStart, options.codexSessions ?? codexSessionsRoot(home), frozen ? now : undefined, statePath(home))
     const anchor = codexView.status === 'fresh' && codexView.sampledAt !== null && codexView.usedPercent !== null
       ? { t: codexView.sampledAt, pct: codexView.usedPercent }
       : null

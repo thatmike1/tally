@@ -9,11 +9,13 @@
 // response id and kept only in the file of the thread that made them.
 import { createReadStream, readdirSync, statSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { basename, join } from 'node:path'
+import { basename, dirname, join } from 'node:path'
 import { createInterface } from 'node:readline'
 import { DatabaseSync } from 'node:sqlite'
 import { CODEX_WEEK_MINUTES } from './codex-usage'
 import { agentsviewUrl } from './session-detail'
+import { statePath } from './t3'
+import { codexSpeed, jsonObject, speedMultiplier, t3TurnSpeeds, type CodexSpeed } from './codex-speed'
 
 /** credits per million tokens, from https://help.openai.com/en/articles/20001106-codex-rate-card (read 23 Sep 2026, gpt-6.1-sol 1 Oct) */
 export const CODEX_RATES: Record<string, { input: number; cached: number; output: number }> = {
@@ -44,6 +46,12 @@ export interface CodexCall {
   output: number
   credits: number
   priced: boolean
+  turnId: string | null
+  rootTurnId: string | null
+  speed: CodexSpeed | null
+  speedSource: 'rollout' | 't3' | 'unknown'
+  /** rate-card equivalents weighted by included-allowance consumption, for meter attribution */
+  allowanceCredits: number
 }
 
 export interface CodexReadingPoint {
@@ -85,9 +93,10 @@ export function codexRate(model: string): { rate: (typeof CODEX_RATES)[string]; 
 }
 
 /** credits for one call; `input` here already excludes the cached part */
-export function codexCredits(model: string, input: number, cached: number, output: number): { credits: number; priced: boolean } {
+export function codexCredits(model: string, input: number, cached: number, output: number, speed: CodexSpeed | null = 'standard'): { credits: number; priced: boolean; allowanceCredits: number } {
   const { rate, priced } = codexRate(model)
-  return { credits: (input * rate.input + cached * rate.cached + output * rate.output) / 1_000_000, priced }
+  const standard = (input * rate.input + cached * rate.cached + output * rate.output) / 1_000_000
+  return { credits: standard * speedMultiplier(speed), priced, allowanceCredits: standard * speedMultiplier(speed, true) }
 }
 
 function seconds(value: unknown): number | null {
@@ -110,6 +119,10 @@ function injected(text: string): boolean {
 export function parseRolloutLines(path: string, lines: Iterable<string>): CodexRollout | null {
   let meta: CodexRollout | null = null
   let model = '?'
+  let tier: unknown
+  let sessionTier: unknown
+  let turnId: string | null = null
+  let rootTurnId: string | null = null
   const calls: CodexCall[] = []
   const readings: CodexReadingPoint[] = []
   let lastT: number | null = null
@@ -125,23 +138,25 @@ export function parseRolloutLines(path: string, lines: Iterable<string>): CodexR
     ) {
       continue
     }
-    let line: Record<string, any>
+    let line: Record<string, unknown> | null
     try {
-      line = JSON.parse(raw)
+      line = jsonObject(JSON.parse(raw))
     } catch {
       continue
     }
+    if (!line) continue
     const t = seconds(line.timestamp)
     if (t !== null) lastT = t
-    const payload = line.payload ?? {}
+    const payload = jsonObject(line.payload) ?? {}
     if (line.type === 'session_meta') {
       // a forked subagent can carry its parent's session_meta too; the first one is the file's own
       if (meta) continue
       const id = String(payload.id ?? '')
       if (!id) return null
-      const parent = payload.parent_thread_id ?? payload.source?.subagent?.thread_spawn?.parent_thread_id ?? null
-      const spawn = payload.source?.subagent?.thread_spawn
-      const other = payload.source?.subagent?.other
+      const subagent = jsonObject(jsonObject(payload.source)?.subagent)
+      const spawn = jsonObject(subagent?.thread_spawn)
+      const parent = payload.parent_thread_id ?? spawn?.parent_thread_id ?? null
+      const other = subagent?.other
       const agentName = spawn
         ? [spawn.agent_nickname, spawn.agent_role].filter((part: unknown) => typeof part === 'string' && part).join(' · ') || null
         : typeof other === 'string' ? other : null
@@ -159,27 +174,41 @@ export function parseRolloutLines(path: string, lines: Iterable<string>): CodexR
         readings,
         lastT: null,
       }
+      sessionTier = payload.service_tier ?? payload.serviceTier
+      tier = sessionTier
     } else if (line.type === 'turn_context') {
       if (typeof payload.model === 'string') model = payload.model
+      turnId = typeof payload.turn_id === 'string' ? payload.turn_id : null
+      rootTurnId = typeof payload.root_turn_id === 'string' ? payload.root_turn_id : turnId
+      // a per-turn override does not leak into the next turn
+      tier = payload.service_tier ?? payload.serviceTier ?? sessionTier
     } else if (line.type === 'token_usage_record') {
       // copied parent history in a forked subagent belongs to the parent's file
       if (!meta || payload.thread_id !== meta.id || t === null) continue
-      const usage = payload.usage ?? {}
+      const usage = jsonObject(payload.usage) ?? {}
       const cached = count(usage.cached_input_tokens)
       const input = Math.max(0, count(usage.input_tokens) - cached)
       const output = count(usage.output_tokens)
-      const { credits, priced } = codexCredits(model, input, cached, output)
-      calls.push({ t, responseId: String(payload.response_id ?? `${meta.id}:${line.ordinal}`), model, input, cached, output, credits, priced })
+      const recordedTier = payload.service_tier ?? payload.serviceTier ?? tier
+      const speed = codexSpeed(recordedTier)
+      const { credits, priced, allowanceCredits } = codexCredits(model, input, cached, output, speed)
+      calls.push({ t, responseId: String(payload.response_id ?? `${meta.id}:${line.ordinal}`), model, input, cached, output, credits, priced, allowanceCredits, speed,
+        speedSource: recordedTier === undefined ? 'unknown' : 'rollout',
+        turnId: typeof payload.turn_id === 'string' ? payload.turn_id : turnId,
+        rootTurnId: typeof payload.root_turn_id === 'string' ? payload.root_turn_id : rootTurnId,
+      })
     } else if (line.type === 'event_msg' && payload.type === 'token_count') {
-      const limits = payload.rate_limits
+      const limits = jsonObject(payload.rate_limits)
       if (t === null || !limits || (limits.limit_id && limits.limit_id !== 'codex')) continue
-      for (const window of [limits.primary, limits.secondary]) {
+      for (const value of [limits.primary, limits.secondary]) {
+        const window = jsonObject(value)
         if (window?.window_minutes === CODEX_WEEK_MINUTES && typeof window.used_percent === 'number') {
           readings.push({ t, pct: window.used_percent, resetsAt: count(window.resets_at) })
         }
       }
     } else if (line.type === 'response_item' && payload.role === 'user' && meta && meta.firstPrompt === null) {
-      const text = (payload.content ?? []).map((part: { text?: unknown }) => (typeof part.text === 'string' ? part.text : '')).join(' ')
+      const content = Array.isArray(payload.content) ? payload.content : []
+      const text = content.map((part: unknown) => jsonObject(part)?.text).filter((text): text is string => typeof text === 'string').join(' ')
       if (text.trim() && !injected(text)) meta.firstPrompt = text.trim().replace(/\s+/g, ' ').slice(0, 140)
     }
   }
@@ -242,8 +271,9 @@ async function parseFile(path: string): Promise<CodexRollout | null> {
  * write after it have not happened yet. a file's mtime cannot make that cut,
  * so every rollout is trimmed line by line; the cache keeps the full parse.
  */
-export async function scanRollouts(since: number, root = codexSessionsRoot(), until?: number): Promise<CodexRollout[]> {
+export async function scanRollouts(since: number, root = codexSessionsRoot(), until?: number, t3 = statePath(dirname(dirname(root)))): Promise<CodexRollout[]> {
   const out: CodexRollout[] = []
+  const speeds = t3TurnSpeeds(t3)
   for (const file of rolloutFiles(root)) {
     if (file.mtime < since) continue
     const cached = parsed.get(file.path)
@@ -254,7 +284,18 @@ export async function scanRollouts(since: number, root = codexSessionsRoot(), un
       rollout = await parseFile(file.path)
       parsed.set(file.path, { mtime: file.mtime, size: file.size, rollout })
     }
-    if (rollout) out.push(until === undefined ? rollout : cutRollout(rollout, until))
+    if (rollout) {
+      // enrich copies so a late T3 event can fill the cached rollout on the next read
+      const enriched = { ...rollout, calls: rollout.calls.map((call): CodexCall => {
+        if (call.speedSource !== 'unknown') return call
+        const speed = call.turnId && speeds.has(call.turnId)
+          ? speeds.get(call.turnId)
+          : call.rootTurnId ? speeds.get(call.rootTurnId) : null
+        if (!speed) return call
+        return { ...call, ...codexCredits(call.model, call.input, call.cached, call.output, speed), speed, speedSource: 't3' }
+      }) }
+      out.push(until === undefined ? enriched : cutRollout(enriched, until))
+    }
   }
   return out
 }
@@ -342,6 +383,7 @@ export interface CodexWeekSplit {
   /** credits after the anchoring reading, not on the meter yet */
   pendingCredits: number
   threads: CodexThreadRow[]
+  unknownSpeedCalls: number
 }
 
 /**
@@ -417,8 +459,10 @@ export function splitCodexWeek(
   const to = latest.t
 
   const seen = new Set<string>()
-  const byRoot = new Map<string, { credits: number; calls: number; agents: Set<string>; models: Set<string>; unpriced: boolean; start: number; end: number; lastWrite: number; lead: CodexRollout | null; any: CodexRollout }>()
+  const byRoot = new Map<string, { credits: number; allowanceCredits: number; calls: number; agents: Set<string>; models: Set<string>; unpriced: boolean; start: number; end: number; lastWrite: number; lead: CodexRollout | null; any: CodexRollout }>()
   let totalCredits = 0
+  let totalAllowanceCredits = 0
+  let unknownSpeedCalls = 0
   let pendingCredits = 0
   for (const rollout of openai) {
     for (const call of rollout.calls) {
@@ -430,10 +474,11 @@ export function splitCodexWeek(
       }
       let row = byRoot.get(rollout.rootId)
       if (!row) {
-        row = { credits: 0, calls: 0, agents: new Set(), models: new Set(), unpriced: false, start: call.t, end: call.t, lastWrite: 0, lead: null, any: rollout }
+        row = { credits: 0, allowanceCredits: 0, calls: 0, agents: new Set(), models: new Set(), unpriced: false, start: call.t, end: call.t, lastWrite: 0, lead: null, any: rollout }
         byRoot.set(rollout.rootId, row)
       }
       row.credits += call.credits
+      row.allowanceCredits += call.allowanceCredits
       row.calls += 1
       row.models.add(call.model)
       row.unpriced ||= !call.priced
@@ -441,6 +486,8 @@ export function splitCodexWeek(
       row.end = Math.max(row.end, call.t)
       if (rollout.subagent) row.agents.add(rollout.id)
       totalCredits += call.credits
+      totalAllowanceCredits += call.allowanceCredits
+      if (call.speed === null) unknownSpeedCalls++
     }
   }
   for (const rollout of openai) {
@@ -455,7 +502,7 @@ export function splitCodexWeek(
   const threads = [...byRoot.entries()]
     .map(([id, row]): Omit<CodexThreadRow, 'color'> => {
       const lead = row.lead ?? row.any
-      const share = totalCredits > 0 ? row.credits / totalCredits : 0
+      const share = totalAllowanceCredits > 0 ? row.allowanceCredits / totalAllowanceCredits : 0
       const known = t3.get(id)
       const project = lead.cwd ? basename(lead.cwd) : null
       return {
@@ -475,7 +522,7 @@ export function splitCodexWeek(
         live: known?.live ?? now - row.lastWrite < LIVE_WINDOW,
       }
     })
-    .sort((a, b) => b.credits - a.credits)
+    .sort((a, b) => b.share - a.share)
     .map((row, rank) => ({ ...row, color: CODEX_PALETTE[Math.min(rank, CODEX_PALETTE.length - 1)]! }))
 
   return {
@@ -487,6 +534,7 @@ export function splitCodexWeek(
     creditsPerPoint: latest.pct > 0 && totalCredits > 0 ? totalCredits / latest.pct : null,
     pendingCredits,
     threads,
+    unknownSpeedCalls,
   }
 }
 
@@ -576,7 +624,7 @@ export async function codexSessionDetail(rootId: string, options: { root?: strin
   const now = options.at ?? options.now ?? Date.now() / 1000
   const root = options.root ?? codexSessionsRoot()
   const since = threadSince(rootId, root) ?? 0
-  const rollouts = (await scanRollouts(since, root, options.at))
+  const rollouts = (await scanRollouts(since, root, options.at, options.t3))
     // frozen before a rollout's first call or reading, it had not been written yet
     .filter((r) => r.rootId === rootId && (!frozen || r.lastT !== null))
   if (!rollouts.length) return null

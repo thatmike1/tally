@@ -45,6 +45,23 @@ function oracle(): Expected[] {
 }
 
 describe('prices', () => {
+  it('prices Sonnet 5.5 cache reads independently of Sonnet 5', () => {
+    const hit = { in: 0, cw1h: 0, cw5m: 0, cr: 1_000_000, out: 0 }
+    expect(costOf('claude-sonnet-5-5', hit)).toBeCloseTo(0.1)
+    expect(costOf('claude-sonnet-5', hit)).toBeCloseTo(0.2)
+    expect(predecessorOf('claude-sonnet-5-5')).toBe('claude-sonnet-5')
+  })
+
+  it('prices Haiku 5.5 by the whole prompt, including cache, with an inclusive 100k boundary', () => {
+    const prompt = { in: 10_000, cw1h: 10_000, cw5m: 10_000, cr: 70_000, out: 1_000 }
+    expect(isPriced('claude-haiku-5-5')).toBe(true)
+    expect(costOf('claude-haiku-5-5', prompt)).toBeCloseTo(0.001 + 0.002 + 0.00125 + 0.0007 + 0.0005)
+    const long = costByBucket('claude-haiku-5-5', { ...prompt, cr: 70_001 })
+    expect(long).toEqual({ in: 0.005, cw1h: 0.01, cw5m: 0.00625, cr: 0.00350005, out: 0.0025 })
+    // output never pushes a short prompt into the high-price bracket
+    expect(costByBucket('claude-haiku-5-5', { ...prompt, out: 200_000 }).in).toBeCloseTo(0.001)
+  })
+
   it('takes the longest matching prefix', () => {
     expect(priceFor('claude-sonnet-4-5-20250929')).toEqual([3.0, 15.0])
     expect(priceFor('claude-opus-5')).toEqual([5.0, 25.0])

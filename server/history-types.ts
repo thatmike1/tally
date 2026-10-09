@@ -160,7 +160,7 @@ export interface CodexWindow {
    * of the truth, instead of drawing nothing
    */
   pricedCostUsd: number
-  byModel: Record<string, { calls: number; input: number; cached: number; output: number; credits: number; costUsd: number | null }>
+  byModel: Record<string, { calls: number; input: number; cached: number; output: number; credits: number; costUsd: number | null; unknownSpeedCalls: number }>
   /** models seen in the window with no list-price row; never silently priced */
   unknownModels: string[]
   calls: number

@@ -314,6 +314,7 @@ function CodexSection({ codex }: { codex: CodexHistory }) {
       <p className="caveat">
         Credits come from OpenAI's Codex rate card and the meter readings kept since 15 Sep 2026; prices from{' '}
         {codex.prices.source}, read {codex.prices.readAt}.
+        {' '}Fast-mode prices are applied per call. Calls without a recorded speed use standard-rate estimates.
       </p>
     </>
   )

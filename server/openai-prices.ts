@@ -4,10 +4,13 @@
 // the two tables stay separate on purpose and never fall back to each other.
 //
 // read from the standard, short-context column of the published table; long
-// context, batch, flex and fast mode are different rates and are not modelled.
+// context, batch and flex are different rates and are not modelled. fast mode
+// is 2x standard for the supported Codex models, read 9 Oct 2026:
+// https://developers.openai.com/api/docs/models/gpt-6.1-sol
 // cache writes have their own published price, but a Codex rollout only reports
 // input, cached input and output, so only those three are priced here.
 import type { OpenAiPrice } from './history-types'
+import { speedMultiplier, type CodexSpeed } from './codex-speed'
 
 /** where the table below was read */
 export const OPENAI_PRICE_SOURCE = 'https://platform.openai.com/docs/pricing'
@@ -66,8 +69,8 @@ export function openAiPrice(model: string): OpenAiPrice | null {
  * usd for one call at list price, or null when the model has no row. `input`
  * excludes the cached part, exactly as `CodexCall` reports it.
  */
-export function openAiCost(model: string, input: number, cached: number, output: number): number | null {
+export function openAiCost(model: string, input: number, cached: number, output: number, speed: CodexSpeed | null = 'standard'): number | null {
   const price = openAiPrice(model)
   if (!price) return null
-  return (input * price.input + cached * price.cachedInput + output * price.output) / 1_000_000
+  return (input * price.input + cached * price.cachedInput + output * price.output) * speedMultiplier(speed) / 1_000_000
 }

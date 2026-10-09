@@ -29,6 +29,11 @@ describe('openAiPrice', () => {
 })
 
 describe('openAiCost', () => {
+  it('prices fast calls at twice standard, including cached tokens', () => {
+    expect(openAiCost('gpt-6.1-sol', 1_000_000, 1_000_000, 100_000, 'standard')).toBeCloseTo(3.1)
+    expect(openAiCost('gpt-6.1-sol', 1_000_000, 1_000_000, 100_000, 'fast')).toBeCloseTo(6.2)
+  })
+
   it('charges cached input at its own rate and uncached input at the full one', () => {
     // input here already excludes the cached part, as `CodexCall` reports it
     expect(openAiCost('gpt-6-astra', 1_000_000, 2_000_000, 100_000)).toBeCloseTo(10 + 2 + 5)

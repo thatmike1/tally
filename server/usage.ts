@@ -3,7 +3,7 @@
 // replaced. a split row carries the first three, a split window all of them,
 // and both come out of one accumulator, so a window's figures are always the
 // sum of its rows.
-import { costByBucket, costOf, predecessorOf, type Tokens } from './prices'
+import { costByBucket, predecessorOf, totalTokens, type Tokens } from './prices'
 import type { Effort, RequestRecord } from './transcripts'
 
 /** one model's part of a row or a window, as recorded on the request (`claude-opus-5-5`) */
@@ -94,6 +94,8 @@ interface ModelTally {
   requests: number
   cost: number
   buckets: Tokens
+  costByKind: Tokens
+  predecessorCostByKind: Tokens
 }
 
 /** requests in, row and window figures out */
@@ -113,12 +115,15 @@ export class UsageTally {
     addTokens(this.buckets, tokens)
     let model = this.byModel.get(record.model)
     if (!model) {
-      model = { requests: 0, cost: 0, buckets: emptyTokens() }
+      model = { requests: 0, cost: 0, buckets: emptyTokens(), costByKind: emptyTokens(), predecessorCostByKind: emptyTokens() }
       this.byModel.set(record.model, model)
     }
     model.requests++
     model.cost += record.cost
     addTokens(model.buckets, tokens)
+    addTokens(model.costByKind, costByBucket(record.model, tokens))
+    const predecessor = predecessorOf(record.model)
+    if (predecessor !== null) addTokens(model.predecessorCostByKind, costByBucket(predecessor, tokens))
     this.byEffort.set(record.effort, (this.byEffort.get(record.effort) ?? 0) + 1)
   }
 
@@ -142,26 +147,26 @@ export class UsageTally {
   }
 
   /**
-   * the window summary. costs per bucket are priced per model from the tokens,
+   * the window summary. costs per bucket are priced per request from the tokens,
    * so they sum to the stored per-request costs to float precision.
    */
   summary(): SplitUsage {
     const costByKind = emptyTokens()
     const compare: PredecessorCompare[] = []
     for (const [model, row] of this.byModel) {
-      addTokens(costByKind, costByBucket(model, row.buckets))
+      addTokens(costByKind, row.costByKind)
       const predecessor = predecessorOf(model)
       if (predecessor === null) continue
-      const predecessorCost = costOf(predecessor, row.buckets)
+      const predecessorCost = totalTokens(row.predecessorCostByKind)
       compare.push({
         model,
         predecessor,
         requests: row.requests,
         buckets: { ...row.buckets },
         cost: row.cost,
-        costByKind: costByBucket(model, row.buckets),
+        costByKind: { ...row.costByKind },
         predecessorCost,
-        predecessorCostByKind: costByBucket(predecessor, row.buckets),
+        predecessorCostByKind: { ...row.predecessorCostByKind },
         ratio: predecessorCost > 0 ? row.cost / predecessorCost : null,
       })
     }

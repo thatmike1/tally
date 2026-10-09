@@ -16,6 +16,7 @@ import { defaultConfig, type PlanConfig } from './config'
 import type { CodexHistory, CodexWindow } from './history-types'
 import { OPENAI_PRICE_TABLE, openAiCost } from './openai-prices'
 import { startOfMonth } from './time'
+import { statePath } from './t3'
 
 /** readings of one window agree on the reset to within this, as `splitCodexWeek` assumes */
 const RESET_JITTER_SECONDS = 120
@@ -104,6 +105,8 @@ interface ModelTotals {
   cached: number
   output: number
   credits: number
+  costUsd: number | null
+  unknownSpeedCalls: number
 }
 
 /** calls in `from..to`, deduplicated by response id exactly as `splitCodexWeek` does */
@@ -117,7 +120,7 @@ function callTotals(rollouts: CodexRollout[], from: number, to: number): Map<str
       seen.add(call.responseId)
       let row = byModel.get(call.model)
       if (!row) {
-        row = { calls: 0, input: 0, cached: 0, output: 0, credits: 0 }
+        row = { calls: 0, input: 0, cached: 0, output: 0, credits: 0, costUsd: 0, unknownSpeedCalls: 0 }
         byModel.set(call.model, row)
       }
       row.calls += 1
@@ -125,6 +128,10 @@ function callTotals(rollouts: CodexRollout[], from: number, to: number): Map<str
       row.cached += call.cached
       row.output += call.output
       row.credits += call.credits
+      const cost = openAiCost(call.model, call.input, call.cached, call.output, call.speed)
+      if (row.costUsd === null || cost === null) row.costUsd = null
+      else row.costUsd += cost
+      if (call.speed === null) row.unknownSpeedCalls++
     }
   }
   return byModel
@@ -146,7 +153,7 @@ function priceModels(byModel: Map<string, ModelTotals>): {
   let costUsd: number | null = 0
   let pricedCostUsd = 0
   for (const [model, row] of [...byModel.entries()].sort((a, b) => b[1].credits - a[1].credits)) {
-    const cost = openAiCost(model, row.input, row.cached, row.output)
+    const cost = row.costUsd
     if (cost === null) {
       unknownModels.push(model)
       // one unpriced model makes the window's total a guess, so there is no total
@@ -155,7 +162,7 @@ function priceModels(byModel: Map<string, ModelTotals>): {
       pricedCostUsd += cost
       if (costUsd !== null) costUsd += cost
     }
-    rows[model] = { calls: row.calls, input: row.input, cached: row.cached, output: row.output, credits: row.credits, costUsd: cost }
+    rows[model] = { calls: row.calls, input: row.input, cached: row.cached, output: row.output, credits: row.credits, costUsd: cost, unknownSpeedCalls: row.unknownSpeedCalls }
     credits += row.credits
     calls += row.calls
   }
@@ -202,7 +209,7 @@ export async function buildCodexHistory(options: CodexHistoryOptions = {}): Prom
   const paths = codexUsagePaths(home)
   const root = codexSessionsRoot(home)
   // history reaches as far back as the rollouts do, so nothing is skipped by mtime
-  const rollouts = options.rollouts ?? (await scanRollouts(0, root))
+  const rollouts = options.rollouts ?? (await scanRollouts(0, root, undefined, statePath(home)))
   const windows = groupWindows(allReadings(rollouts, readCodexHistory(paths.history))).map((window) =>
     buildWindow(rollouts, window, now),
   )
