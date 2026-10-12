@@ -11,10 +11,9 @@ import { createReadStream, readdirSync, statSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { basename, dirname, join } from 'node:path'
 import { createInterface } from 'node:readline'
-import { DatabaseSync } from 'node:sqlite'
 import { CODEX_WEEK_MINUTES } from './codex-usage'
 import { agentsviewUrl } from './session-detail'
-import { statePath } from './t3'
+import { nativeThreads, statePath } from './t3'
 import { codexSpeed, jsonObject, speedMultiplier, t3TurnSpeeds, type CodexSpeed } from './codex-speed'
 
 /** credits per million tokens, from https://help.openai.com/en/articles/20001106-codex-rate-card (read 23 Sep 2026, gpt-6.1-sol 1 Oct) */
@@ -313,39 +312,7 @@ export function cutRollout(rollout: CodexRollout, until: number): CodexRollout {
 
 /** T3 thread titles keyed by the Codex thread id T3 resumes, plus whether a turn is in flight */
 export function t3CodexThreads(path: string): Map<string, { title: string; live: boolean }> {
-  const out = new Map<string, { title: string; live: boolean }>()
-  let db: DatabaseSync
-  try {
-    db = new DatabaseSync(path, { readOnly: true })
-  } catch {
-    return out
-  }
-  try {
-    const rows = db
-      .prepare(
-        `SELECT t.title AS title, r.resume_cursor_json AS cursor, s.active_turn_id AS active
-           FROM provider_session_runtime r
-           JOIN projection_threads t ON t.thread_id = r.thread_id
-           LEFT JOIN projection_thread_sessions s ON s.thread_id = r.thread_id
-          WHERE r.provider_name = 'codex' AND t.deleted_at IS NULL`,
-      )
-      .all() as { title: unknown; cursor: unknown; active: unknown }[]
-    for (const row of rows) {
-      try {
-        const threadId = JSON.parse(String(row.cursor ?? '{}')).threadId
-        if (typeof threadId === 'string') {
-          out.set(threadId, { title: String(row.title ?? 'untitled'), live: row.active !== null && row.active !== undefined })
-        }
-      } catch {
-        // a runtime row without a resume cursor has not started a Codex thread
-      }
-    }
-  } catch {
-    // an older T3 schema without the runtime table: titles fall back to the first prompt
-  } finally {
-    db.close()
-  }
-  return out
+  return new Map([...nativeThreads('codex', path)].map(([id, thread]) => [id, { title: thread.title, live: thread.live }]))
 }
 
 export interface CodexThreadRow {

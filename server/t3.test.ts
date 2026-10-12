@@ -1,11 +1,12 @@
 // T3 threads as activity: the db keeps one row per message, and a thread poked
 // on three different days must come back as three stretches, not one long bar.
 import { DatabaseSync } from 'node:sqlite'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { t3CodexThreads } from './codex-sessions'
 import { afterEach, describe, expect, it } from 'vitest'
-import { otherThreads, segmentsOfTimes } from './t3'
+import { claudeThreadTitles, nativeThreads, otherThreads, segmentsOfTimes, statePath } from './t3'
 
 const temps: string[] = []
 
@@ -125,5 +126,79 @@ describe('otherThreads', () => {
       { id: 't-2', created: 0, updated: 100, activeTurn: 'turn-9', messages: [60] },
     ])
     expect(otherThreads(0, 1000, path).map((thread) => thread.live)).toEqual([false, true])
+  })
+})
+
+/** adds the live V2 projections alongside an imported V1 database */
+function addV2(path: string): DatabaseSync {
+  const db = new DatabaseSync(path)
+  db.exec(`
+    CREATE TABLE provider_session_runtime (thread_id TEXT, provider_name TEXT, resume_cursor_json TEXT);
+    CREATE TABLE orchestration_v2_projection_threads (thread_id TEXT, title TEXT, project_id TEXT, default_provider TEXT, active_provider_thread_id TEXT, created_at TEXT, updated_at TEXT, deleted_at TEXT);
+    CREATE TABLE orchestration_v2_projection_provider_threads (provider_thread_id TEXT, thread_id TEXT, provider TEXT, provider_session_id TEXT, updated_at TEXT, payload_json TEXT);
+    CREATE TABLE orchestration_v2_projection_provider_sessions (provider_session_id TEXT, payload_json TEXT);
+    CREATE TABLE orchestration_v2_projection_runs (thread_id TEXT, provider_thread_id TEXT, status TEXT);
+    CREATE TABLE orchestration_v2_projection_messages (thread_id TEXT, created_at TEXT);
+  `)
+  return db
+}
+
+function v2Session(db: DatabaseSync, thread: string, provider: string, native: string, updated = 200): void {
+  db.prepare('INSERT INTO orchestration_v2_projection_provider_threads VALUES (?, ?, ?, ?, ?, ?)').run(
+    native, thread, provider, native, iso(updated), JSON.stringify({ nativeThreadRef: { nativeId: native } }),
+  )
+  db.prepare('INSERT INTO orchestration_v2_projection_provider_sessions VALUES (?, ?)').run(native, JSON.stringify({ cwd: '/fixture/project' }))
+}
+
+describe('V2 alongside imported history', () => {
+  it('selects statev2 when present and falls back to state on a V1 box', () => {
+    const home = mkdtempSync(join(tmpdir(), 'tally-home-'))
+    temps.push(home)
+    const dir = join(home, '.t3', 'userdata')
+    mkdirSync(dir, { recursive: true })
+    expect(statePath(home)).toBe(join(dir, 'state.sqlite'))
+    new DatabaseSync(join(dir, 'state.sqlite')).close()
+    new DatabaseSync(join(dir, 'statev2.sqlite')).close()
+    expect(statePath(home)).toBe(join(dir, 'statev2.sqlite'))
+  })
+
+  it('keeps old Claude sessions and all new handoffs, with the matching cwd', () => {
+    const path = stateDb([{ id: 't-1', provider: 'claudeAgent', title: 'legacy title', created: 0, updated: 100, messages: [50] }])
+    const db = addV2(path)
+    db.prepare('INSERT INTO provider_session_runtime VALUES (?, ?, ?)').run('t-1', 'claudeAgent', JSON.stringify({ resume: 'old-claude' }))
+    db.prepare('INSERT INTO orchestration_v2_projection_threads VALUES (?, ?, ?, ?, ?, ?, ?, NULL)').run('t-1', 'new title', 'p-1', 'claudeAgent', 'new-claude', iso(0), iso(200))
+    v2Session(db, 't-1', 'claudeAgent', 'new-claude')
+    v2Session(db, 't-1', 'claudeAgent', 'handoff-claude', 300)
+    db.prepare('INSERT INTO orchestration_v2_projection_provider_threads VALUES (?, ?, ?, ?, ?, ?)').run('bad', 't-1', 'claudeAgent', null, iso(400), '{broken')
+    db.close()
+    expect([...claudeThreadTitles(path)]).toEqual([['old-claude', 'legacy title'], ['new-claude', 'new title'], ['handoff-claude', 'new title']])
+    expect(nativeThreads('claudeAgent', path).get('new-claude')).toEqual({ threadId: 't-1', title: 'new title', cwd: '/fixture/project', live: false })
+  })
+
+  it('joins messages across the switch without duplicate lanes and uses running V2 runs for live', () => {
+    const path = stateDb([{ id: 't-1', title: 'same title', activeTurn: 'frozen-turn', created: 0, updated: 100, messages: [50, 60] }])
+    const db = addV2(path)
+    db.prepare('INSERT INTO provider_session_runtime VALUES (?, ?, ?)').run('t-1', 'codex', JSON.stringify({ threadId: 'old-codex' }))
+    db.prepare('INSERT INTO orchestration_v2_projection_threads VALUES (?, ?, ?, ?, ?, ?, ?, NULL)').run('t-1', 'same title', 'p-1', 'codex', 'new-codex', iso(0), iso(1000))
+    v2Session(db, 't-1', 'codex', 'new-codex')
+    v2Session(db, 't-1', 'codex', 'old-handoff')
+    db.prepare('INSERT INTO orchestration_v2_projection_runs VALUES (?, ?, ?)').run('t-1', 'new-codex', 'running')
+    for (const t of [60, 900, 1000]) db.prepare('INSERT INTO orchestration_v2_projection_messages VALUES (?, ?)').run('t-1', iso(t))
+    db.close()
+    expect(otherThreads(0, 2000, path, 100)).toMatchObject([{ id: 't-1', project: 'tally', live: true, segments: [{ start: 50, end: 60 }, { start: 900, end: 1000 }] }])
+    expect(otherThreads(0, 100, path)[0]?.segments).toEqual([{ start: 50, end: 60 }])
+    expect([...t3CodexThreads(path)]).toEqual([
+      ['old-codex', { title: 'same title', live: false }],
+      ['new-codex', { title: 'same title', live: true }],
+      ['old-handoff', { title: 'same title', live: false }],
+    ])
+  })
+
+  it('does not resurrect deleted V2 threads through imported rows', () => {
+    const path = stateDb([{ id: 't-1', created: 0, updated: 100, messages: [50] }])
+    const db = addV2(path)
+    db.prepare('INSERT INTO orchestration_v2_projection_threads VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run('t-1', 'deleted', 'p-1', 'codex', null, iso(0), iso(100), iso(100))
+    db.close()
+    expect(otherThreads(0, 1000, path)).toEqual([])
   })
 })

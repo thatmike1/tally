@@ -9,8 +9,10 @@
 //
 // T3 Code is running and writing to this file, so it is opened read-only.
 import { DatabaseSync } from 'node:sqlite'
+import { existsSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
+import { jsonObject } from './codex-speed'
 import { LANE_GAP } from './history-types'
 
 export interface ThreadSegment {
@@ -36,7 +38,8 @@ export interface Thread {
 }
 
 export function statePath(home = homedir()): string {
-  return join(home, '.t3', 'userdata', 'state.sqlite')
+  const v2 = join(home, '.t3', 'userdata', 'statev2.sqlite')
+  return existsSync(v2) ? v2 : join(home, '.t3', 'userdata', 'state.sqlite')
 }
 
 const SQL = `
@@ -57,7 +60,26 @@ const SQL = `
 const MESSAGES_SQL = `
   SELECT thread_id AS id, created_at AS t
     FROM projection_thread_messages
-   ORDER BY thread_id, created_at
+`
+
+/** checks projections in the selected database, never the frozen sibling file */
+function hasTable(db: DatabaseSync, name: string): boolean {
+  return db.prepare('SELECT 1 FROM sqlite_master WHERE type = ? AND name = ?').get('table', name) !== undefined
+}
+
+const V2_SQL = `
+  SELECT t.thread_id AS id, t.title, p.title AS project,
+         COALESCE(pt.provider, t.default_provider) AS provider,
+         CASE WHEN EXISTS (
+           SELECT 1 FROM orchestration_v2_projection_runs r
+            WHERE r.thread_id = t.thread_id AND r.status = 'running'
+         ) THEN t.active_provider_thread_id END AS active_turn_id,
+         t.created_at, t.updated_at
+    FROM orchestration_v2_projection_threads t
+    LEFT JOIN orchestration_v2_projection_provider_threads pt
+      ON pt.provider_thread_id = t.active_provider_thread_id
+    LEFT JOIN projection_projects p ON p.project_id = t.project_id
+   WHERE t.deleted_at IS NULL
 `
 
 function seconds(value: unknown, fallback: number): number {
@@ -97,7 +119,11 @@ export function otherThreads(from: number, to: number, path = statePath(), gap =
   }
   try {
     const times = new Map<string, number[]>()
-    for (const row of db.prepare(MESSAGES_SQL).all() as Record<string, unknown>[]) {
+    const v2 = hasTable(db, 'orchestration_v2_projection_threads')
+    const messages = v2 ? `${MESSAGES_SQL}
+      UNION SELECT thread_id AS id, created_at AS t FROM orchestration_v2_projection_messages
+      ORDER BY id, t` : MESSAGES_SQL
+    for (const row of db.prepare(messages).all()) {
       const id = String(row.id)
       const t = seconds(row.t, Number.NaN)
       if (Number.isNaN(t)) continue
@@ -105,9 +131,16 @@ export function otherThreads(from: number, to: number, path = statePath(), gap =
       if (list) list.push(t)
       else times.set(id, [t])
     }
-    const rows = db.prepare(SQL).all() as Record<string, unknown>[]
+    const rows = new Map(db.prepare(SQL).all().map((row) => [String(row.id), row]))
+    if (v2) {
+      for (const row of db.prepare(V2_SQL).all()) rows.set(String(row.id), row)
+      // deleted V2 threads must not reappear through their imported V1 row
+      for (const row of db.prepare('SELECT thread_id FROM orchestration_v2_projection_threads WHERE deleted_at IS NOT NULL').all()) {
+        rows.delete(String(row.thread_id))
+      }
+    }
     const out: Thread[] = []
-    for (const row of rows) {
+    for (const row of rows.values()) {
       const provider = String(row.provider ?? '')
       if (!provider || provider === 'claudeAgent') continue
       const id = String(row.id)
@@ -143,17 +176,28 @@ export function otherThreads(from: number, to: number, path = statePath(), gap =
   }
 }
 
+export interface NativeThread {
+  threadId: string
+  title: string
+  live: boolean
+  cwd: string | null
+}
+
+/** parses optional provider JSON without trusting its shape */
+function payload(value: unknown): Record<string, unknown> | null {
+  try {
+    return jsonObject(JSON.parse(String(value ?? '{}')))
+  } catch {
+    return null
+  }
+}
+
 /**
- * T3 thread titles keyed by the Claude session id each thread resumes.
- *
- * a Claude thread's `provider_session_runtime.resume_cursor_json` carries
- * `resume`, the session id of the transcript under `~/.claude/projects`. only
- * the thread's current session is recorded there, so a thread that moved to a
- * new session names that one alone, and a session T3 never ran maps to
- * nothing. empty when there is no T3 db or its schema has no runtime table.
+ * native sessions from both generations, including handoffs and legacy history.
+ * v2 wins a duplicate native id; newest provider records win within V2.
  */
-export function claudeThreadTitles(path = statePath()): Map<string, string> {
-  const out = new Map<string, string>()
+export function nativeThreads(provider: string, path = statePath()): Map<string, NativeThread> {
+  const out = new Map<string, NativeThread>()
   let db: DatabaseSync
   try {
     db = new DatabaseSync(path, { readOnly: true })
@@ -161,27 +205,63 @@ export function claudeThreadTitles(path = statePath()): Map<string, string> {
     return out
   }
   try {
-    const rows = db
-      .prepare(
-        `SELECT t.title AS title, r.resume_cursor_json AS cursor
-           FROM provider_session_runtime r
-           JOIN projection_threads t ON t.thread_id = r.thread_id
-          WHERE r.provider_name = 'claudeAgent' AND t.deleted_at IS NULL`,
-      )
-      .all() as { title: unknown; cursor: unknown }[]
-    for (const row of rows) {
-      if (typeof row.title !== 'string' || !row.title.trim()) continue
-      try {
-        const resume = JSON.parse(String(row.cursor ?? '{}')).resume
-        if (typeof resume === 'string' && resume) out.set(resume, row.title.trim())
-      } catch {
-        // a runtime row without a resume cursor has not started a Claude session
+    if (hasTable(db, 'provider_session_runtime')) {
+      const sessions = hasTable(db, 'projection_thread_sessions')
+      const rows = db.prepare(`
+        SELECT t.thread_id, t.title, r.resume_cursor_json AS cursor,
+               ${sessions ? 's.active_turn_id' : 'NULL'} AS active
+          FROM provider_session_runtime r
+          JOIN projection_threads t ON t.thread_id = r.thread_id
+          ${sessions ? 'LEFT JOIN projection_thread_sessions s ON s.thread_id = r.thread_id' : ''}
+         WHERE r.provider_name = ? AND t.deleted_at IS NULL
+      `).all(provider)
+      for (const row of rows) {
+        const cursor = payload(row.cursor)
+        const id = provider === 'claudeAgent' ? cursor?.resume : cursor?.threadId
+        if (typeof id !== 'string' || !id) continue
+        if (provider === 'claudeAgent' && (typeof row.title !== 'string' || !row.title.trim())) continue
+        out.set(id, {
+          threadId: String(row.thread_id), title: provider === 'claudeAgent' ? String(row.title).trim() : String(row.title ?? 'untitled'),
+          live: row.active !== null, cwd: null,
+        })
+      }
+    }
+    if (hasTable(db, 'orchestration_v2_projection_provider_threads')) {
+      for (const [id, thread] of out) out.set(id, { ...thread, live: false })
+      const rows = db.prepare(`
+        SELECT pt.thread_id, t.title, pt.payload_json, ps.payload_json AS session,
+               CASE WHEN pt.provider_thread_id = t.active_provider_thread_id AND EXISTS (
+                 SELECT 1 FROM orchestration_v2_projection_runs r
+                  WHERE r.provider_thread_id = pt.provider_thread_id AND r.status = 'running'
+               ) THEN 1 ELSE 0 END AS live
+          FROM orchestration_v2_projection_provider_threads pt
+          JOIN orchestration_v2_projection_threads t ON t.thread_id = pt.thread_id
+          LEFT JOIN orchestration_v2_projection_provider_sessions ps
+            ON ps.provider_session_id = pt.provider_session_id
+         WHERE pt.provider = ? AND t.deleted_at IS NULL
+         ORDER BY pt.updated_at
+      `).all(provider)
+      for (const row of rows) {
+        const id = jsonObject(payload(row.payload_json)?.nativeThreadRef)?.nativeId
+        if (typeof id !== 'string' || !id) continue
+        const cwd = payload(row.session)?.cwd
+        out.set(id, {
+          threadId: String(row.thread_id), title: provider === 'claudeAgent' ? String(row.title).trim() : String(row.title ?? 'untitled'),
+          live: row.live === 1, cwd: typeof cwd === 'string' ? cwd : null,
+        })
       }
     }
   } catch {
-    // an older T3 schema without the runtime table: no short titles
+    // missing optional projections leave the available legacy mappings intact
   } finally {
     db.close()
   }
   return out
+}
+
+/** t3 titles for every recorded Claude session, before and after handoffs */
+export function claudeThreadTitles(path = statePath()): Map<string, string> {
+  return new Map([...nativeThreads('claudeAgent', path)]
+    .filter(([, thread]) => thread.title)
+    .map(([id, thread]) => [id, thread.title]))
 }

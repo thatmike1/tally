@@ -290,6 +290,32 @@ describe('rangeSplit over the fixture home', () => {
   })
 })
 
+describe('range attribution on a V2 box', () => {
+  it('reads live V2 mappings instead of the frozen sibling database', async () => {
+    const home = homeWithT3()
+    const path = join(home, '.t3', 'userdata', 'statev2.sqlite')
+    cpSync(join(home, '.t3', 'userdata', 'state.sqlite'), path)
+    const db = new DatabaseSync(path)
+    db.exec(`
+      DELETE FROM provider_session_runtime;
+      CREATE TABLE orchestration_v2_projection_threads (thread_id TEXT, title TEXT, active_provider_thread_id TEXT, deleted_at TEXT);
+      CREATE TABLE orchestration_v2_projection_provider_threads (provider_thread_id TEXT, thread_id TEXT, provider TEXT, provider_session_id TEXT, updated_at TEXT, payload_json TEXT);
+      CREATE TABLE orchestration_v2_projection_provider_sessions (provider_session_id TEXT, payload_json TEXT);
+      CREATE TABLE orchestration_v2_projection_runs (provider_thread_id TEXT, status TEXT);
+      INSERT INTO orchestration_v2_projection_threads VALUES ('t-1', 'V2 Fan-out', 'pt-1', NULL);
+    `)
+    db.prepare('INSERT INTO orchestration_v2_projection_provider_threads VALUES (?, ?, ?, ?, ?, ?)').run(
+      'pt-1', 't-1', 'claudeAgent', 'ps-1', '', JSON.stringify({ nativeThreadRef: { nativeId: WITH_AGENTS } }),
+    )
+    db.prepare('INSERT INTO orchestration_v2_projection_provider_sessions VALUES (?, ?)').run('ps-1', JSON.stringify({ cwd: home }))
+    db.close()
+    const range = await rangeSplit(RANGE_FROM, RANGE_TO, { home, now: RANGE_TO })
+    expect(range.fiveHour.sessions.find((r) => r.sessionId === WITH_AGENTS)?.shortTitle).toBe('V2 Fan-out')
+    const lanes = await rangeLanes(RANGE_FROM, RANGE_TO, { home, now: RANGE_TO })
+    expect(lanes.lanes.find((lane) => lane.id === WITH_AGENTS)?.shortTitle).toBe('V2 Fan-out')
+  })
+})
+
 describe('GET /api/split and /api/lanes', () => {
   const app = (index?: TranscriptIndex) => createApp({ home: FIXTURE_HOME, now: RANGE_TO, index, recordLook: false })
 
