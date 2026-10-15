@@ -289,6 +289,42 @@ describe('buildCodexHistory', () => {
     expect(window).toMatchObject({ to: RESET_1 + 300, endPct: 9, delta: 5 })
   })
 
+  it('folds the idle 0% readings after a reset into the window the first call pins', async () => {
+    const row = (t: number, pct: number, resetsAt: number) => ({ sampledAt: t, usedPercent: pct, resetsAt, windowDurationMins: 10_080 })
+    const reset = FROM_1 + 1000
+    const home = fakeHome({}, [
+      row(FROM_1 + 10, 40, RESET_1),
+      // OpenAI reset the meter early; until a call pins it the reset floats at now plus a week
+      row(reset, 0, reset + WEEK),
+      row(reset + 300, 0, reset + 300 + WEEK),
+      row(reset + 600, 0, reset + 600 + WEEK),
+      row(reset + 900, 3, reset + 900 + WEEK),
+      row(reset + 1200, 5, reset + 900 + WEEK),
+    ])
+    const { windows } = await buildCodexHistory({ home, now: NOW, installed: true })
+    expect(windows).toHaveLength(2)
+    expect(windows[1]).toMatchObject({ resetsAt: reset + 900 + WEEK, from: reset, startPct: 0, endPct: 5, delta: 5 })
+  })
+
+  it('keeps the idle readings of a reset nothing has pinned yet as one window', async () => {
+    const row = (t: number, pct: number, resetsAt: number) => ({ sampledAt: t, usedPercent: pct, resetsAt, windowDurationMins: 10_080 })
+    const reset = NOW - 3000
+    const home = fakeHome({}, [0, 300, 600, 900].map((dt) => row(reset + dt, 0, reset + dt + WEEK)))
+    const { windows } = await buildCodexHistory({ home, now: NOW, installed: true })
+    expect(windows).toHaveLength(1)
+    expect(windows[0]).toMatchObject({ resetsAt: reset + 900 + WEEK, partial: true })
+  })
+
+  it('ends a window an early reset cut short where the next one opened, and not as running', async () => {
+    const row = (t: number, pct: number, resetsAt: number) => ({ sampledAt: t, usedPercent: pct, resetsAt, windowDurationMins: 10_080 })
+    const cut = NOW - 5000
+    const home = fakeHome({}, [row(NOW - 9000, 10, NOW + 3 * 86_400), row(NOW - 8000, 20, NOW + 3 * 86_400), row(cut, 1, cut + WEEK)])
+    const { windows } = await buildCodexHistory({ home, now: NOW, installed: true })
+    expect(windows[0]).toMatchObject({ partial: false, resetEarly: true, end: cut, endPct: 20 })
+    expect(windows[0]!.points.map((p) => p.pct)).toEqual([10, 20])
+    expect(windows[1]).toMatchObject({ partial: true, resetEarly: false })
+  })
+
   it('answers with nothing rather than failing when there is no Codex data at all', async () => {
     const history = await buildCodexHistory({ home: mkdtempSync(join(tmpdir(), 'tally-codex-empty-')), now: NOW })
     expect(history.windows).toEqual([])

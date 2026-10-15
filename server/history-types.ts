@@ -143,6 +143,8 @@ export interface CodexWindow {
   start: number
   end: number
   partial: boolean
+  /** a reset OpenAI handed out ended the window before its scheduled `resetsAt`; `end` is when the next one opened */
+  resetEarly: boolean
   /** first and last reading inside the window */
   from: number
   to: number
@@ -164,6 +166,8 @@ export interface CodexWindow {
   /** models seen in the window with no list-price row; never silently priced */
   unknownModels: string[]
   calls: number
+  /** the window's readings, thinned to one per 15 minutes, `afterGap` where none came for half an hour */
+  points: { t: number; pct: number; afterGap: boolean }[]
 }
 
 /** one row of the OpenAI api list-price table, usd per million tokens */

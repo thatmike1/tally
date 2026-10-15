@@ -11,7 +11,7 @@
 import { homedir } from 'node:os'
 import { Hono } from 'hono'
 import { codexSessionRoots, scanRollouts, type CodexRollout } from './codex-sessions'
-import { codexBinaryPath, codexUsagePaths, readCodexHistory, CODEX_WEEK_MINUTES } from './codex-usage'
+import { codexBinaryPath, codexUsagePaths, readCodexHistory, thinHistory, CODEX_WEEK_MINUTES } from './codex-usage'
 import { defaultConfig, type PlanConfig } from './config'
 import type { CodexHistory, CodexWindow } from './history-types'
 import { OPENAI_PRICE_TABLE, openAiCost } from './openai-prices'
@@ -22,6 +22,9 @@ import { statePath } from './t3'
 const RESET_JITTER_SECONDS = 120
 
 const WEEK_SECONDS = CODEX_WEEK_MINUTES * 60
+
+/** a reading whose reset sits this close to its own time plus a week has not been pinned yet */
+const FLOATING_SECONDS = 300
 
 export interface CodexHistoryOptions {
   home?: string
@@ -34,7 +37,7 @@ export interface CodexHistoryOptions {
   installed?: boolean
 }
 
-interface Reading {
+export interface Reading {
   t: number
   pct: number
   resetsAt: number
@@ -63,9 +66,32 @@ function agreedReset(values: number[]): number {
   return [...counts.entries()].sort((a, b) => b[1] - a[1] || b[0] - a[0])[0]![0]
 }
 
+/**
+ * after a reset the meter sits at 0% with its reset floating at now plus a week
+ * until the first call pins it, so each idle reading reports a reset of its own.
+ * they belong to the window that call opens, or, with no call yet, to the
+ * newest of them.
+ */
+export function pinFloating(readings: Reading[]): Reading[] {
+  const floating = (reading: Reading) => reading.pct === 0 && Math.abs(reading.resetsAt - reading.t - WEEK_SECONDS) <= FLOATING_SECONDS
+  const out = readings.map((reading) => ({ ...reading }))
+  let pinned: number | null = null
+  for (let i = out.length - 1; i >= 0; i--) {
+    const reading = out[i]!
+    if (!floating(reading)) {
+      pinned = reading.resetsAt
+      continue
+    }
+    // the next pinned window can only open at or after this idle reading's reset
+    if (pinned !== null && pinned >= reading.resetsAt - RESET_JITTER_SECONDS) reading.resetsAt = pinned
+    else pinned = reading.resetsAt
+  }
+  return out
+}
+
 /** readings grouped into windows by the reset they report, oldest window first */
 function groupWindows(readings: Reading[]): { resetsAt: number; readings: Reading[] }[] {
-  const byReset = [...readings].sort((a, b) => a.resetsAt - b.resetsAt)
+  const byReset = [...pinFloating(readings)].sort((a, b) => a.resetsAt - b.resetsAt)
   const clusters: Reading[][] = []
   let anchor: number | null = null
   for (const reading of byReset) {
@@ -179,10 +205,18 @@ function priceModels(byModel: Map<string, ModelTotals>): {
 }
 
 /** one weekly window of the Codex meter, credits and dollars over its readings */
-function buildWindow(rollouts: CodexRollout[], window: { resetsAt: number; readings: Reading[] }, now: number): CodexWindow {
+function buildWindow(
+  rollouts: CodexRollout[],
+  window: { resetsAt: number; readings: Reading[] },
+  now: number,
+  next: { resetsAt: number; readings: Reading[] } | undefined,
+): CodexWindow {
   const first = window.readings[0]!
   const last = window.readings.at(-1)!
-  const partial = window.resetsAt > now
+  // an early reset cuts a window short: a later window has started, so this one is
+  // over by the time the next was first seen, or by the call that pinned its reset
+  const cutAt = next ? Math.min(window.resetsAt, next.readings[0]!.t, next.resetsAt - WEEK_SECONDS) : window.resetsAt
+  const partial = cutAt > now
   const { rows, credits, calls, costUsd, pricedCostUsd, unknownModels } = priceModels(callTotals(rollouts, first.t, last.t))
   const delta = window.readings.length > 1 ? last.pct - first.pct : null
   // Codex only started writing `token_usage_record` per call in September 2026,
@@ -192,8 +226,9 @@ function buildWindow(rollouts: CodexRollout[], window: { resetsAt: number; readi
   return {
     resetsAt: window.resetsAt,
     start: window.resetsAt - WEEK_SECONDS,
-    end: partial ? now : window.resetsAt,
+    end: partial ? now : cutAt,
     partial,
+    resetEarly: cutAt < window.resetsAt,
     from: first.t,
     to: last.t,
     startPct: first.pct,
@@ -206,6 +241,7 @@ function buildWindow(rollouts: CodexRollout[], window: { resetsAt: number; readi
     byModel: rows,
     unknownModels,
     calls,
+    points: thinHistory(window.readings.map((reading) => ({ sampledAt: reading.t, usedPercent: reading.pct, resetsAt: reading.resetsAt, windowDurationMins: CODEX_WEEK_MINUTES }))),
   }
 }
 
@@ -219,8 +255,8 @@ export async function buildCodexHistory(options: CodexHistoryOptions = {}): Prom
   const root = codexSessionRoots(home)
   // history reaches as far back as the rollouts do, so nothing is skipped by mtime
   const rollouts = options.rollouts ?? (await scanRollouts(0, root, undefined, statePath(home)))
-  const windows = groupWindows(allReadings(rollouts, readCodexHistory(paths.history))).map((window) =>
-    buildWindow(rollouts, window, now),
+  const windows = groupWindows(allReadings(rollouts, readCodexHistory(paths.history))).map((window, i, all) =>
+    buildWindow(rollouts, window, now, all[i + 1]),
   )
 
   const monthStart = startOfMonth(now)

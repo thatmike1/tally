@@ -115,7 +115,11 @@ export function Chart(props: ChartProps) {
     (a, b) => b.t - a.t > HOUR || (b.scopedPct ?? 0) < (a.scopedPct ?? 0) - 5,
   )
   const codexHistory = state.codex.history ?? []
-  const codexRuns = runs(codexHistory, (_, b) => b.afterGap)
+  // past weeks from their own readings, the running one from the live reader
+  const codexRuns = [
+    ...props.codexWindows.filter((w) => !w.partial && inView(w.from, w.to)).map((w) => runs(w.points, (_, b) => b.afterGap)),
+    runs(codexHistory, (_, b) => b.afterGap),
+  ]
   const pace = state.codex.pace?.path ?? null
 
   // line-end labels at now, pushed apart so they never overlap
@@ -236,20 +240,17 @@ export function Chart(props: ChartProps) {
         {scopedRuns.map((run) => (
           <path key={`fb${run[0]!.t}`} d={path(run.map((p) => [x(p.t), y(p.scopedPct!)]))} className="tl-comp tl-fb" />
         ))}
-        {props.codexWindows
-          .filter((w) => !w.partial && inView(w.from, w.to) && w.to > w.from)
-          .map((w) => (
-            <path key={`cxw${w.resetsAt}`} d={path([[x(w.from), y(w.startPct)], [x(w.to), y(w.endPct)]])} className="tl-comp tl-cx tl-dotted" />
-          ))}
-        {codexRuns.map((run) => (
-          <path key={`cx${run[0]!.t}`} d={path(run.map((p) => [x(p.t), y(p.pct)]))} className="tl-comp tl-cx" />
-        ))}
-        {codexRuns.slice(1).map((run, i) => {
-          const before = codexRuns[i]!.at(-1)!
-          return (
-            <path key={`cxg${run[0]!.t}`} d={path([[x(before.t), y(before.pct)], [x(run[0]!.t), y(run[0]!.pct)]])} className="tl-comp tl-cx tl-dotted" />
-          )
-        })}
+        {codexRuns.flatMap((week) =>
+          week.map((run) => <path key={`cx${run[0]!.t}`} d={path(run.map((p) => [x(p.t), y(p.pct)]))} className="tl-comp tl-cx" />),
+        )}
+        {codexRuns.flatMap((week) =>
+          week.slice(1).map((run, i) => {
+            const before = week[i]!.at(-1)!
+            return (
+              <path key={`cxg${run[0]!.t}`} d={path([[x(before.t), y(before.pct)], [x(run[0]!.t), y(run[0]!.pct)]])} className="tl-comp tl-cx tl-dotted" />
+            )
+          }),
+        )}
         {pace ? <path d={path(pace.map((p) => [x(p.t), y(p.pct)]))} className="tl-comp tl-cx tl-proj" /> : null}
         {zoom === 'day'
           ? boundaries.map((b) => (
