@@ -133,6 +133,7 @@ export function parseRolloutLines(path: string, lines: Iterable<string>): CodexR
       !raw.includes('"turn_context"') &&
       !raw.includes('"token_usage_record"') &&
       !raw.includes('"token_count"') &&
+      !raw.includes('"thread_settings_applied"') &&
       !(meta && meta.firstPrompt === null && raw.includes('"role":"user"'))
     ) {
       continue
@@ -196,6 +197,14 @@ export function parseRolloutLines(path: string, lines: Iterable<string>): CodexR
         turnId: typeof payload.turn_id === 'string' ? payload.turn_id : turnId,
         rootTurnId: typeof payload.root_turn_id === 'string' ? payload.root_turn_id : rootTurnId,
       })
+    } else if (line.type === 'event_msg' && payload.type === 'thread_settings_applied') {
+      // T3's orchestrator v2 sets the thread's speed here and leaves turn_context without one
+      const settings = jsonObject(payload.thread_settings)
+      const applied = settings?.service_tier ?? settings?.serviceTier
+      if (applied !== undefined && applied !== null) {
+        sessionTier = applied
+        tier = applied
+      }
     } else if (line.type === 'event_msg' && payload.type === 'token_count') {
       const limits = jsonObject(payload.rate_limits)
       if (t === null || !limits || (limits.limit_id && limits.limit_id !== 'codex')) continue

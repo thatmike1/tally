@@ -91,6 +91,25 @@ describe('parseRolloutLines', () => {
     ])
   })
 
+  it('takes the thread speed from thread_settings_applied when turn_context has none', () => {
+    const settings = (tier: string, at: number) =>
+      JSON.stringify({ timestamp: iso(at), type: 'event_msg', payload: { type: 'thread_settings_applied', thread_id: 'a', thread_settings: { model: 'gpt-6.1-sol', service_tier: tier } } })
+    const parsed = parseRolloutLines('/r/a.jsonl', [
+      meta('a'),
+      settings('priority', FROM),
+      turn('gpt-6.1-sol', FROM + 1),
+      usage('a', 'fast', FROM + 2, { input: 1_000_000, output: 0 }),
+      turn('gpt-6.1-sol', FROM + 3),
+      usage('a', 'still-fast', FROM + 4, { input: 1_000_000, output: 0 }),
+      settings('default', FROM + 5),
+      turn('gpt-6.1-sol', FROM + 6),
+      usage('a', 'standard', FROM + 7, { input: 1_000_000, output: 0 }),
+    ])!
+    expect(parsed.calls.map((call) => [call.speed, call.speedSource])).toEqual([
+      ['fast', 'rollout'], ['fast', 'rollout'], ['standard', 'rollout'],
+    ])
+  })
+
   it('reads calls with the model in force, the meter readings and the first typed prompt', () => {
     const parsed = parseRolloutLines('/r/a.jsonl', [
       meta('a'),
