@@ -7,6 +7,7 @@ import {
   codexCredits,
   codexRate,
   codexSessionDetail,
+  codexSessionRoots,
   parseRolloutLines,
   pointSteps,
   cutRollout,
@@ -140,6 +141,34 @@ describe('scanRollouts', () => {
     writeFileSync(join(dir, 'notes.txt'), 'not a rollout')
     expect((await scanRollouts(0, root)).map((r) => r.id)).toEqual(['a'])
     expect(await scanRollouts(Date.now() / 1000 + 3600, root)).toEqual([])
+  })
+
+  it('reads the upstream copy beside the local rollouts and counts a call once', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'tally-codex-home-'))
+    const [local, upstream] = codexSessionRoots(home)
+    const write = (root: string, name: string, body: string[]) => {
+      const dir = join(root, '2026', '10', '04')
+      mkdirSync(dir, { recursive: true })
+      writeFileSync(join(dir, name), `${body.join('\n')}\n`)
+    }
+    write(local!, 'rollout-2026-10-04T10-00-00-a.jsonl', [meta('a'), turn('gpt-5.6-sol'), usage('a', 'r1', FROM + 5, sol(4)), reading(FROM + 6, 1)])
+    // the same thread file synced into both roots is read from the local one only
+    write(upstream!, 'rollout-2026-10-04T10-00-00-a.jsonl', [meta('a'), turn('gpt-5.6-sol'), usage('a', 'r1', FROM + 5, sol(4)), reading(FROM + 6, 1)])
+    write(upstream!, 'rollout-2026-10-04T11-00-00-v.jsonl', [meta('v'), turn('gpt-5.6-sol'), usage('v', 'r2', FROM + 10, sol(6)), reading(FROM + 11, 2)])
+    // a response id that reached a second file under another name still counts once
+    write(upstream!, 'rollout-2026-10-04T12-00-00-w.jsonl', [meta('w', { session_id: 'v' }), turn('gpt-5.6-sol'), usage('w', 'r2', FROM + 10, sol(6))])
+
+    const rollouts = await scanRollouts(0, codexSessionRoots(home))
+    expect(rollouts.map((r) => r.id).sort()).toEqual(['a', 'v', 'w'])
+    expect(rollouts.find((r) => r.id === 'a')!.path.startsWith(local!)).toBe(true)
+    const split = splitCodexWeek(rollouts, { from: FROM, resetsAt: RESET }, null, new Map(), FROM + 100)!
+    expect(split.totalCredits).toBeCloseTo(10)
+    expect(split.threads.map((row) => [row.id, row.calls])).toEqual([['v', 1], ['a', 1]])
+  })
+
+  it('reads nothing extra when no upstream copy exists', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'tally-codex-home-'))
+    expect(await scanRollouts(0, codexSessionRoots(home))).toEqual([])
   })
 })
 

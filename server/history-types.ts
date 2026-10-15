@@ -190,7 +190,7 @@ export interface CodexHistory {
     unknownModels: string[]
   }
   prices: { source: string; readAt: string; models: Record<string, OpenAiPrice> }
-  sources: { usage: string; rollouts: string }
+  sources: { usage: string; rollouts: string[] }
 }
 
 /** one request on a session's time axis */

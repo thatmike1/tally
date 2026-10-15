@@ -8,7 +8,7 @@ import { serveStatic } from '@hono/node-server/serve-static'
 import { Hono } from 'hono'
 import { defaultConfig } from './config'
 import { sessionDetail } from './session-detail'
-import { codexSessionDetail, codexSessionsRoot } from './codex-sessions'
+import { codexSessionDetail, codexSessionRoots } from './codex-sessions'
 import { statePath } from './t3'
 import { codexHistoryRoutes } from './history-codex'
 import { historyRoutes } from './history-claude'
@@ -58,7 +58,7 @@ export function createApp(options: AppConfig = {}) {
       const at = atRaw === undefined ? undefined : Number(atRaw)
       if (at !== undefined && !Number.isFinite(at)) return c.json({ error: 'at must be unix seconds' }, 400)
       const codexDetail = await codexSessionDetail(id.slice('codex:'.length), {
-        root: codexSessionsRoot(stateOptions.home ?? homedir()),
+        root: codexSessionRoots(stateOptions.home ?? homedir()),
         t3: statePath(stateOptions.home ?? homedir()),
         now: stateOptions.now,
         at,

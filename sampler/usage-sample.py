@@ -48,6 +48,20 @@ BACKOFF_MAX = 4800
 UPSTREAM = os.environ.get("USAGE_UPSTREAM")
 UPSTREAM_FRESH = 12 * 60
 
+# the Codex meter is account-wide too, but which threads moved it is only in the
+# rollouts each machine writes. with an upstream, its `~/.codex/sessions` is
+# mirrored into CODEX_COPY, which the server reads beside this machine's own;
+# outside `~/.codex/sessions` so `codex resume` here does not list threads that
+# cannot run here. rollouts are append-only, so `--append-verify` sends only the
+# new tail. at most every CODEX_EVERY, after the sample, so a slow copy never
+# delays a meter reading. `CODEX_UPSTREAM=` (empty) turns it off, another
+# user@host copies from a machine other than the meter's upstream.
+CODEX_UPSTREAM = os.environ.get("CODEX_UPSTREAM", UPSTREAM or "")
+CODEX_COPY = os.path.join(CACHE, "codex-upstream")
+CODEX_STAMP = os.path.join(CACHE, "codex-upstream.synced")
+# a few seconds under three timer ticks, so the 15-minute cadence does not slip to 20
+CODEX_EVERY = 15 * 60 - 30
+
 # `USAGE_REFRESH=1` is for a machine where claude sits idle (the VPS): the access
 # token lasts 8 h and only a claude that talks to the api renews it, `claude auth
 # status` does not. on a 401 one haiku turn goes out so claude itself rewrites the
@@ -126,6 +140,33 @@ def pull_upstream() -> bool:
     return time.time() - newest < UPSTREAM_FRESH
 
 
+def sync_codex() -> None:
+    """mirror the upstream's Codex rollouts into CODEX_COPY, at most every CODEX_EVERY"""
+    if not CODEX_UPSTREAM:
+        return
+    try:
+        if time.time() - os.path.getmtime(CODEX_STAMP) < CODEX_EVERY:
+            return
+    except OSError:
+        pass
+    os.makedirs(CODEX_COPY, exist_ok=True)
+    # stamped before the copy: a failing upstream is retried on the cadence, not every tick
+    with open(CODEX_STAMP, "w") as f:
+        f.write(str(int(time.time())))
+    try:
+        subprocess.run(
+            [
+                "rsync", "-a", "--append-verify", "--prune-empty-dirs",
+                "--include=*/", "--include=rollout-*.jsonl", "--exclude=*",
+                "-e", "ssh -o BatchMode=yes -o ConnectTimeout=8",
+                f"{CODEX_UPSTREAM}:.codex/sessions/", CODEX_COPY + "/",
+            ],
+            capture_output=True, timeout=1800,
+        )
+    except (subprocess.SubprocessError, OSError):
+        pass
+
+
 def backing_off() -> bool:
     try:
         with open(BACKOFF) as f:
@@ -173,6 +214,14 @@ def ts(value):
 
 
 def main() -> int:
+    # a sample that raises still lets the copy run, and still fails the unit
+    try:
+        return sample()
+    finally:
+        sync_codex()
+
+
+def sample() -> int:
     if UPSTREAM and pull_upstream():
         return 0
     if backing_off():

@@ -128,6 +128,17 @@ upstream's newest sample is stale. That is for a second machine (a VPS that is u
 overnight) on the same account: the endpoint answers 429 when two machines ask at
 once, and a 24/7 sampler leaves no holes where background agents ran.
 
+The same upstream's Codex rollouts are mirrored too, every 15 minutes after the
+sample, with `rsync --append-verify` from its `~/.codex/sessions/` into
+`~/.cache/tally/codex-upstream/`. The Codex meter is account-wide, so without
+them a week of agents run over there shows up as meter points with no calls
+behind them. The copy stays out of `~/.codex/sessions` so `codex resume` does
+not list threads that cannot run here, and a call seen in both places counts
+once. `CODEX_UPSTREAM=` (empty) on the unit turns the copy off, and
+`CODEX_UPSTREAM=user@host` copies from a machine other than the meter's
+upstream. Those calls carry no speed (the speed comes from this machine's T3
+state), so they count at standard rate under the unknown-speed caveat.
+
 **Per-request tokens and cost** — `~/.claude/projects/*/*.jsonl` plus
 `*/subagents/*.jsonl`, last line per (file, message id), subagent files folded
 into the parent session. The price table is cc-browse's, to the cent.

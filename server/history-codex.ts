@@ -10,7 +10,7 @@
 // deduplicated by response id so a forked subagent's copied history counts once.
 import { homedir } from 'node:os'
 import { Hono } from 'hono'
-import { codexSessionsRoot, scanRollouts, type CodexRollout } from './codex-sessions'
+import { codexSessionRoots, scanRollouts, type CodexRollout } from './codex-sessions'
 import { codexBinaryPath, codexUsagePaths, readCodexHistory, CODEX_WEEK_MINUTES } from './codex-usage'
 import { defaultConfig, type PlanConfig } from './config'
 import type { CodexHistory, CodexWindow } from './history-types'
@@ -26,7 +26,7 @@ const WEEK_SECONDS = CODEX_WEEK_MINUTES * 60
 export interface CodexHistoryOptions {
   home?: string
   now?: number
-  /** injected by the tests; the real route scans `~/.codex/sessions` */
+  /** injected by the tests; the real route scans `~/.codex/sessions` and the upstream copy */
   rollouts?: CodexRollout[]
   /** the ChatGPT tier the dollars are compared against */
   plan?: PlanConfig
@@ -75,7 +75,16 @@ function groupWindows(readings: Reading[]): { resetsAt: number; readings: Readin
     }
     clusters.at(-1)!.push(reading)
   }
-  return clusters
+  // a cluster is anchored on its lowest reset, so readings drifting a few seconds
+  // at a time can cut one window in two; rejoin clusters that agree on a reset
+  const merged: Reading[][] = []
+  for (const cluster of clusters) {
+    const previous = merged.at(-1)
+    const agreed = (readings: Reading[]) => agreedReset(readings.map((reading) => reading.resetsAt))
+    if (previous && Math.abs(agreed(cluster) - agreed(previous)) <= RESET_JITTER_SECONDS) previous.push(...cluster)
+    else merged.push(cluster)
+  }
+  return merged
     .map((cluster) => ({
       resetsAt: agreedReset(cluster.map((reading) => reading.resetsAt)),
       readings: dropLaggards(cluster.sort((a, b) => a.t - b.t || a.pct - b.pct)),
@@ -207,7 +216,7 @@ export async function buildCodexHistory(options: CodexHistoryOptions = {}): Prom
   const plan = options.plan ?? defaultConfig().codexPlan
   const installed = options.installed ?? codexBinaryPath(home) !== null
   const paths = codexUsagePaths(home)
-  const root = codexSessionsRoot(home)
+  const root = codexSessionRoots(home)
   // history reaches as far back as the rollouts do, so nothing is skipped by mtime
   const rollouts = options.rollouts ?? (await scanRollouts(0, root, undefined, statePath(home)))
   const windows = groupWindows(allReadings(rollouts, readCodexHistory(paths.history))).map((window) =>

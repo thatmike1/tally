@@ -2,7 +2,7 @@
 import { readFileSync, mkdirSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
-import { codexSessionsRoot, scanRollouts, splitCodexWeek, t3CodexThreads, type CodexWeekSplit } from './codex-sessions'
+import { codexSessionRoots, scanRollouts, splitCodexWeek, t3CodexThreads, type CodexWeekSplit } from './codex-sessions'
 import { codexBinaryPath, codexUsagePaths, codexUsageView, type CodexUsageView } from './codex-usage'
 import { defaultConfig, type TallyConfig } from './config'
 import type { IndexProgress, Lane } from './history-types'
@@ -61,8 +61,8 @@ export interface Options {
   codexPaths?: { history: string; status: string }
   /** `whole` splits the weekly meters over the full week since their reset, not since the last look */
   weekMode?: 'recent' | 'whole'
-  /** `~/.codex/sessions` unless a test points elsewhere */
-  codexSessions?: string
+  /** `~/.codex/sessions` and the upstream copy, unless a test points elsewhere */
+  codexSessions?: string | string[]
   /**
    * freeze the page at this instant (unix seconds): samples and requests after
    * it are ignored, `now` is `at`, and the "last looked" marker is neither read
@@ -239,7 +239,7 @@ export async function buildState(options: Options = {}): Promise<State> {
   })
   let codexSplit: CodexWeekSplit | null = null
   if (codexView.windowStart !== null && codexView.resetsAt !== null) {
-    const rollouts = await scanRollouts(codexView.windowStart, options.codexSessions ?? codexSessionsRoot(home), frozen ? now : undefined, statePath(home))
+    const rollouts = await scanRollouts(codexView.windowStart, options.codexSessions ?? codexSessionRoots(home), frozen ? now : undefined, statePath(home))
     const anchor = codexView.status === 'fresh' && codexView.sampledAt !== null && codexView.usedPercent !== null
       ? { t: codexView.sampledAt, pct: codexView.usedPercent }
       : null

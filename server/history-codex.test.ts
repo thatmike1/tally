@@ -123,6 +123,41 @@ describe('buildCodexHistory', () => {
     expect(history.sources.usage).toContain('codex-usage.jsonl')
   })
 
+  it('adds the upstream copy of another machine\'s rollouts to the window', async () => {
+    const home = twoWindowHome()
+    const upstream = join(home, '.cache', 'tally', 'codex-upstream', '2033', '05', '11')
+    mkdirSync(upstream, { recursive: true })
+    const vps = [
+      meta('v', FROM_1 + 300, {}),
+      turn('gpt-5.6-sol', FROM_1 + 300),
+      // 2M input: 200 credits, all of it spent on the other machine
+      usage('v', 'v1', FROM_1 + 600, { input: 2_000_000 }),
+      // the same response id again from the local thread's file: still one call
+      usage('v', 'r1', FROM_1 + 200, { input: 1_000_000 }),
+    ]
+    writeFileSync(join(upstream, 'rollout-v.jsonl'), `${vps.join('\n')}\n`)
+    const history = await buildCodexHistory({ home, now: NOW })
+    const [closed] = history.windows
+    // r1, r2, c1 locally plus v1 from upstream; the second r1 is not new
+    expect(closed).toMatchObject({ calls: 4, delta: 20 })
+    expect(closed!.creditsPerPercent).toBeCloseTo((100 + 60 + 50 + 200) / 20)
+    expect(history.sources.rollouts).toEqual([join(home, '.codex', 'sessions'), join(home, '.cache', 'tally', 'codex-upstream')])
+  })
+
+  it('keeps one window when its readings drift past the jitter from the first one seen', async () => {
+    const row = (t: number, pct: number, resetsAt: number) => ({ sampledAt: t, usedPercent: pct, resetsAt, windowDurationMins: 10_080 })
+    const home = fakeHome({}, [
+      row(FROM_1 + 10, 0, RESET_1 - 100),
+      row(FROM_1 + 20, 5, RESET_1),
+      row(FROM_1 + 30, 6, RESET_1),
+      row(FROM_1 + 40, 7, RESET_1 + 25),
+      row(FROM_1 + 50, 9, RESET_1 + 25),
+    ])
+    const { windows } = await buildCodexHistory({ home, now: NOW, installed: true })
+    expect(windows).toHaveLength(1)
+    expect(windows[0]).toMatchObject({ startPct: 0, endPct: 9 })
+  })
+
   it('counts a forked or duplicated call once and leaves calls outside the readings out', async () => {
     const [closed] = (await buildCodexHistory({ home: twoWindowHome(), now: NOW })).windows
     // r1, r2 and the subagent's c1; the copied r1 and the `late` call are not in

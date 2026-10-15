@@ -220,6 +220,20 @@ export function codexSessionsRoot(home = homedir()): string {
   return join(home, '.codex', 'sessions')
 }
 
+/**
+ * rollouts another machine wrote, copied here by the sampler when
+ * `USAGE_UPSTREAM` names one. kept out of `~/.codex/sessions` so `codex resume`
+ * does not list threads that cannot run here; absent on a machine with no upstream.
+ */
+export function codexUpstreamRoot(home = homedir()): string {
+  return join(home, '.cache', 'tally', 'codex-upstream')
+}
+
+/** every directory Tally reads rollouts from, this machine's own first */
+export function codexSessionRoots(home = homedir()): string[] {
+  return [codexSessionsRoot(home), codexUpstreamRoot(home)]
+}
+
 function safeReaddir(dir: string): string[] {
   try {
     return readdirSync(dir)
@@ -228,9 +242,27 @@ function safeReaddir(dir: string): string[] {
   }
 }
 
-/** every rollout under `~/.codex/sessions/YYYY/MM/DD/` */
-export function rolloutFiles(root: string): { path: string; mtime: number; size: number }[] {
+/**
+ * every rollout under each root's `YYYY/MM/DD/`. a file name carries the thread
+ * id, so one already found under an earlier root is the same thread and skipped
+ */
+export function rolloutFiles(roots: string | string[]): { path: string; mtime: number; size: number }[] {
   const out: { path: string; mtime: number; size: number }[] = []
+  const names = new Set<string>()
+  for (const root of typeof roots === 'string' ? [roots] : roots) {
+    const before = out.length
+    collectRollouts(root, out)
+    for (const file of out.splice(before)) {
+      const name = basename(file.path)
+      if (names.has(name)) continue
+      names.add(name)
+      out.push(file)
+    }
+  }
+  return out
+}
+
+function collectRollouts(root: string, out: { path: string; mtime: number; size: number }[]): void {
   for (const year of safeReaddir(root)) {
     for (const month of safeReaddir(join(root, year))) {
       for (const day of safeReaddir(join(root, year, month))) {
@@ -247,7 +279,6 @@ export function rolloutFiles(root: string): { path: string; mtime: number; size:
       }
     }
   }
-  return out
 }
 
 const parsed = new Map<string, { mtime: number; size: number; rollout: CodexRollout | null }>()
@@ -270,7 +301,7 @@ async function parseFile(path: string): Promise<CodexRollout | null> {
  * write after it have not happened yet. a file's mtime cannot make that cut,
  * so every rollout is trimmed line by line; the cache keeps the full parse.
  */
-export async function scanRollouts(since: number, root = codexSessionsRoot(), until?: number, t3 = statePath(dirname(dirname(root)))): Promise<CodexRollout[]> {
+export async function scanRollouts(since: number, root: string | string[] = codexSessionRoots(), until?: number, t3 = statePath(dirname(dirname(typeof root === 'string' ? root : root[0]!)))): Promise<CodexRollout[]> {
   const out: CodexRollout[] = []
   const speeds = t3TurnSpeeds(t3)
   for (const file of rolloutFiles(root)) {
@@ -570,7 +601,7 @@ export function codexLane(rollout: CodexRollout, seen: Set<string>): CodexLane {
  * the directory day is local to whoever wrote it, so a day of slack either side.
  * null when no file carries the id, and the caller has to scan everything.
  */
-export function threadSince(rootId: string, root: string): number | null {
+export function threadSince(rootId: string, root: string | string[]): number | null {
   const lead = rolloutFiles(root).find((file) => file.path.endsWith(`-${rootId}.jsonl`))
   const day = lead?.path.match(/\/(\d{4})\/(\d{2})\/(\d{2})\/[^/]+$/)
   if (!lead || !day) return lead ? 0 : null
@@ -586,10 +617,10 @@ export function threadSince(rootId: string, root: string): number | null {
  * thread parses only the rollouts written since it started. `at` freezes the
  * thread at a past instant for the history drill-in, the way `/api/state?at=` does.
  */
-export async function codexSessionDetail(rootId: string, options: { root?: string; t3?: string; now?: number; at?: number; agentsviewUrl?: string | null } = {}): Promise<CodexSessionDetail | null> {
+export async function codexSessionDetail(rootId: string, options: { root?: string | string[]; t3?: string; now?: number; at?: number; agentsviewUrl?: string | null } = {}): Promise<CodexSessionDetail | null> {
   const frozen = options.at !== undefined
   const now = options.at ?? options.now ?? Date.now() / 1000
-  const root = options.root ?? codexSessionsRoot()
+  const root = options.root ?? codexSessionRoots()
   const since = threadSince(rootId, root) ?? 0
   const rollouts = (await scanRollouts(since, root, options.at, options.t3))
     // frozen before a rollout's first call or reading, it had not been written yet
