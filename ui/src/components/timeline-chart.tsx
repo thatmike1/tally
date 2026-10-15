@@ -94,6 +94,33 @@ export function readingAt(meter: MeterPoint[], t: number, blocks: BlockSummary[]
   return found
 }
 
+export interface CodexSeries {
+  /** every reading kept, past weeks and the running one, oldest first */
+  points: { t: number; pct: number; afterGap: boolean }[]
+  /** when each finished week ended: its scheduled reset, or the early one that cut it short */
+  resets: { t: number; early: boolean }[]
+}
+
+/** the Codex meter over all its weeks, past ones from the history and the running one from the live reader */
+export function codexSeries(windows: CodexWindow[], live: CodexSeries['points']): CodexSeries {
+  const done = windows.filter((w) => !w.partial)
+  return {
+    points: [...done.flatMap((w) => w.points), ...live].sort((a, b) => a.t - b.t),
+    resets: done.map((w) => ({ t: w.end, early: w.resetEarly })),
+  }
+}
+
+/** the Codex percentage at `t`: the last reading before it, or 0 when a reset came between */
+export function codexAt(series: CodexSeries, t: number): number | null {
+  let found: CodexSeries['points'][number] | null = null
+  for (const point of series.points) {
+    if (point.t > t) break
+    found = point
+  }
+  if (!found) return null
+  return series.resets.some((r) => r.t > found.t && r.t <= t) ? 0 : found.pct
+}
+
 export function Chart(props: ChartProps) {
   const { view, width, zoom, now, meter, state, sel, brush, hoverT } = props
   const height = CHART_HEIGHT
@@ -121,6 +148,7 @@ export function Chart(props: ChartProps) {
     runs(codexHistory, (_, b) => b.afterGap),
   ]
   const pace = state.codex.pace?.path ?? null
+  const codexResets = codexSeries(props.codexWindows, []).resets.filter((r) => inView(r.t, r.t))
 
   // line-end labels at now, pushed apart so they never overlap
   const ends: { pct: number; cls: string; text: string; y: number }[] = []
@@ -176,6 +204,13 @@ export function Chart(props: ChartProps) {
           cls: 'tl-lab-m',
           rank: 2,
         })),
+      ...codexResets.map((r) => ({
+        x: x(r.t) + (x(r.t) > width - 220 ? -5 : 5),
+        anchor: x(r.t) > width - 220 ? ('end' as const) : ('start' as const),
+        text: `Codex ${r.early ? 'reset early' : 'reset'} ${shortDay(r.t)} ${hm(r.t)}`,
+        cls: 'tl-lab-cx',
+        rank: 2,
+      })),
     ],
     width,
   )
@@ -220,6 +255,9 @@ export function Chart(props: ChartProps) {
           .map((t) => (
             <line key={`w${t}`} x1={x(t)} x2={x(t)} y1={TOP - 8} y2={TOP + plot} className="tl-weekreset" />
           ))}
+        {codexResets.map((r) => (
+          <line key={`cxr${r.t}`} x1={x(r.t)} x2={x(r.t)} y1={TOP - 8} y2={TOP + plot} className="tl-cxreset" />
+        ))}
         <rect x={x(sel.from)} y={TOP} width={Math.max(2, x(sel.to) - x(sel.from))} height={plot} className="tl-sel" />
         <line x1={x(sel.from)} x2={x(sel.from)} y1={TOP} y2={TOP + plot} className="tl-sel-edge" />
         <line x1={x(sel.to)} x2={x(sel.to)} y1={TOP} y2={TOP + plot} className="tl-sel-edge" />

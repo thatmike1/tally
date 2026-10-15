@@ -530,6 +530,12 @@
   stroke-dasharray: 1 3;
 }
 
+.tl-cxreset {
+  stroke: var(--tl-cx);
+  stroke-width: 1.5;
+  stroke-dasharray: 1 3;
+}
+
 .tl-open {
   stroke: var(--tl-faint);
   stroke-dasharray: 3 3;
@@ -568,6 +574,11 @@
 .tl-lab-m {
   font-size: 12px;
   fill: var(--tl-mute);
+}
+
+.tl-lab-cx {
+  font-size: 12px;
+  fill: var(--tl-cx);
 }
 
 .tl-lab-now {
@@ -1073,6 +1084,10 @@
 
 .tl-tip-nums {
   font-weight: 550;
+}
+
+.tl-tip-reset {
+  font-weight: 600;
 }
 
 .tl-tip-dim {

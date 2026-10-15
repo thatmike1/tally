@@ -6,7 +6,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { BlockSummary, ClaudeHistory, State } from '../api'
 import { dayDate, days, duration, hm } from '../format'
 import { timelineHref } from '../route'
-import { BlockStrip, Chart } from './timeline-chart'
+import { BlockStrip, Chart, codexSeries } from './timeline-chart'
 import { useLanes, useLive, useSplit } from './timeline-data'
 import { blockHover, chartHover, HoverCard, laneHover, type Hover } from './timeline-hover'
 import { buildGroups, Lanes, RailHead, ShareStrip } from './timeline-lanes'
@@ -145,6 +145,11 @@ function TimelineBody({ state, history, codexWindows, tick, from, to }: BodyProp
   const [hoverT, setHoverT] = useState<number | null>(null)
   const [hotLane, setHotLane] = useState<string | null>(null)
   const [hover, setHover] = useState<Hover | null>(null)
+  const codex = useMemo(() => codexSeries(codexWindows, state.codex.history ?? []), [codexWindows, state.codex.history])
+  const claudeResets = useMemo(
+    () => [...new Set(history.weeks.flatMap((w) => [w.start, w.resetsAt]).map((t) => Math.round(t / 60) * 60))].filter((t) => t <= now),
+    [history.weeks, now],
+  )
 
   const groups = useMemo(
     () => buildGroups(lanesData?.lanes ?? [], split.data, sel, state.codex.split?.threads ?? []),
@@ -190,7 +195,7 @@ function TimelineBody({ state, history, codexWindows, tick, from, to }: BodyProp
       const row = laneId ? rowById.get(laneId) : null
       const body = row
         ? laneHover(t, row.lane, row.title, now, width / (view.to - view.from))
-        : chartHover(t, meter, blocks, lanesData?.lanes ?? [], now)
+        : chartHover(t, meter, blocks, lanesData?.lanes ?? [], now, codex, claudeResets, 6 / (width / (view.to - view.from)))
       setHover({ x: event.clientX, y: event.clientY, body })
     },
     onPick: go,

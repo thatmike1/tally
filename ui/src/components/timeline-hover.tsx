@@ -5,7 +5,7 @@
 import { useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import type { BlockSummary, Lane, RangeLanes } from '../api'
 import { dayDate, duration, hm, money, rate, tokens } from '../format'
-import { readingAt } from './timeline-chart'
+import { codexAt, readingAt, type CodexSeries } from './timeline-chart'
 import { dayStart } from './timeline-util'
 
 export interface Hover {
@@ -47,20 +47,41 @@ function blockAt(blocks: BlockSummary[], t: number): BlockSummary | undefined {
 }
 
 /** over the chart: the readings at the crosshair, the block it sits in, and who was working */
-export function chartHover(t: number, meter: MeterPoint[], blocks: BlockSummary[], lanes: Lane[], now: number): ReactNode {
+export function chartHover(
+  t: number,
+  meter: MeterPoint[],
+  blocks: BlockSummary[],
+  lanes: Lane[],
+  now: number,
+  codex: CodexSeries,
+  weeklyResets: number[],
+  /** seconds either side of the pointer that count as "on" a reset line */
+  slack: number,
+): ReactNode {
   const reading = readingAt(meter, t, blocks)
+  const codexPct = codexAt(codex, t)
+  const resets = [
+    ...weeklyResets.filter((r) => Math.abs(r - t) <= slack).map((r) => `Claude weekly reset ${when(r, now)}`),
+    ...codex.resets.filter((r) => Math.abs(r.t - t) <= slack).map((r) => `Codex ${r.early ? 'reset early' : 'reset'} ${when(r.t, now)}`),
+  ]
   const block = blockAt(blocks, t)
   const active = lanes.filter((lane) => lane.segments.some((s) => t >= s.start - 60 && t <= s.end + 60))
   return (
     <>
       <b>{when(t, now)}</b>
+      {resets.map((line) => (
+        <div key={line} className="tl-tip-reset">
+          {line}
+        </div>
+      ))}
       {reading ? (
         <div className="tl-tip-nums">
           5-hour {reading.pct}%{reading.weeklyPct !== null ? ` · weekly ${reading.weeklyPct}%` : ''}
           {reading.scopedPct !== null ? ` · Fable ${reading.scopedPct}%` : ''}
+          {codexPct !== null ? ` · Codex ${codexPct}%` : ''}
         </div>
       ) : (
-        <div className="tl-tip-dim">no reading here</div>
+        <div className="tl-tip-dim">no Claude reading here{codexPct !== null ? ` · Codex ${codexPct}%` : ''}</div>
       )}
       {block ? (
         <div>
