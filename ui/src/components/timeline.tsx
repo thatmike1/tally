@@ -10,7 +10,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { BlockSummary, ClaudeHistory, State } from '../api'
 import { dayDate, days, duration, hm } from '../format'
-import { timelineHref } from '../route'
+import { parseRoute, timelineHref, type TimelineView } from '../route'
 import { BlockStrip, Chart, codexSeries } from './timeline-chart'
 import { useLanes, useLive, useSplit } from './timeline-data'
 import { blockHover, chartHover, HoverCard, laneHover, type Hover } from './timeline-hover'
@@ -44,14 +44,22 @@ const FONTS = 'https://fonts.googleapis.com/css2?family=Figtree:wght@300..900&fa
 /** the first meter sample the history knows, or 8 Sep 2026 before the history lands */
 const FIRST_SAMPLE_FALLBACK = 1788818400
 
-export function Timeline({ from, to }: { from: number | undefined; to: number | undefined }) {
+export function Timeline({ from, to, view }: { from: number | undefined; to: number | undefined; view: TimelineView | undefined }) {
   const live = useLive()
   if (live.error && !live.state) return <p className="warn">tally: {live.error}</p>
   return (
     <div className="tl">
       <link rel="stylesheet" href={FONTS} precedence="default" />
       {live.state && live.history ? (
-        <TimelineBody state={live.state} history={live.history} codexWindows={live.codex?.windows ?? []} tick={live.tick} from={from} to={to} />
+        <TimelineBody
+          state={live.state}
+          history={live.history}
+          codexWindows={live.codex?.windows ?? []}
+          tick={live.tick}
+          from={from}
+          to={to}
+          initialView={view}
+        />
       ) : (
         <p className="tl-mute tl-loading-page">reading the meters…</p>
       )}
@@ -93,9 +101,11 @@ interface BodyProps {
   tick: number
   from: number | undefined
   to: number | undefined
+  /** the view the hash carried when the page opened; after that the view is the page's own */
+  initialView: TimelineView | undefined
 }
 
-function TimelineBody({ state, history, codexWindows, tick, from, to }: BodyProps) {
+function TimelineBody({ state, history, codexWindows, tick, from, to, initialView }: BodyProps) {
   const now = state.now
   const blocks = history.blocks
   const since = history.since ?? FIRST_SAMPLE_FALLBACK
@@ -133,7 +143,15 @@ function TimelineBody({ state, history, codexWindows, tick, from, to }: BodyProp
   }
   const presetFor = (range: Span): ViewSpec => ({ preset: zoomFor(range), anchor: Math.min(now, (range.from + range.to) / 2) })
 
-  const [spec, setSpec] = useState<ViewSpec>(() => (picked ? presetFor(picked) : { preset: 'day', anchor: now }))
+  const [spec, setSpec] = useState<ViewSpec>(() =>
+    initialView
+      ? 'preset' in initialView
+        ? initialView
+        : { preset: null, view: initialView }
+      : picked
+        ? presetFor(picked)
+        : { preset: 'day', anchor: now },
+  )
   const view: Span = spec.preset ? presetView(spec.preset, spec.anchor) : clampView(spec.view, bounds)
   const period = spec.preset ? periodOf(spec.preset, spec.anchor, weekBounds, since, now) : view
   // the view the next wheel event starts from, ahead of the render it causes
@@ -145,8 +163,39 @@ function TimelineBody({ state, history, codexWindows, tick, from, to }: BodyProp
     setSpec({ preset: null, view: clamped })
   }
 
-  // a range that falls outside moves the view to it: a pan when it fits, its preset when it does not
+  // the view rides in the hash, so a reload keeps it; replaced rather than pushed,
+  // so the back button still steps through picks and not through every wheel notch.
+  // today's day preset is the page's default and leaves the hash bare
+  const viewParam: TimelineView | undefined =
+    spec.preset === null
+      ? { from: Math.round(spec.view.from), to: Math.round(spec.view.to) }
+      : spec.preset === 'day' && dayStart(spec.anchor) === dayStart(now) && !picked
+        ? undefined
+        : { preset: spec.preset, anchor: Math.round(spec.anchor) }
+  const viewKey = viewParam ? timelineHref(0, 1, viewParam) : ''
+  const viewForHash = useRef(viewParam)
+  viewForHash.current = viewParam
   useEffect(() => {
+    const sync = () => {
+      if (!window.location.hash.startsWith('#/timeline')) return
+      const route = parseRoute(window.location.hash)
+      if (route.kind !== 'timeline') return
+      const want = timelineHref(route.from, route.to, viewForHash.current)
+      if (window.location.hash !== want) window.history.replaceState(window.history.state, '', want)
+    }
+    const timer = setTimeout(sync, 200)
+    window.addEventListener('hashchange', sync)
+    return () => {
+      clearTimeout(timer)
+      window.removeEventListener('hashchange', sync)
+    }
+  }, [viewKey])
+
+  // a range that falls outside moves the view to it: a pan when it fits, its preset when it does not.
+  // not for the range the page opened on: a view the hash brought back stays where it was left
+  const opened = useRef({ from, to })
+  useEffect(() => {
+    if (initialView && from === opened.current.from && to === opened.current.to) return
     const target = picked ?? currentBlock
     if (target.from >= view.from && target.to <= view.to) return
     const span = view.to - view.from
@@ -194,7 +243,7 @@ function TimelineBody({ state, history, codexWindows, tick, from, to }: BodyProp
       window.location.hash = '#/timeline'
       return
     }
-    window.location.hash = timelineHref(range.from, range.to)
+    window.location.hash = timelineHref(range.from, range.to, viewForHash.current)
   }
   const pickBlock = (b: BlockSummary) => go({ from: b.start, to: Math.min(b.resetKey, now) })
   const backToBlock = () => {
