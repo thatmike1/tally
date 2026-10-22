@@ -1,7 +1,12 @@
 // the timeline tab: the meter chart, the block strip and the session lanes on
 // one time axis. whatever range is being read (the current block by default, a
 // dragged stretch, a clicked block or segment) lives in the hash, so a range is
-// a link and the back button undoes a pick; the zoom is the page's own state.
+// a link and the back button undoes a pick; the view is the page's own state.
+//
+// the view is free: the wheel or a pinch zooms it around the pointer, from an
+// hour to the whole history, and a pan moves it (see timeline-pointer for why a
+// pan is not a plain drag). the day, week and since buttons are presets; a
+// preset view follows now as it moves, a wheeled or panned one stays put.
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { BlockSummary, ClaudeHistory, State } from '../api'
 import { dayDate, days, duration, hm } from '../format'
@@ -13,15 +18,22 @@ import { buildGroups, Lanes, RailHead, ShareStrip } from './timeline-lanes'
 import { usePlotPointer } from './timeline-pointer'
 import { Hero, Summary } from './timeline-summary'
 import {
+  clamp,
+  clampView,
   DAY,
   dayStart,
+  detailFor,
   HOUR,
+  laneResolution,
+  lanesWindow,
   MIN,
+  panView,
   periodOf,
   snapStep,
   ticks as axisTicks,
   trimDay,
   zoomFor,
+  zoomView,
   type Span,
   type Zoom,
 } from './timeline-util'
@@ -55,6 +67,12 @@ function rangeText(range: Span, now: number): string {
   if (sameDay) return today ? `${hm(range.from)} → ${end}` : `${dayDate(range.from)}, ${hm(range.from)} → ${end}`
   return `${dayDate(range.from)} ${hm(range.from)} → ${range.to >= now - 90 ? 'now' : `${dayDate(range.to)} ${hm(range.to)}`}`
 }
+
+/** a press of + or - zooms by this much, a wheel notch by about as much */
+const KEY_ZOOM = 1.5
+
+/** a preset button's view around `anchor`, or a free view set by the wheel, a pan or the keys */
+type ViewSpec = { preset: Zoom; anchor: number } | { preset: null; view: Span }
 
 function spanLength(range: Span): string {
   const seconds = range.to - range.from
@@ -98,36 +116,44 @@ function TimelineBody({ state, history, codexWindows, tick, from, to }: BodyProp
       ? `the block ${rangeText({ from: selBlock.start, to: Math.min(selBlock.resetKey, now) }, now)}`
       : rangeText(sel, now)
 
-  // the zoom and where it sits; a range that falls outside moves the view to it
-  const [spec, setSpec] = useState<{ zoom: Zoom; anchor: number }>(() =>
-    picked ? { zoom: zoomFor(picked), anchor: (picked.from + picked.to) / 2 } : { zoom: 'day', anchor: now },
-  )
   const weekBounds = useMemo(() => history.weeks.map((w) => ({ start: w.start, resetsAt: w.resetsAt })), [history.weeks])
-  const period = periodOf(spec.zoom, spec.anchor, weekBounds, since, now)
-  useEffect(() => {
-    const target = picked ?? currentBlock
-    if (target.from >= period.from && target.to <= period.to) return
-    const zoom = spec.zoom === 'since' ? 'since' : target.to - target.from > period.to - period.from ? zoomFor(target) : spec.zoom
-    setSpec({ zoom, anchor: (target.from + target.to) / 2 })
-    // follows the range only; a zoom click must not be undone by it
-  }, [from, to])
+  // everything a view may show: the first sample's day up to a little past now
+  const boundsTo = Math.max(now + 3 * HOUR, running ? running.resetsAt + 30 * MIN : 0)
+  const bounds: Span = useMemo(() => ({ from: dayStart(since), to: boundsTo }), [since, boundsTo])
 
-  const lanes = useLanes(period, tick, now)
-  const split = useSplit(sel, tick, now)
-  const lanesData = lanes.data
-  const meter = lanesData?.meter ?? []
-
-  const view: Span = useMemo(() => {
-    if (spec.zoom !== 'day') return period
+  /** what a preset shows: the weekly window, everything, or the day trimmed to where something happened */
+  const presetView = (zoom: Zoom, anchor: number): Span => {
+    const period = periodOf(zoom, anchor, weekBounds, since, now)
+    if (zoom !== 'day') return { from: Math.max(bounds.from, period.from), to: Math.min(bounds.to, period.to) }
     const marks: number[] = [sel.from, sel.to]
     if (period.from <= now && now <= period.to) marks.push(now)
     if (running && running.resetsAt <= period.to) marks.push(running.resetsAt)
-    if (lanesData && lanes.span && lanes.span.from === period.from) {
-      for (const lane of lanesData.lanes) for (const s of lane.segments) marks.push(s.start, s.end)
-      for (const point of meter) marks.push(point.t)
-    }
-    return trimDay(period, marks)
-  }, [spec.zoom, period.from, period.to, sel.from, sel.to, lanesData, now])
+    for (const b of blocks) if (b.resetKey > period.from && b.start < period.to) marks.push(b.start, Math.min(b.resetKey, now))
+    return clampView(trimDay(period, marks), bounds)
+  }
+  const presetFor = (range: Span): ViewSpec => ({ preset: zoomFor(range), anchor: Math.min(now, (range.from + range.to) / 2) })
+
+  const [spec, setSpec] = useState<ViewSpec>(() => (picked ? presetFor(picked) : { preset: 'day', anchor: now }))
+  const view: Span = spec.preset ? presetView(spec.preset, spec.anchor) : clampView(spec.view, bounds)
+  const period = spec.preset ? periodOf(spec.preset, spec.anchor, weekBounds, since, now) : view
+  // the view the next wheel event starts from, ahead of the render it causes
+  const viewNow = useRef(view)
+  viewNow.current = view
+  const setView = (next: Span) => {
+    const clamped = clampView(next, bounds)
+    viewNow.current = clamped
+    setSpec({ preset: null, view: clamped })
+  }
+
+  // a range that falls outside moves the view to it: a pan when it fits, its preset when it does not
+  useEffect(() => {
+    const target = picked ?? currentBlock
+    if (target.from >= view.from && target.to <= view.to) return
+    const span = view.to - view.from
+    if (target.to - target.from > span * 0.9) setSpec(presetFor(target))
+    else setView(panView(view, (target.from + target.to) / 2 - (view.from + view.to) / 2, bounds))
+    // follows the range only; a zoom must not be undone by it
+  }, [from, to])
 
   // one width for the chart, the strip and every lane: they share the middle column
   const track = useRef<HTMLDivElement>(null)
@@ -140,6 +166,12 @@ function TimelineBody({ state, history, codexWindows, tick, from, to }: BodyProp
     return () => observer.disconnect()
   }, [])
 
+  const lanes = useLanes(lanesWindow(view, bounds), laneResolution(view, width), tick, now)
+  const split = useSplit(sel, tick, now)
+  const lanesData = lanes.data
+  const meter = lanesData?.meter ?? []
+
+  const detail = detailFor(view, width)
   const tickMarks = axisTicks(view, width)
   const [brush, setBrush] = useState<Span | null>(null)
   const [hoverT, setHoverT] = useState<number | null>(null)
@@ -166,25 +198,75 @@ function TimelineBody({ state, history, codexWindows, tick, from, to }: BodyProp
   }
   const pickBlock = (b: BlockSummary) => go({ from: b.start, to: Math.min(b.resetKey, now) })
   const backToBlock = () => {
-    setSpec({ zoom: 'day', anchor: now })
+    setSpec({ preset: 'day', anchor: now })
     if (picked) window.location.hash = '#/timeline'
+  }
+  const resetView = () => setSpec(picked ? presetFor(picked) : { preset: 'day', anchor: now })
+  const zoomBy = (factor: number, at?: number) => {
+    const current = viewNow.current
+    setView(zoomView(current, factor, at ?? (current.from + current.to) / 2, bounds))
+  }
+  const panBy = (fraction: number) => {
+    const current = viewNow.current
+    setView(panView(current, fraction * (current.to - current.from), bounds))
   }
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      // the drawer's own Esc closes it first; its body class outlives that hash change
-      if (event.key !== 'Escape' || window.location.hash.startsWith('#/session') || document.body.classList.contains('drawer-open')) return
-      backToBlock()
+      // the drawer's own Esc and keys come first; its body class outlives that hash change
+      if (window.location.hash.startsWith('#/session') || document.body.classList.contains('drawer-open')) return
+      if (event.ctrlKey || event.metaKey || event.altKey) return
+      if (event.target instanceof Element && event.target.closest('input, textarea, select, [contenteditable]')) return
+      if (event.key === 'Escape') backToBlock()
+      else if (event.key === '+' || event.key === '=') zoomBy(1 / KEY_ZOOM)
+      else if (event.key === '-' || event.key === '_') zoomBy(KEY_ZOOM)
+      else if (event.key === 'ArrowLeft') panBy(-0.25)
+      else if (event.key === 'ArrowRight') panBy(0.25)
+      else if (event.key === '0') resetView()
+      else return
+      event.preventDefault()
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   })
 
+  // the wheel zooms around the pointer on the chart and the strip; a pinch (a
+  // wheel with ctrl) zooms on any plot; a sideways scroll or shift-wheel pans.
+  // a plain vertical wheel over a lane is left to scroll the page.
+  const wheel = useRef({ zoomBy, setView, bounds })
+  wheel.current = { zoomBy, setView, bounds }
+  useEffect(() => {
+    const onWheel = (event: WheelEvent) => {
+      const plot = event.target instanceof Element ? event.target.closest('.tl-chart, .tl-strip, .tl-lane') : null
+      if (!plot) return
+      const box = plot.getBoundingClientRect()
+      const scale = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? box.height : 1
+      const dx = event.deltaX * scale
+      const dy = event.deltaY * scale
+      const current = viewNow.current
+      const span = current.to - current.from
+      const onLane = plot.classList.contains('tl-lane')
+      if (event.ctrlKey || (!onLane && !event.shiftKey && Math.abs(dy) >= Math.abs(dx))) {
+        event.preventDefault()
+        const at = current.from + clamp((event.clientX - box.left) / box.width, 0, 1) * span
+        wheel.current.zoomBy(Math.exp(dy * (event.ctrlKey ? 0.01 : 0.003)), at)
+        return
+      }
+      const sideways = dx !== 0 ? dx : event.shiftKey ? dy : 0
+      if (sideways === 0 || Math.abs(sideways) < Math.abs(dy) * (event.shiftKey ? 0 : 1)) return
+      event.preventDefault()
+      wheel.current.setView(panView(current, (sideways / box.width) * span, wheel.current.bounds))
+    }
+    document.addEventListener('wheel', onWheel, { passive: false })
+    return () => document.removeEventListener('wheel', onWheel)
+  }, [])
+
   const handlers = usePlotPointer({
     view,
-    step: snapStep(spec.zoom),
+    step: snapStep(view, width),
     now,
     onBrush: setBrush,
+    onPan: setView,
     onHover: (t, event, laneId) => {
       setHoverT(t)
       setHotLane(laneId)
@@ -195,7 +277,7 @@ function TimelineBody({ state, history, codexWindows, tick, from, to }: BodyProp
       const row = laneId ? rowById.get(laneId) : null
       const body = row
         ? laneHover(t, row.lane, row.title, now, width / (view.to - view.from))
-        : chartHover(t, meter, blocks, lanesData?.lanes ?? [], now, codex, claudeResets, 6 / (width / (view.to - view.from)))
+        : chartHover(t, meter, blocks, lanesData?.lanes ?? [], now, codex, claudeResets, 6 / (width / (view.to - view.from)), Math.max(20 * MIN, 1.5 * (lanesData?.resolution ?? 0)))
       setHover({ x: event.clientX, y: event.clientY, body })
     },
     onPick: go,
@@ -215,20 +297,25 @@ function TimelineBody({ state, history, codexWindows, tick, from, to }: BodyProp
   const range = split.data?.fiveHour ?? null
   const outOfView = sel.to < view.from || sel.from > view.to
   const viewHasNow = view.from <= now && now <= view.to + 10 * MIN
-  const firstWeek = history.weeks[0]
+  // a day or week preset steps to the day or week next to it; a free view moves by its own width
   const step = (direction: -1 | 1) => {
-    if (spec.zoom === 'day') setSpec({ zoom: 'day', anchor: direction < 0 ? period.from - HOUR : period.to + HOUR })
-    else if (spec.zoom === 'week') setSpec({ zoom: 'week', anchor: direction < 0 ? period.from - HOUR : period.to + HOUR })
+    if (spec.preset === 'day' || spec.preset === 'week') setSpec({ preset: spec.preset, anchor: direction < 0 ? period.from - HOUR : period.to + HOUR })
+    else panBy(direction)
   }
-  const canBack = spec.zoom !== 'since' && period.from > dayStart(since) && (spec.zoom === 'day' || !firstWeek || period.from > firstWeek.start)
-  const canForward = spec.zoom !== 'since' && period.to < now
+  const canBack = view.from > bounds.from + MIN
+  const canForward = spec.preset === 'day' || spec.preset === 'week' ? period.to < now : view.to < bounds.to - MIN
+  const sameDay = dayStart(view.from) === dayStart(view.to - 1)
   const whereText =
-    spec.zoom === 'day'
+    spec.preset === 'day'
       ? `${dayDate(period.from)} · ${hm(view.from)} → ${view.to >= period.to ? '24:00' : hm(view.to)}`
-      : spec.zoom === 'week'
+      : spec.preset === 'week'
         ? `${dayDate(period.from)} ${hm(period.from)} → ${dayDate(period.to)} ${hm(period.to)}`
-        : `${dayDate(period.from)} → now · every block`
-  const zoomTo = (zoom: Zoom) => setSpec({ zoom, anchor: zoom === 'since' ? now : Math.min(now, (sel.from + sel.to) / 2) })
+        : spec.preset === 'since'
+          ? `${dayDate(view.from)} → now · every block`
+          : sameDay
+            ? `${dayDate(view.from)} · ${hm(view.from)} → ${hm(view.to)} · ${spanLength(view)}`
+            : `${dayDate(view.from)} ${hm(view.from)} → ${dayDate(view.to)} ${hm(view.to)} · ${spanLength(view)}`
+  const zoomTo = (zoom: Zoom) => setSpec({ preset: zoom, anchor: zoom === 'since' ? now : Math.min(now, (sel.from + sel.to) / 2) })
   const sinceLabel = `since ${dayDate(since).replace(/^\w+ /, '')}`
 
   const title =
@@ -247,22 +334,27 @@ function TimelineBody({ state, history, codexWindows, tick, from, to }: BodyProp
           <span className="tl-ctl-k">zoom</span>
           <div className="tl-seg" role="group" aria-label="zoom">
             {(['day', 'week', 'since'] as const).map((zoom) => (
-              <button key={zoom} aria-pressed={spec.zoom === zoom} onClick={() => zoomTo(zoom)}>
+              <button key={zoom} aria-pressed={spec.preset === zoom} onClick={() => zoomTo(zoom)}>
                 {zoom === 'since' ? sinceLabel : zoom}
               </button>
             ))}
           </div>
-          {spec.zoom !== 'since' ? (
-            <button className="tl-step" onClick={() => step(-1)} disabled={!canBack} aria-label={`previous ${spec.zoom}`}>
+          {spec.preset !== 'since' ? (
+            <button className="tl-step" onClick={() => step(-1)} disabled={!canBack} aria-label={`previous ${spec.preset ?? 'stretch'}`}>
               ‹
             </button>
           ) : null}
           <span className="tl-where">
             <span className="tl-ctl-k">showing</span> {whereText}
           </span>
-          {spec.zoom !== 'since' ? (
-            <button className="tl-step" onClick={() => step(1)} disabled={!canForward} aria-label={`next ${spec.zoom}`}>
+          {spec.preset !== 'since' ? (
+            <button className="tl-step" onClick={() => step(1)} disabled={!canForward} aria-label={`next ${spec.preset ?? 'stretch'}`}>
               ›
+            </button>
+          ) : null}
+          {spec.preset === null ? (
+            <button className="tl-link" onClick={resetView}>
+              reset view
             </button>
           ) : null}
         </div>
@@ -279,13 +371,13 @@ function TimelineBody({ state, history, codexWindows, tick, from, to }: BodyProp
             <span className="tl-live-tag">live, follows the block</span>
           )}
           {outOfView ? (
-            <button className="tl-link" onClick={() => setSpec({ zoom: zoomFor(sel), anchor: (sel.from + sel.to) / 2 })}>
+            <button className="tl-link" onClick={() => setSpec(presetFor(sel))}>
               show it on the chart
             </button>
           ) : null}
         </div>
         <span className="tl-hint">
-          drag across the chart or a lane to read a range · click a block or a lane segment to read just that · browser back undoes a pick · esc returns to this block
+          drag across the chart or a lane to read a range · click a block or a lane segment to read just that · wheel or pinch to zoom, + and − too · shift-drag, drag the time axis or ← → to pan · 0 resets the view · browser back undoes a pick · esc returns to this block
         </span>
       </div>
 
@@ -295,7 +387,8 @@ function TimelineBody({ state, history, codexWindows, tick, from, to }: BodyProp
           <Chart
             view={view}
             width={width}
-            zoom={spec.zoom}
+            detail={detail}
+            step={lanesData?.resolution ?? 300}
             now={now}
             ticks={tickMarks}
             meter={meter}
@@ -316,12 +409,12 @@ function TimelineBody({ state, history, codexWindows, tick, from, to }: BodyProp
       <div className="tl-grid-row tl-strip-row">
         <div className="tl-strip-k">
           5-hour blocks
-          <span>click one to read it{spec.zoom === 'day' ? '' : '; height is where it ended'}</span>
+          <span>click one to read it{detail === 'fine' ? '' : '; height is where it ended'}</span>
         </div>
         <BlockStrip
           view={view}
           width={width}
-          zoom={spec.zoom}
+          detail={detail}
           now={now}
           blocks={blocks}
           selectedKey={picked ? (selBlock?.resetKey ?? null) : currentKey}
@@ -332,7 +425,7 @@ function TimelineBody({ state, history, codexWindows, tick, from, to }: BodyProp
           }
         />
         <div className="tl-strip-note tl-mute">
-          {lanes.loading ? 'reading the lanes…' : lanesData && lanesData.resolution > 300 ? `lanes merge activity closer than ${duration(lanesData.resolution)} at this zoom` : ''}
+          {lanes.loading ? 'reading the lanes…' : lanesData && lanesData.resolution > 300 ? `lanes merge activity closer than ${duration(lanesData.resolution)} at this width` : ''}
         </div>
       </div>
 
@@ -353,7 +446,7 @@ function TimelineBody({ state, history, codexWindows, tick, from, to }: BodyProp
           state={state}
           view={view}
           width={width}
-          zoom={spec.zoom}
+          detail={detail}
           ticks={tickMarks}
           sel={sel}
           brush={brush}

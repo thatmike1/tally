@@ -4,7 +4,7 @@
 // tile reads that block.
 import type { BlockSummary, CodexWindow, RangeLanes, State, WeekSummary } from '../api'
 import { hm, money, rate } from '../format'
-import { HOUR, MIN, shortDay, type Span, type Tick, type Zoom } from './timeline-util'
+import { HOUR, MIN, shortDay, type Detail, type Span, type Tick } from './timeline-util'
 import type { PlotHandlers } from './timeline-pointer'
 
 export const CHART_HEIGHT = 330
@@ -66,7 +66,9 @@ function placeLabels(candidates: Label[], width: number): Label[] {
 export interface ChartProps {
   view: Span
   width: number
-  zoom: Zoom
+  detail: Detail
+  /** seconds between the meter points kept; a wider gap than this is the sampler sleeping */
+  step: number
   now: number
   ticks: Tick[]
   meter: MeterPoint[]
@@ -81,15 +83,15 @@ export interface ChartProps {
   handlers: PlotHandlers
 }
 
-/** the 5-hour reading at `t`: the last sample at or before it inside the same block, at most 20 minutes old */
-export function readingAt(meter: MeterPoint[], t: number, blocks: BlockSummary[]): MeterPoint | null {
+/** the 5-hour reading at `t`: the last sample at or before it inside the same block, at most `maxAge` old */
+export function readingAt(meter: MeterPoint[], t: number, blocks: BlockSummary[], maxAge = 20 * MIN): MeterPoint | null {
   const block = blocks.find((b) => t >= b.start && t < b.resetKey)
   let found: MeterPoint | null = null
   for (const point of meter) {
     if (point.t > t) break
     found = point
   }
-  if (!found || t - found.t > 20 * MIN) return null
+  if (!found || t - found.t > maxAge) return null
   if (block && found.resetKey !== block.resetKey) return null
   return found
 }
@@ -122,7 +124,7 @@ export function codexAt(series: CodexSeries, t: number): number | null {
 }
 
 export function Chart(props: ChartProps) {
-  const { view, width, zoom, now, meter, state, sel, brush, hoverT } = props
+  const { view, width, detail, now, meter, state, sel, brush, hoverT } = props
   const height = CHART_HEIGHT
   const plot = height - TOP - BOTTOM
   const x = (t: number) => xOf(t, view, width)
@@ -131,15 +133,18 @@ export function Chart(props: ChartProps) {
   const visibleBlocks = props.blocks.filter((b) => inView(b.start, b.resetKey))
   const current = state.block && !state.fiveHour?.ended ? state.block : null
 
-  // the 5-hour sawtooth, one run per block, broken where the sampler slept
-  const fiveRuns = runs(meter, (a, b) => a.resetKey !== b.resetKey || b.t - a.t > 20 * MIN)
+  // the 5-hour sawtooth, one run per block, broken where the sampler slept;
+  // a wide view keeps a point per step, so a gap only counts past one and a half
+  const fiveGap = Math.max(20 * MIN, 1.5 * props.step)
+  const longGap = Math.max(HOUR, 1.5 * props.step)
+  const fiveRuns = runs(meter, (a, b) => a.resetKey !== b.resetKey || b.t - a.t > fiveGap)
   const weeklyRuns = runs(
     meter.filter((p) => p.weeklyPct !== null),
-    (a, b) => b.t - a.t > HOUR || (b.weeklyPct ?? 0) < (a.weeklyPct ?? 0) - 5,
+    (a, b) => b.t - a.t > longGap || (b.weeklyPct ?? 0) < (a.weeklyPct ?? 0) - 5,
   )
   const scopedRuns = runs(
     meter.filter((p) => p.scopedPct !== null),
-    (a, b) => b.t - a.t > HOUR || (b.scopedPct ?? 0) < (a.scopedPct ?? 0) - 5,
+    (a, b) => b.t - a.t > longGap || (b.scopedPct ?? 0) < (a.scopedPct ?? 0) - 5,
   )
   const codexHistory = state.codex.history ?? []
   // past weeks from their own readings, the running one from the live reader
@@ -152,7 +157,7 @@ export function Chart(props: ChartProps) {
 
   // line-end labels at now, pushed apart so they never overlap
   const ends: { pct: number; cls: string; text: string; y: number }[] = []
-  if (state.fiveHour && zoom !== 'day') ends.push({ pct: state.fiveHour.pct, cls: 'five', text: `5-hour ${state.fiveHour.pct}`, y: 0 })
+  if (state.fiveHour && detail !== 'fine') ends.push({ pct: state.fiveHour.pct, cls: 'five', text: `5-hour ${state.fiveHour.pct}`, y: 0 })
   if (state.weekly) ends.push({ pct: state.weekly.pct, cls: 'wk', text: `weekly ${state.weekly.pct}`, y: 0 })
   if (state.fable) ends.push({ pct: state.fable.pct, cls: 'fb', text: `${state.fable.model} ${state.fable.pct}`, y: 0 })
   if (state.codex.usedPercent !== null && state.codex.usedPercent !== undefined)
@@ -172,9 +177,9 @@ export function Chart(props: ChartProps) {
   }
   const projection = current?.projection
 
-  // block edges in day zoom: where one block ends and the next opens is one reset
+  // block edges when blocks are wide: where one block ends and the next opens is one reset
   const edges = new Map<number, { opened: boolean; ended: boolean; current: boolean }>()
-  if (zoom === 'day') {
+  if (detail === 'fine') {
     for (const b of visibleBlocks) {
       const open = edges.get(b.start) ?? { opened: false, ended: false, current: false }
       edges.set(b.start, { ...open, opened: true })
@@ -232,7 +237,7 @@ export function Chart(props: ChartProps) {
         </clipPath>
       </defs>
       <g clipPath="url(#tl-clip)">
-        {zoom === 'day'
+        {detail === 'fine'
           ? visibleBlocks.map((b) => (
               <rect
                 key={b.resetKey}
@@ -268,7 +273,7 @@ export function Chart(props: ChartProps) {
           return (
             <g key={`f${run[0]!.t}`}>
               <path d={`${path(points)}L${end[0]},${y(0)}L${first[0]},${y(0)}Z`} className="tl-five-area" />
-              <path d={path(points)} className={zoom === 'since' ? 'tl-five tl-five-thin' : 'tl-five'} />
+              <path d={path(points)} className={detail === 'coarse' ? 'tl-five tl-five-thin' : 'tl-five'} />
             </g>
           )
         })}
@@ -290,7 +295,7 @@ export function Chart(props: ChartProps) {
           }),
         )}
         {pace ? <path d={path(pace.map((p) => [x(p.t), y(p.pct)]))} className="tl-comp tl-cx tl-proj" /> : null}
-        {zoom === 'day'
+        {detail === 'fine'
           ? boundaries.map((b) => (
               <line key={`b${b.t}`} x1={x(b.t)} x2={x(b.t)} y1={TOP - 8} y2={TOP + plot} className={b.strong ? 'tl-reset' : 'tl-open'} />
             ))
@@ -308,7 +313,7 @@ export function Chart(props: ChartProps) {
                 <g>
                   <path d={path([[x(current.to), y(current.endPct)], [x(endT), y(endPct)]])} className="tl-five-proj" />
                   <circle cx={x(endT)} cy={y(endPct)} r={3.5} className="tl-proj-dot" />
-                  {zoom === 'day' ? (
+                  {detail === 'fine' ? (
                     <text x={x(endT) + 8} y={y(endPct) + 4} className="tl-lab-five">
                       {projection.hitsHundredAt ? `100% at ${hm(endT)}` : `≈ ${Math.round(endPct)}% at reset`}
                     </text>
@@ -317,7 +322,7 @@ export function Chart(props: ChartProps) {
               )
             })()
           : null}
-        {state.lastLooked && zoom === 'day' && inView(state.lastLooked, state.lastLooked) && now - state.lastLooked > 5 * MIN ? (
+        {state.lastLooked && detail === 'fine' && inView(state.lastLooked, state.lastLooked) && now - state.lastLooked > 5 * MIN ? (
           <g>
             <line x1={x(state.lastLooked)} x2={x(state.lastLooked)} y1={TOP} y2={TOP + plot} className="tl-looked" />
             <text x={x(state.lastLooked) + 4} y={TOP + 13} className="tl-lab-m">
@@ -345,10 +350,11 @@ export function Chart(props: ChartProps) {
             {t.label}
           </text>
         ))}
+        <rect x={0} y={TOP + plot} width={width} height={BOTTOM} className="tl-axis-band" />
         {brush ? <rect x={x(brush.from)} y={TOP} width={Math.max(1, x(brush.to) - x(brush.from))} height={plot} className="tl-brush" /> : null}
         {hoverT !== null
           ? (() => {
-              const reading = readingAt(meter, hoverT, props.blocks)
+              const reading = readingAt(meter, hoverT, props.blocks, fiveGap)
               return (
                 <g>
                   <line x1={x(hoverT)} x2={x(hoverT)} y1={TOP} y2={TOP + plot} className="tl-cross" />
@@ -365,7 +371,7 @@ export function Chart(props: ChartProps) {
 export interface StripProps {
   view: Span
   width: number
-  zoom: Zoom
+  detail: Detail
   now: number
   blocks: BlockSummary[]
   /** the reset key of the block being read, when the range is exactly one block */
@@ -389,9 +395,9 @@ function tileText(b: BlockSummary, current: boolean, room: number): string {
   return room > 30 ? small : ''
 }
 
-/** one tile per 5-hour block on the chart's axis; the tile's height in wide zooms is where it ended */
+/** one tile per 5-hour block on the chart's axis; when blocks are narrow the tile's height is where it ended */
 export function BlockStrip(props: StripProps) {
-  const { view, width, zoom } = props
+  const { view, width, detail } = props
   const x = (t: number) => xOf(t, view, width)
   const visible = props.blocks.filter((b) => b.resetKey >= view.from && b.start <= view.to)
   const height = STRIP_HEIGHT
@@ -400,13 +406,13 @@ export function BlockStrip(props: StripProps) {
       {visible.map((b) => {
         const x0 = Math.max(0, x(b.start))
         const x1 = Math.min(width, x(b.resetKey))
-        const w = Math.max(1.5, x1 - x0 - (zoom === 'since' ? 1 : 3))
+        const w = Math.max(1.5, x1 - x0 - (detail === 'coarse' ? 1 : 3))
         const current = b.resetKey === props.currentKey
         const on = b.resetKey === props.selectedKey
         const cls = `tl-tile${current ? ' tl-tile-now' : ''}${on ? ' tl-tile-on' : ''}${b.measured || current ? '' : ' tl-tile-unmeasured'}`
         const pick = () => props.onPick(b)
         const hover = (e: React.PointerEvent) => props.onHover(b, e)
-        if (zoom === 'day') {
+        if (detail === 'fine') {
           return (
             <g key={b.resetKey} className={cls} onClick={pick} onPointerMove={hover}>
               <rect x={x0} y={4} width={w} height={height - 8} rx={4} className="tl-tile-bg" />
@@ -421,7 +427,7 @@ export function BlockStrip(props: StripProps) {
           <g key={b.resetKey} className={cls} onClick={pick} onPointerMove={hover}>
             <rect x={x0} y={2} width={w} height={height - 4} className="tl-tile-hit" />
             <rect x={x0} y={top} width={w} height={height - 4 - top} rx={1.5} className="tl-tile-bar" />
-            {zoom === 'week' && w > 26 ? (
+            {detail === 'mid' && w > 26 ? (
               <text x={x0 + w / 2} y={top - 3} textAnchor="middle" className="tl-tile-num">
                 {b.endPct}
               </text>

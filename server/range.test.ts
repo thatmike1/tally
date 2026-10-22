@@ -194,6 +194,13 @@ describe('meterPoints and resolutionFor', () => {
     expect(resolutionFor(30 * 86400)).toBe(Math.ceil((30 * 86400) / 2000))
   })
 
+  it('takes the resolution a caller asks for, within its limits', () => {
+    expect(resolutionFor(30 * 86400, 2400)).toBe(2400)
+    expect(resolutionFor(86400, 60)).toBe(LANE_GAP)
+    expect(resolutionFor(90 * 86400, 300)).toBe(Math.ceil((90 * 86400) / 20000))
+    expect(resolutionFor(30 * 86400, Number.NaN)).toBe(Math.ceil((30 * 86400) / 2000))
+  })
+
   it('keeps every block\'s first sample and the last one per step', () => {
     const many = [
       sample(0, 1, 18000),

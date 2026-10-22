@@ -93,7 +93,7 @@ export function createApp(options: AppConfig = {}) {
     return c.json(await rangeSplit(range.from, range.to, { home, index, now }))
   })
 
-  // `?from=<unix>&to=<unix>`: the lanes and meter samples for any window (`RangeLanes`)
+  // `?from=<unix>&to=<unix>[&resolution=<seconds>]`: the lanes and meter samples for any window (`RangeLanes`)
   app.get('/api/lanes', async (c) => {
     let range: { from: number; to: number }
     try {
@@ -103,7 +103,8 @@ export function createApp(options: AppConfig = {}) {
       throw error
     }
     const { home, index, now } = stateOptions
-    return c.json(await rangeLanes(range.from, range.to, { home, index, now }))
+    const asked = c.req.query('resolution')
+    return c.json(await rangeLanes(range.from, range.to, { home, index, now, resolution: asked === undefined ? undefined : Number(asked) }))
   })
 
   // the codex routes mount first so `/api/history/codex` is not swallowed by `/api/history`

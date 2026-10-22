@@ -116,7 +116,9 @@ export interface RangeLanes {
    * seconds: requests closer than this merge into one lane segment, and the
    * meter keeps at most one sample per block per step of this size. `LANE_GAP`
    * (300) up to a week, then the window over `LANE_STEPS`, so a long zoom is
-   * never finer than the page can draw
+   * never finer than the page can draw. a caller that knows how wide its view
+   * is on screen asks for its own with `resolution=`, never finer than `LANE_GAP`
+   * or than `MAX_LANE_STEPS` steps across the window
    */
   resolution: number
   /** the shape of `State['day']['lanes']` */
@@ -132,6 +134,8 @@ export interface RangeOptions {
   home?: string
   index?: TranscriptIndex | null
   now?: number
+  /** seconds the caller wants as the merge gap and meter step; see `resolutionFor` */
+  resolution?: number
 }
 
 /** a range that is not two unix-second numbers in order, or is longer than `MAX_RANGE` */
@@ -335,9 +339,13 @@ export async function rangeSplit(from: number, to: number, options: RangeOptions
   }
 }
 
-/** seconds per lane segment gap and per meter step for a window this long */
-export function resolutionFor(span: number): number {
-  return Math.max(LANE_GAP, Math.ceil(span / LANE_STEPS))
+/** the finest resolution a caller can ask for is this many steps across the window */
+export const MAX_LANE_STEPS = 20000
+
+/** seconds per lane segment gap and per meter step for a window this long, or the one asked for within limits */
+export function resolutionFor(span: number, asked?: number): number {
+  const wanted = asked !== undefined && Number.isFinite(asked) && asked > 0 ? Math.round(asked) : Math.ceil(span / LANE_STEPS)
+  return Math.max(LANE_GAP, Math.ceil(span / MAX_LANE_STEPS), wanted)
 }
 
 /**
@@ -373,7 +381,7 @@ export async function rangeLanes(from: number, to: number, options: RangeOptions
   const home = options.home ?? homedir()
   const now = options.now ?? Date.now() / 1000
   const index = options.index ?? null
-  const resolution = resolutionFor(to - from)
+  const resolution = resolutionFor(to - from, options.resolution)
   const samples = readLog(limitsLogPath(home)).samples
   const { records, sessions } = await recordsOver(from, to, home, index)
   const threads = otherThreads(from, to, statePath(home), resolution)

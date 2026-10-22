@@ -102,16 +102,16 @@ export interface Loaded<T> {
  * one endpoint over one span, re-asked when the span changes or, when it
  * reaches now, on every poll `tick`. a late answer for an old span is dropped.
  */
-function useRange<T>(path: string, span: Span | null, tick: number, now: number): Loaded<T> {
+function useRange<T>(path: string, span: Span | null, tick: number, now: number, extra = ''): Loaded<T> {
   const [loaded, setLoaded] = useState<Loaded<T>>({ data: null, span: null, loading: false, error: null })
   const asked = useRef(0)
   const live = span !== null && span.to >= now - 120
-  const key = span ? `${Math.round(span.from)}:${Math.round(span.to)}` : ''
+  const key = span ? `${Math.round(span.from)}:${Math.round(span.to)}${extra}` : ''
   useEffect(() => {
     if (!span) return
     const ticket = ++asked.current
     setLoaded((current) => ({ ...current, loading: true }))
-    getJson<T>(`${path}?${rangeQuery(span)}`)
+    getJson<T>(`${path}?${rangeQuery(span)}${extra}`)
       .then((data) => {
         if (ticket === asked.current) setLoaded({ data, span, loading: false, error: null })
       })
@@ -124,9 +124,9 @@ function useRange<T>(path: string, span: Span | null, tick: number, now: number)
   return loaded
 }
 
-/** lanes and meter points for the window on screen */
-export function useLanes(span: Span | null, tick: number, now: number): Loaded<RangeLanes> {
-  return useRange<RangeLanes>('/api/lanes', span, tick, now)
+/** lanes and meter points for a window around the view, merged at `resolution` seconds */
+export function useLanes(span: Span | null, resolution: number, tick: number, now: number): Loaded<RangeLanes> {
+  return useRange<RangeLanes>('/api/lanes', span, tick, now, `&resolution=${resolution}`)
 }
 
 /** the exact split of the range being read */
