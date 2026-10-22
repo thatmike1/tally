@@ -79,8 +79,8 @@ function rangeText(range: Span, now: number): string {
 /** a press of + or - zooms by this much, a wheel notch by about as much */
 const KEY_ZOOM = 1.5
 
-/** a preset button's view around `anchor`, or a free view set by the wheel, a pan or the keys */
-type ViewSpec = { preset: Zoom; anchor: number } | { preset: null; view: Span }
+/** a preset button's view around `anchor` (null follows now, across midnight too), or a free view set by the wheel, a pan or the keys */
+type ViewSpec = { preset: Zoom; anchor: number | null } | { preset: null; view: Span }
 
 function spanLength(range: Span): string {
   const seconds = range.to - range.from
@@ -131,16 +131,6 @@ function TimelineBody({ state, history, codexWindows, tick, from, to, initialVie
   const boundsTo = Math.max(now + 3 * HOUR, running ? running.resetsAt + 30 * MIN : 0)
   const bounds: Span = useMemo(() => ({ from: dayStart(since), to: boundsTo }), [since, boundsTo])
 
-  /** what a preset shows: the weekly window, everything, or the day trimmed to where something happened */
-  const presetView = (zoom: Zoom, anchor: number): Span => {
-    const period = periodOf(zoom, anchor, weekBounds, since, now)
-    if (zoom !== 'day') return { from: Math.max(bounds.from, period.from), to: Math.min(bounds.to, period.to) }
-    const marks: number[] = [sel.from, sel.to]
-    if (period.from <= now && now <= period.to) marks.push(now)
-    if (running && running.resetsAt <= period.to) marks.push(running.resetsAt)
-    for (const b of blocks) if (b.resetKey > period.from && b.start < period.to) marks.push(b.start, Math.min(b.resetKey, now))
-    return clampView(trimDay(period, marks), bounds)
-  }
   const presetFor = (range: Span): ViewSpec => ({ preset: zoomFor(range), anchor: Math.min(now, (range.from + range.to) / 2) })
 
   const [spec, setSpec] = useState<ViewSpec>(() =>
@@ -150,10 +140,43 @@ function TimelineBody({ state, history, codexWindows, tick, from, to, initialVie
         : { preset: null, view: initialView }
       : picked
         ? presetFor(picked)
-        : { preset: 'day', anchor: now },
+        : { preset: 'day', anchor: null },
   )
-  const view: Span = spec.preset ? presetView(spec.preset, spec.anchor) : clampView(spec.view, bounds)
-  const period = spec.preset ? periodOf(spec.preset, spec.anchor, weekBounds, since, now) : view
+
+  // one width for the chart, the strip and every lane: they share the middle column
+  const track = useRef<HTMLDivElement>(null)
+  const [width, setWidth] = useState(1100)
+  useEffect(() => {
+    const element = track.current
+    if (!element) return
+    const observer = new ResizeObserver(() => setWidth(Math.max(200, Math.round(element.clientWidth))))
+    observer.observe(element)
+    return () => observer.disconnect()
+  }, [])
+
+  const period = spec.preset ? periodOf(spec.preset, spec.anchor ?? now, weekBounds, since, now) : clampView(spec.view, bounds)
+  // a day preset reads the lanes for its whole day, so its trim sees every stretch of activity in it;
+  // any other view reads a window around itself
+  const dayRead: Span | null = spec.preset === 'day' ? { from: Math.max(bounds.from, period.from), to: period.to } : null
+  const wideView: Span = spec.preset && spec.preset !== 'day' ? { from: Math.max(bounds.from, period.from), to: Math.min(bounds.to, period.to) } : period
+  const lanes = useLanes(dayRead ?? lanesWindow(wideView, bounds), laneResolution(dayRead ?? wideView, width), tick, now)
+  const split = useSplit(sel, tick, now)
+  const lanesData = lanes.data
+  const meter = lanesData?.meter ?? []
+
+  /** the day trimmed to where something happened: the range, now, the blocks, and every lane and meter mark once its lanes are in */
+  const trimmedDay = (day: Span): Span => {
+    const marks: number[] = [sel.from, sel.to]
+    if (day.from <= now && now <= day.to) marks.push(now)
+    if (running && running.resetsAt <= day.to) marks.push(running.resetsAt)
+    for (const b of blocks) if (b.resetKey > day.from && b.start < day.to) marks.push(b.start, Math.min(b.resetKey, now))
+    if (lanesData && dayRead && lanes.span?.from === dayRead.from && lanes.span.to === dayRead.to) {
+      for (const lane of lanesData.lanes) for (const segment of lane.segments) marks.push(segment.start, segment.end)
+      for (const point of meter) marks.push(point.t)
+    }
+    return clampView(trimDay(day, marks), bounds)
+  }
+  const view: Span = spec.preset === 'day' ? trimmedDay(period) : wideView
   // the view the next wheel event starts from, ahead of the render it causes
   const viewNow = useRef(view)
   viewNow.current = view
@@ -169,9 +192,9 @@ function TimelineBody({ state, history, codexWindows, tick, from, to, initialVie
   const viewParam: TimelineView | undefined =
     spec.preset === null
       ? { from: Math.round(spec.view.from), to: Math.round(spec.view.to) }
-      : spec.preset === 'day' && dayStart(spec.anchor) === dayStart(now) && !picked
+      : spec.preset === 'day' && spec.anchor === null && !picked
         ? undefined
-        : { preset: spec.preset, anchor: Math.round(spec.anchor) }
+        : { preset: spec.preset, anchor: Math.round(spec.anchor ?? now) }
   const viewKey = viewParam ? timelineHref(0, 1, viewParam) : ''
   const viewForHash = useRef(viewParam)
   viewForHash.current = viewParam
@@ -192,10 +215,13 @@ function TimelineBody({ state, history, codexWindows, tick, from, to, initialVie
   }, [viewKey])
 
   // a range that falls outside moves the view to it: a pan when it fits, its preset when it does not.
-  // not for the range the page opened on: a view the hash brought back stays where it was left
-  const opened = useRef({ from, to })
+  // not on opening: a view the hash brought back stays where it was left. the opening range is
+  // forgotten at the first change, so coming back to it later follows it like any other
+  const opened = useRef<{ from: number | undefined; to: number | undefined } | null>(initialView ? { from, to } : null)
   useEffect(() => {
-    if (initialView && from === opened.current.from && to === opened.current.to) return
+    const first = opened.current
+    if (first && from === first.from && to === first.to) return
+    opened.current = null
     const target = picked ?? currentBlock
     if (target.from >= view.from && target.to <= view.to) return
     const span = view.to - view.from
@@ -203,22 +229,6 @@ function TimelineBody({ state, history, codexWindows, tick, from, to, initialVie
     else setView(panView(view, (target.from + target.to) / 2 - (view.from + view.to) / 2, bounds))
     // follows the range only; a zoom must not be undone by it
   }, [from, to])
-
-  // one width for the chart, the strip and every lane: they share the middle column
-  const track = useRef<HTMLDivElement>(null)
-  const [width, setWidth] = useState(1100)
-  useEffect(() => {
-    const element = track.current
-    if (!element) return
-    const observer = new ResizeObserver(() => setWidth(Math.max(200, Math.round(element.clientWidth))))
-    observer.observe(element)
-    return () => observer.disconnect()
-  }, [])
-
-  const lanes = useLanes(lanesWindow(view, bounds), laneResolution(view, width), tick, now)
-  const split = useSplit(sel, tick, now)
-  const lanesData = lanes.data
-  const meter = lanesData?.meter ?? []
 
   const detail = detailFor(view, width)
   const tickMarks = axisTicks(view, width)
@@ -232,10 +242,15 @@ function TimelineBody({ state, history, codexWindows, tick, from, to, initialVie
     [history.weeks, now],
   )
 
-  const groups = useMemo(
-    () => buildGroups(lanesData?.lanes ?? [], split.data, sel, state.codex.split?.threads ?? []),
-    [lanesData, split.data, sel.from, sel.to, state.codex.split],
-  )
+  // the lanes are read for more than the view; a session shows when it ran on screen or in the range being read
+  const groups = useMemo(() => {
+    const touches = (lane: { start: number; end: number; segments: { start: number; end: number }[] }, span: Span) =>
+      lane.segments.length
+        ? lane.segments.some((segment) => segment.end >= span.from && segment.start <= span.to)
+        : lane.end >= span.from && lane.start <= span.to
+    const shown = (lanesData?.lanes ?? []).filter((lane) => touches(lane, view) || touches(lane, sel))
+    return buildGroups(shown, split.data, sel, state.codex.split?.threads ?? [])
+  }, [lanesData, split.data, sel.from, sel.to, state.codex.split, view.from, view.to])
   const rowById = useMemo(() => new Map(groups.flatMap((g) => g.rows.map((row) => [row.id, row] as const))), [groups])
 
   const go = (range: Span | null) => {
@@ -247,10 +262,10 @@ function TimelineBody({ state, history, codexWindows, tick, from, to, initialVie
   }
   const pickBlock = (b: BlockSummary) => go({ from: b.start, to: Math.min(b.resetKey, now) })
   const backToBlock = () => {
-    setSpec({ preset: 'day', anchor: now })
+    setSpec({ preset: 'day', anchor: null })
     if (picked) window.location.hash = '#/timeline'
   }
-  const resetView = () => setSpec(picked ? presetFor(picked) : { preset: 'day', anchor: now })
+  const resetView = () => setSpec(picked ? presetFor(picked) : { preset: 'day', anchor: null })
   const zoomBy = (factor: number, at?: number) => {
     const current = viewNow.current
     setView(zoomView(current, factor, at ?? (current.from + current.to) / 2, bounds))
@@ -364,7 +379,7 @@ function TimelineBody({ state, history, codexWindows, tick, from, to, initialVie
           : sameDay
             ? `${dayDate(view.from)} · ${hm(view.from)} → ${hm(view.to)} · ${spanLength(view)}`
             : `${dayDate(view.from)} ${hm(view.from)} → ${dayDate(view.to)} ${hm(view.to)} · ${spanLength(view)}`
-  const zoomTo = (zoom: Zoom) => setSpec({ preset: zoom, anchor: zoom === 'since' ? now : Math.min(now, (sel.from + sel.to) / 2) })
+  const zoomTo = (zoom: Zoom) => setSpec({ preset: zoom, anchor: zoom === 'since' || !picked ? null : Math.min(now, (sel.from + sel.to) / 2) })
   const sinceLabel = `since ${dayDate(since).replace(/^\w+ /, '')}`
 
   const title =
