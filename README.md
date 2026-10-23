@@ -247,6 +247,7 @@ checked in).
 
 ## Screenshots
 
-`docs/v1.png` and `docs/v2-week.png` are earlier versions: no tray face, no T3
-sidebar widget, no takeaway line over the split, no Codex. Tally renders no
+`docs/v5-history.png` is the history page against the demo home
+(`scripts/demo-home.mjs`). `docs/v1.png` and `docs/v2-week.png` are earlier
+versions: no tray face, no T3 sidebar widget, no Codex. Tally renders no
 transcripts itself and never will; that is AgentsView's job.
