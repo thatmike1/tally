@@ -155,3 +155,11 @@ describe('GET /api/state', () => {
     expect(history.installed).toBe(false)
   })
 })
+
+describe('/api/takeaway', () => {
+  // the v5 page computes its sentence; the model one-liner and its route are gone
+  it('is not a route any more', async () => {
+    expect((await app().request('/api/takeaway')).status).toBe(404)
+    expect((await app().request('/api/takeaway', { method: 'POST' })).status).toBe(404)
+  })
+})

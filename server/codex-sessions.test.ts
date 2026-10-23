@@ -316,13 +316,15 @@ describe('splitCodexWeek', () => {
       [rollout('small', [['s1', FROM + 100, 10]]), rollout('big', [['b1', FROM + 200, 30]])],
       window,
       { t: FROM + 300, pct: 8 },
-      new Map([['big', { title: 'Fix Left-Aligned Layout', live: true }]]),
+      new Map([['big', { threadId: 't3-big', title: 'Fix Left-Aligned Layout', live: true }]]),
       FROM + 10_000,
     )!
     expect(split.threads.map((row) => [row.id, row.title, row.share, row.points])).toEqual([
       ['big', 'Fix Left-Aligned Layout', 0.75, 6],
       ['small', 'tally · small', 0.25, 2],
     ])
+    // the T3 thread id is what the timeline matches a lane on; a thread T3 never saw has none
+    expect(split.threads.map((row) => row.t3ThreadId)).toEqual(['t3-big', null])
     expect(split.threads[0]).toMatchObject({ live: true, via: 't3', project: 'tally' })
     expect(split.creditsPerPoint).toBeCloseTo(5)
   })

@@ -44,9 +44,10 @@ function niceMax(max: number): number {
 
 /**
  * local midnights inside the span, which is where the day labels go, thinned to
- * about nine: a two-month Codex span has fifty of them and they smear together.
+ * one per `room` pixels (nine at most): a two-month Codex span has fifty of them
+ * and they smear together, and a narrow column fits fewer still.
  */
-function dayTicks(from: number, to: number): number[] {
+export function dayTicks(from: number, to: number, plot = 1200, room = 80): number[] {
   const all: number[] = []
   let previous = dayKey(from)
   for (let t = from; t <= to; t += 1800) {
@@ -56,7 +57,8 @@ function dayTicks(from: number, to: number): number[] {
       previous = key
     }
   }
-  const every = Math.max(1, Math.ceil(all.length / 9))
+  const fit = Math.max(1, Math.min(9, Math.floor(plot / room)))
+  const every = Math.max(1, Math.ceil(all.length / fit))
   return all.filter((_, index) => index % every === 0)
 }
 
@@ -113,10 +115,12 @@ function TimePanel({
   const x = (t: number) => LEFT + ((t - from) / span) * (width - LEFT - RIGHT)
   const y = (value: number) => TOP + PLOT - (Math.min(value, top) / top) * PLOT
   const height = TOP + PLOT + AXIS
-  const ticks = dayTicks(from, to)
+  const ticks = dayTicks(from, to, width - LEFT - RIGHT)
+  const tip = useTip()
 
   return (
     <svg width={width} height={height} role="img" aria-label={`${series.map((one) => one.name).join(' and ')} over time`}>
+      {tip.layer}
       {[0, 0.5, 1].map((fraction) => (
         <g key={fraction}>
           <line x1={LEFT} x2={width - RIGHT} y1={y(top * fraction)} y2={y(top * fraction)} className="grid" />
@@ -147,18 +151,16 @@ function TimePanel({
             />
           ) : null}
           {one.points.map((point) => (
-            <g key={`${point.t}-${point.value}`}>
+            <g key={`${point.t}-${point.value}`} {...tip.bind(point.title)}>
               <Mark x={x(point.t)} y={y(point.value)} shape={one.shape} className={`ch-mk ${one.tone}`} />
-              <title>{point.title}</title>
             </g>
           ))}
           {one.crosses.map((cross) => (
-            <g key={cross.t}>
+            <g key={cross.t} {...tip.bind(cross.title)}>
               <path
                 className="ch-none"
                 d={`M${x(cross.t) - 4},${TOP + PLOT - 4} l8,8 M${x(cross.t) + 4},${TOP + PLOT - 4} l-8,8`}
               />
-              <title>{cross.title}</title>
             </g>
           ))}
         </g>
@@ -259,7 +261,7 @@ function weekSeries(weeks: WeekSummary[]): Series[] {
 /** chart (a): what a point of each meter costs in list-price dollars, over time */
 export function CostPerPercentChart({ history }: { history: ClaudeHistory }) {
   const box = useRef<HTMLDivElement>(null)
-  const width = useWidth(box)
+  const width = useWidth(box, 320)
   // no first sample means no left edge, and an axis drawn from a guess is a lie
   if (history.since === null) return null
   const blocks = blockSeries(history.blocks)
@@ -267,12 +269,6 @@ export function CostPerPercentChart({ history }: { history: ClaudeHistory }) {
 
   return (
     <div ref={box}>
-      <h2 style={{ marginTop: 44 }}>what a meter point costs · list-price dollars per percent</h2>
-      <p className="calc">
-        The two meters are separate panels because a 5-hour point and a weekly point are different sizes; putting
-        them on one scale would say something false.
-        <small>computed, no model</small>
-      </p>
       <div className="ch-sub">5-hour blocks · {blocks.points.length} measured, {blocks.crosses.length} not</div>
       <TimePanel
         width={width}
@@ -296,7 +292,6 @@ export function ChatsShareChart({ weeks }: { weeks: WeekSummary[] }) {
   const top = niceMax(Math.max(...known.map((week) => week.chatsPercent ?? 0), 10))
   return (
     <div>
-      <h2 style={{ marginTop: 44 }}>chats share of the weekly meter</h2>
       {tip.layer}
       <div className="ch-cols">
         {weeks.map((week) => {
@@ -317,10 +312,6 @@ export function ChatsShareChart({ weeks }: { weeks: WeekSummary[] }) {
           )
         })}
       </div>
-      <p className="caveat">
-        From the last <code>seven_day_breakdown</code> before each reset, kept since 14 Sep 2026; an earlier week has
-        no breakdown and is drawn as an empty column, not a zero.
-      </p>
     </div>
   )
 }
@@ -337,7 +328,7 @@ function breakdownTitle(week: WeekSummary): string {
 /** chart: Codex credits per weekly percent, the same question in Codex's currency */
 export function CodexRateChart({ windows, now }: { windows: CodexWindow[]; now: number }) {
   const box = useRef<HTMLDivElement>(null)
-  const width = useWidth(box)
+  const width = useWidth(box, 320)
   if (!windows.length) return null
   const from = Math.min(...windows.map((window) => window.start))
   const points: Point[] = []
@@ -363,7 +354,6 @@ export function CodexRateChart({ windows, now }: { windows: CodexWindow[]; now: 
   const series: Series = { name: 'codex weekly', shape: 'square', tone: 'cx', points, crosses, line: true }
   return (
     <div ref={box}>
-      <h2 style={{ marginTop: 32 }}>what a codex point costs · rate-card credits per percent</h2>
       <TimePanel width={width} from={from} to={now} series={[series]} unit="" />
       <div className="ch-sub">
         {points.length} measured window{points.length === 1 ? '' : 's'}

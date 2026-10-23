@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import {
   errorLine,
   fetchCodexHistory,
@@ -8,15 +8,29 @@ import {
   type CodexHistory,
   type WeekSummary,
 } from '../api'
-import { dayDate, dayKey, hm, money, pct, rate } from '../format'
+import { dayDate, hm, money, pct, rate } from '../format'
 import { blockHref, weekHref } from '../route'
 import { ChatsShareChart, CodexRateChart, CostPerPercentChart } from './charts'
-import { useTip } from './tip'
+import {
+  blockLine,
+  byDay,
+  dayLead,
+  finishedWeeks,
+  inWeek,
+  longDay,
+  planVerdict,
+  pointRange,
+  ranFull,
+  weekLead,
+} from './history-words'
+import { Question, Statement } from './ledger'
+import { modelName } from './words'
 
 /**
- * the history overview: every 5-hour block and every weekly window since the
- * first meter sample, what each of them cost per meter point, and what the whole
- * thing is worth against the sub. click any window to see the page frozen at it.
+ * the history page in the answer page's form: the letter on the left is the
+ * month against the plan with one line per week, the column on the right holds
+ * what a point costs and then every day, this week's days open and older weeks
+ * folded into a sentence per day. every block links to the page frozen at it.
  */
 export function History() {
   const [history, setHistory] = useState<ClaudeHistory | null>(null)
@@ -52,270 +66,406 @@ export function History() {
 
   // a Codex the machine does not have is not an empty section, it is no section
   const codexShown = !codex || codex.installed
+  const since = history.since
 
   return (
-    <>
-      {history.since === null ? (
-        <p className="warn">
-          the meter log has no reading in it yet, so there is no history to draw. the sampler writes one every five
-          minutes and this page starts at its first.
-        </p>
-      ) : (
-        <>
-          <div className="legend">
-            <b>Real:</b> every meter reading and every reset time. <b>Computed from real:</b> the cost of each window
-            and what a point of it cost. <b>Not shown:</b> anything before {dayDate(history.since)}, and any window
-            the sampler did not measure — those are marked, never drawn as a zero.
-          </div>
-          {history.indexing ? (
-            <p className="warn">
-              the transcript index is still building, so every cost on this page may be missing requests.
-            </p>
-          ) : null}
-
-          <SubValue history={history} />
-          <Blocks blocks={history.blocks} weeks={history.weeks} />
-          <Weeks weeks={history.weeks} />
-          <CostPerPercentChart history={history} />
-          <ChatsShareChart weeks={history.weeks} />
-        </>
-      )}
-
-      {codexShown ? (
-        <>
-          <h2 style={{ marginTop: 52 }}>codex</h2>
-          {codexError && !codex ? (
-            <p className="warn">the codex history endpoint is not answering: {codexError}</p>
-          ) : !codex ? (
-            <p className="loading">reading the codex windows…</p>
-          ) : (
-            <CodexSection codex={codex} />
-          )}
-        </>
-      ) : null}
-
-      <p className="caveat">{history.caveat}</p>
-    </>
-  )
-}
-
-/** chart (b): what the sub bought this week and this month, against what it costs */
-function SubValue({ history }: { history: ClaudeHistory }) {
-  const { subValue } = history
-  const share = Math.min(1, subValue.monthCost / Math.max(1, subValue.planUsd))
-  return (
-    <>
-      <h2>what the sub is worth</h2>
-      <p className="calc">
-        {money(subValue.monthCost)} of list-price usage this month (since {dayDate(subValue.monthStart)}), against the{' '}
-        {money(subValue.planUsd)} {subValue.planName} price · {money(subValue.weekCost)} in the week since{' '}
-        {dayDate(subValue.weekStart)} {hm(subValue.weekStart)}
-        <small>computed, no model</small>
-      </p>
-      <div className="meter sub">
-        <i style={{ width: `${share * 100}%` }} />
-      </div>
-      <div className="stripcap">
-        {subValue.monthCost >= subValue.planUsd
-          ? `the bar is full at ${money(subValue.planUsd)}: the month is already ${(
-              subValue.monthCost / subValue.planUsd
-            ).toFixed(1)}× the price`
-          : `${pct(share * 100)} of the ${money(subValue.planUsd)} ${subValue.planName} price the month has to beat`}
-      </div>
-    </>
-  )
-}
-
-/** the opacity rule the lanes use, so a costly window reads brighter here too */
-function brightness(cost: number, max: number): number {
-  return 0.35 + 0.45 * Math.sqrt(Math.min(1, cost / Math.max(0.01, max)))
-}
-
-/** a day row runs midnight to 05:00 the next morning, so a block opened late still fits on its own day */
-const AXIS_HOURS = 29
-
-function hourOfDay(unix: number): number {
-  const date = new Date(unix * 1000)
-  return date.getHours() + date.getMinutes() / 60
-}
-
-/**
- * the block grid. with `weeks` it is cut at the weekly resets, the running week
- * open and every older one folded under a one-line summary, so the page stays one
- * screen tall however long the log gets.
- */
-export function Blocks({ blocks, weeks, title }: { blocks: BlockSummary[]; weeks?: WeekSummary[]; title?: string }) {
-  if (!blocks.length) return <p className="more">no 5-hour blocks in the log yet.</p>
-  const max = Math.max(0.01, ...blocks.map((block) => block.usage.cost))
-  // newest group first; a block belongs to the week whose window holds its start
-  const groups: { key: string; week: WeekSummary | null; rows: BlockSummary[] }[] = []
-  for (const block of [...blocks].reverse()) {
-    const week = weeks?.find((one) => block.start >= one.start && block.start < one.resetsAt) ?? null
-    const key = week ? `w${week.resetsAt}` : 'loose'
-    const last = groups.at(-1)
-    if (last && last.key === key) last.rows.unshift(block)
-    else groups.push({ key, week, rows: [block] })
-  }
-
-  return (
-    <>
-      <h2 style={{ marginTop: 44 }}>{title ?? `every 5-hour block · ${blocks.length} since the first sample`}</h2>
-      {groups.map((group, index) =>
-        group.week === null || index === 0 ? (
-          <DayRows key={group.key} blocks={group.rows} max={max} />
+    <div className="answer">
+      <HistoryLetter history={history} codex={codexShown ? codex : null} />
+      <main className="rows">
+        {since === null ? (
+          <Question
+            id="h-empty"
+            title="Nothing to read yet"
+            lead="The meter log has no reading in it, so there is no history to draw. The sampler writes one every five minutes and this page starts at its first."
+          >
+            {null}
+          </Question>
         ) : (
-          <details className="fold" key={group.key}>
-            <summary>
-              week to {dayDate(group.week.resetsAt)} · {group.rows.length} blocks · {money(group.week.usage.cost)} · ended{' '}
-              {pct(group.week.endPct)}
-            </summary>
-            <DayRows blocks={group.rows} max={max} />
-          </details>
-        ),
-      )}
-      <p className="caveat">
-        Newest day first; a tile sits where its block ran on the clock and is five hours wide. Each tile is where the meter ended and how far it moved inside the block. The bar under it is the same ending
-        percentage, its brightness is what the block cost. A block with no
-        dollars-per-point figure had one sample, no movement, a sampler gap, or a meter already at 100%: the tile says
-        so and the charts draw it as a cross.
-      </p>
-    </>
+          <>
+            <PointCost history={history} />
+            <Days history={history} />
+            <Chats weeks={history.weeks} />
+          </>
+        )}
+        {codexShown ? <CodexWeeks codex={codex} error={codexError} /> : null}
+        <Ground history={history} />
+        <div className="coda">
+          <span className="say">Back to the block that is running.</span>
+          <a className="go" href="#/">
+            today →
+          </a>
+        </div>
+      </main>
+    </div>
   )
 }
 
-function DayRows({ blocks, max }: { blocks: BlockSummary[]; max: number }) {
-  const days: { key: string; at: number; rows: BlockSummary[] }[] = []
-  for (const block of blocks) {
-    const key = dayKey(block.start)
-    const last = days.at(-1)
-    if (last && last.key === key) last.rows.push(block)
-    else days.push({ key, at: block.start, rows: [block] })
-  }
+/** `to Sun 18`: a week line's label, short enough for the letter's first column */
+function weekLabel(week: WeekSummary): string {
+  return week.partial ? 'this week' : `to ${dayDate(week.resetsAt).split(' ').slice(0, 2).join(' ')}`
+}
+
+/** the left panel: the month against the plan, the weeks as verdict lines, Codex last */
+function HistoryLetter({ history, codex }: { history: ClaudeHistory; codex: CodexHistory | null }) {
+  const { subValue } = history
+  const weeks = [...history.weeks].reverse()
+  const current = weeks.find((week) => week.partial) ?? null
+  const verdict = planVerdict(subValue)
+  const full = history.blocks.filter(ranFull).length
+  const codexMonth = codex ? (codex.subValue.monthCostUsd ?? codex.subValue.pricedMonthCostUsd) : null
 
   return (
-    <>
-      <div className="hday haxis" aria-hidden="true">
-        <div />
-        <div className="htrack">
-          {[0, 6, 12, 18, 24].map((hour) => (
-            <span key={hour} style={{ left: `${(hour / AXIS_HOURS) * 100}%` }}>
-              {hour === 24 ? 'midnight' : `${String(hour).padStart(2, '0')}:00`}
-            </span>
-          ))}
-        </div>
+    <aside className="letter">
+      <div className="dateline">
+        {history.since === null ? 'no meter reading yet' : `since ${longDay(history.since)}, the first meter reading`}
       </div>
-      {[...days].reverse().map((day) => (
-        <div className="hday" key={day.key}>
-          <div className="hd">{dayDate(day.at)}</div>
-          <div className="htrack">
-            {day.rows.map((block) => (
-              <a
-                className={`tile at${block.measured ? '' : ' un'}`}
-                key={block.resetKey}
-                href={blockHref(block.resetKey)}
-                style={{ left: `${(hourOfDay(block.start) / AXIS_HOURS) * 100}%` }}
-              >
-                <b>
-                  {pct(block.endPct)}
-                  {block.measured && block.delta !== null ? <small className="tdel">+{Math.round(block.delta)}</small> : null}
-                </b>
-                <span className="tmeta">
-                  <em>
-                    {hm(block.start)}–{hm(block.resetKey)}
-                  </em>
-                  <span>
-                    {money(block.usage.cost)} · {block.usage.sessions} session{block.usage.sessions === 1 ? '' : 's'}
-                    {' · '}
-                    {block.measured && block.dollarsPerPercent !== null ? (
-                      `${rate(block.dollarsPerPercent)}/pt`
-                    ) : (
-                      <i className="nd">not measured</i>
-                    )}
-                  </span>
-                </span>
-                <u className="tfill">
-                  <i style={{ width: `${Math.min(100, block.endPct)}%`, opacity: brightness(block.usage.cost, max) }} />
-                </u>
-              </a>
-            ))}
+      {history.indexing ? (
+        <p className="stale">The transcript index is still building, so every cost on this page may be missing requests.</p>
+      ) : null}
+      <div className="big">
+        {(subValue.monthCost / Math.max(1, subValue.planUsd)).toFixed(1)}
+        <small>×</small>
+      </div>
+      <div className="big-sub">
+        the {money(subValue.planUsd)} {subValue.planName} plan, in list-price use this month:{' '}
+        <b>{money(subValue.monthCost)}</b> since {dayDate(subValue.monthStart)}
+      </div>
+      <p className="verdict">
+        <span className={verdict.tone}>{verdict.head}</span>{' '}
+        <span className="rest">
+          {verdict.rest}
+          {current ? `${verdict.rest ? ' ' : ''}This week is at ${pct(current.endPct)} on ${money(current.usage.cost)}.` : ''}
+        </span>
+      </p>
+      <p className="body">
+        {finishedWeeks(history.weeks)}{' '}
+        {history.blocks.length ? `${full} of ${history.blocks.length} blocks ran into 100%.` : ''}
+      </p>
+      <div className="meters">
+        {weeks.map((week) => (
+          <a className="mline" key={week.resetsAt} href={weekHref(week.resetsAt)}>
+            <span className="mn">{weekLabel(week)}</span>
+            <span className="mp">{pct(week.endPct)}</span>
+            <span className="mv">
+              {week.fable.endPct === null
+                ? 'Fable not read'
+                : `${week.fable.model ? modelName(week.fable.model) : 'Fable'} ${pct(week.fable.endPct)}`}{' '}
+              · {money(week.usage.cost)}
+              <span className="sub">
+                {week.dollarsPerPercent === null ? (
+                  'price per point not measured'
+                ) : (
+                  <>
+                    <span className="cmp">{rate(week.dollarsPerPercent)}</span> a weekly point
+                  </>
+                )}
+                {' · '}
+                {week.chatsPercent === null ? 'Chats not measured' : `Chats ${pct(week.chatsPercent)}`}
+              </span>
+            </span>
+          </a>
+        ))}
+        {codex && codexMonth !== null ? (
+          <div className="mline">
+            <span className="mn">Codex</span>
+            <span className="mp">{money(codexMonth)}</span>
+            <span className="mv">
+              OpenAI list price this month vs {money(codex.subValue.planUsd)}
+              <span className="sub">
+                {codex.subValue.unknownModels.length
+                  ? `a floor: ${codex.subValue.unknownModels.join(', ')} has no price row`
+                  : codex.subValue.planName}
+              </span>
+            </span>
           </div>
-        </div>
+        ) : null}
+      </div>
+      <div className="signoff">
+        <div className="sig">— tally</div>
+        {history.since === null ? '' : `Nothing before ${dayDate(history.since)} is shown. `}A window the sampler did not
+        measure says so; it is never drawn as a zero. Plain figures are read off a meter;{' '}
+        <span className="cmp">underlined</span> ones are computed.
+      </div>
+    </aside>
+  )
+}
+
+function PointCost({ history }: { history: ClaudeHistory }) {
+  const range = pointRange(history.blocks)
+  const weeks = history.weeks.filter((week) => week.dollarsPerPercent !== null)
+  const [last, before] = [...weeks].reverse()
+  return (
+    <Question
+      id="h-cost"
+      title="What a point costs"
+      lead={
+        <>
+          {range ? (
+            <>
+              A 5-hour point has cost between <b>{rate(range.min)}</b> and <b>{rate(range.max)}</b> of list price,{' '}
+              <span className="cmp">{rate(range.middle)}</span> in the middle, over {range.count} measured blocks.
+            </>
+          ) : (
+            'No 5-hour block has been measured yet, so a point has no price.'
+          )}{' '}
+          {last ? (
+            <>
+              A weekly point cost <span className="cmp">{rate(last.dollarsPerPercent!)}</span> in the week to{' '}
+              {dayDate(last.resetsAt)}
+              {before ? <>, against {rate(before.dollarsPerPercent!)} the week before</> : null}.
+            </>
+          ) : null}
+        </>
+      }
+      aside={
+        <p className="aside">
+          A 5-hour point and a weekly point are different sizes, so they get separate panels. Crosses are windows with
+          no measured price, never zeros.
+        </p>
+      }
+    >
+      <CostPerPercentChart history={history} />
+    </Question>
+  )
+}
+
+/** one block as a small letter: where the meter ended, how far it moved, one sentence; opens the frozen page */
+function BlockLetter({ block }: { block: BlockSummary }) {
+  const line = blockLine(block)
+  const time = `${hm(block.start)}–${hm(block.resetKey)}`
+  if (line.idle) {
+    return (
+      <a className="blk idle" href={blockHref(block.resetKey)}>
+        <span className="bn">{pct(block.endPct)}</span>
+        <span className="bt">{time}</span>
+        <span className="bs">{line.text}</span>
+      </a>
+    )
+  }
+  return (
+    <a className={block.ended ? 'blk' : 'blk cur'} href={blockHref(block.resetKey)}>
+      <span className={ranFull(block) ? 'bn bad' : 'bn'}>
+        {pct(block.endPct)}
+        {block.delta !== null ? <small>+{Math.round(block.delta)}</small> : null}
+      </span>
+      <span className="bt">
+        {time}
+        {block.ended ? '' : ' · running now'}
+      </span>
+      <span className="bs">
+        {line.text}
+        {line.perPoint !== null ? (
+          <>
+            ; <span className="cmp">{rate(line.perPoint)}</span> a point.
+          </>
+        ) : null}
+      </span>
+    </a>
+  )
+}
+
+/** a day's blocks side by side, oldest first */
+export function BlockLetters({ blocks }: { blocks: BlockSummary[] }) {
+  return (
+    <div className="blocks">
+      {blocks.map((block) => (
+        <BlockLetter key={block.resetKey} block={block} />
+      ))}
+    </div>
+  )
+}
+
+/** day statements for a run of blocks, newest day first; each opens into its block letters */
+export function DayStatements({ blocks }: { blocks: BlockSummary[] }) {
+  return (
+    <>
+      {byDay(blocks).map((day) => (
+        <Statement
+          key={day.key}
+          line={
+            <>
+              <b>{longDay(day.at)}</b> <span className="st-sub">{dayLead(day.blocks)}</span>
+            </>
+          }
+        >
+          <BlockLetters blocks={day.blocks} />
+        </Statement>
       ))}
     </>
   )
 }
 
-function Weeks({ weeks }: { weeks: WeekSummary[] }) {
-  const tip = useTip()
-  if (!weeks.length) return null
-  const max = Math.max(0.01, ...weeks.map((week) => week.usage.cost))
-  return (
-    <>
-      <h2 style={{ marginTop: 44 }}>every weekly window</h2>
-      {tip.layer}
-      <div className="htiles">
-        {weeks.map((week) => (
-          <a
-            className="tile wide"
-            key={week.resetsAt}
-            href={weekHref(week.resetsAt)}
-            {...tip.bind(`${dayDate(week.start)} to ${dayDate(week.end)} · ${money(week.usage.cost)} over ${
-              week.usage.requests
-            } requests${week.fable.model ? ` · ${week.fable.model} ${week.fable.endPct === null ? 'not read' : pct(week.fable.endPct)}` : ''}`)}
-          >
-            <em>
-              {dayDate(week.resetsAt)} {hm(week.resetsAt)}
-              {week.partial ? ' · so far' : ''}
-            </em>
-            <b>{pct(week.endPct)}</b>
-            <span>
-              {week.chatsPercent === null ? <i className="nd">chats not measured</i> : `${pct(week.chatsPercent)} chats`}
-              {' · '}
-              {money(week.usage.cost)}
-            </span>
-            <span>
-              {week.dollarsPerPercent === null ? (
-                <i className="nd">no dollars per point</i>
-              ) : (
-                `${rate(week.dollarsPerPercent)}/pt`
-              )}
-              {week.fable.delta === null ? '' : ` · Fable ${Math.round(week.fable.delta)} pts`}
-            </span>
-            <u className="tfill">
-              <i style={{ width: `${Math.min(100, week.endPct)}%`, opacity: brightness(week.usage.cost, max) }} />
-            </u>
+/**
+ * this week's days as questions of their own, newest first; every older week as
+ * one question with a statement per day. blocks before the first weekly window
+ * close the list.
+ */
+function Days({ history }: { history: ClaudeHistory }) {
+  const weeks = [...history.weeks].reverse()
+  const [current, ...older] = weeks[0]?.partial ? weeks : [null, ...weeks]
+  const sections: ReactNode[] = []
+  if (current) {
+    for (const day of byDay(inWeek(history.blocks, current))) {
+      sections.push(
+        <Question key={day.key} id={`d-${day.key}`} title={longDay(day.at)} lead={dayLead(day.blocks)}>
+          <BlockLetters blocks={day.blocks} />
+        </Question>,
+      )
+    }
+  }
+  for (const week of older) {
+    if (!week) continue
+    const blocks = inWeek(history.blocks, week)
+    sections.push(
+      <Question
+        key={week.resetsAt}
+        id={`w-${week.resetsAt}`}
+        title={`the week to ${longDay(week.resetsAt)}`}
+        lead={weekLead(week, blocks)}
+        aside={
+          <a className="go-link" href={weekHref(week.resetsAt)}>
+            the page as the week closed →
           </a>
-        ))}
-      </div>
-    </>
+        }
+      >
+        {blocks.length ? <DayStatements blocks={blocks} /> : <p className="mute">No block in the log for this week.</p>}
+      </Question>,
+    )
+  }
+  const first = history.weeks[0]
+  const loose = first ? history.blocks.filter((block) => block.start < first.start) : []
+  if (loose.length) {
+    sections.push(
+      <Question key="loose" id="d-loose" title="before the first weekly window" lead={dayLead(loose)}>
+        <DayStatements blocks={loose} />
+      </Question>,
+    )
+  }
+  if (!sections.length) {
+    sections.push(
+      <Question key="none" id="d-none" title="No blocks yet" lead="The log has no 5-hour block in it yet.">
+        {null}
+      </Question>,
+    )
+  }
+  return <>{sections}</>
+}
+
+function Chats({ weeks }: { weeks: WeekSummary[] }) {
+  if (!weeks.length) return null
+  const known = weeks.filter((week) => week.chatsPercent !== null)
+  const latest = known.at(-1)
+  return (
+    <Question
+      id="h-chats"
+      title="How much of the week was Chats"
+      lead={
+        latest ? (
+          <>
+            Chats leave no transcript here, so their share is taken off the weekly meter before a point is priced. The
+            week to {dayDate(latest.resetsAt)} was <b>{pct(latest.chatsPercent!)}</b> Chats.
+          </>
+        ) : (
+          'Chats leave no transcript here, and no week has a breakdown yet, so none of them has a Chats share.'
+        )
+      }
+      aside={
+        <p className="aside">
+          From the last <code>seven_day_breakdown</code> before each reset, kept since 14 Sep 2026; an earlier week has
+          no breakdown and is drawn as an empty column, not a zero.
+        </p>
+      }
+    >
+      <ChatsShareChart weeks={weeks} />
+    </Question>
   )
 }
 
-function CodexSection({ codex }: { codex: CodexHistory }) {
+function CodexWeeks({ codex, error }: { codex: CodexHistory | null; error: string | null }) {
+  if (!codex) {
+    return (
+      <Question id="h-codex" title="What a Codex point costs" lead={error ? `The codex history endpoint is not answering: ${error}` : 'Reading the codex windows…'}>
+        {null}
+      </Question>
+    )
+  }
   const { subValue } = codex
   const unknown = subValue.unknownModels
+  const measured = codex.windows.filter((window) => window.creditsPerPercent !== null)
+  const last = measured.at(-1)
   return (
-    <>
-      <p className="calc">
-        {/* the priced subtotal is a real number even when a model is missing a price
-            row, so it is drawn with the gap named beside it, never withheld */}
-        {money(subValue.monthCostUsd ?? subValue.pricedMonthCostUsd)} of api list price this month (since{' '}
-        {dayDate(subValue.monthStart)}), against the {money(subValue.planUsd)} {subValue.planName} tier
-        {subValue.monthCostUsd === null ? ` · plus calls of ${unknown.join(', ')}, which have no price row` : ''}
-        <small>computed, no model</small>
-      </p>
+    <Question
+      id="h-codex"
+      title="What a Codex point costs"
+      lead={
+        <>
+          {/* the priced subtotal is a real number even when a model is missing a price
+              row, so it is drawn with the gap named beside it, never withheld */}
+          <b>{money(subValue.monthCostUsd ?? subValue.pricedMonthCostUsd)}</b> of API list price this month, against
+          the {money(subValue.planUsd)} {subValue.planName} tier
+          {subValue.monthCostUsd === null ? `, plus calls of ${unknown.join(', ')}, which have no price row` : ''}.
+          {last ? (
+            <>
+              {' '}
+              The week to {dayDate(last.resetsAt)} ran a point at{' '}
+              <span className="cmp">{Math.round(last.creditsPerPercent!).toLocaleString('en-US')}</span> credits.
+            </>
+          ) : null}
+        </>
+      }
+      aside={
+        <p className="aside">
+          Credits come from OpenAI's Codex rate card and the meter readings kept since 15 Sep 2026; prices from{' '}
+          {codex.prices.source}, read {codex.prices.readAt}. Fast-mode prices are applied per call; calls without a
+          recorded speed use standard-rate estimates.
+        </p>
+      }
+    >
       {unknown.length ? (
         <p className="warn">
-          {unknown.length === 1 ? 'a model is' : `${unknown.length} models are`} not on the price table, so the figure
-          above is short by whatever {unknown.length === 1 ? 'it' : 'they'} cost: <code>{unknown.join(', ')}</code>
+          {unknown.length === 1 ? 'A model is' : `${unknown.length} models are`} not on the price table, so the month is
+          short by whatever {unknown.length === 1 ? 'it' : 'they'} cost: <code>{unknown.join(', ')}</code>
         </p>
       ) : null}
       <CodexRateChart windows={codex.windows} now={codex.now} />
-      <p className="caveat">
-        Credits come from OpenAI's Codex rate card and the meter readings kept since 15 Sep 2026; prices from{' '}
-        {codex.prices.source}, read {codex.prices.readAt}.
-        {' '}Fast-mode prices are applied per call. Calls without a recorded speed use standard-rate estimates.
-      </p>
-    </>
+    </Question>
+  )
+}
+
+/** what the history stands on, in the answer page's closing form */
+function Ground({ history }: { history: ClaudeHistory }) {
+  return (
+    <Question
+      id="q-ground"
+      title="What this stands on"
+      lead="Every figure here is either read off a meter or worked out from one. Here is which, and what the page leaves out."
+    >
+      <Statement line={<><b>Measured:</b> every meter reading and every reset time</>}>
+        <dl className="kv">
+          <dt>meters</dt>
+          <dd>{history.sources.limits}</dd>
+          <dt>breakdown</dt>
+          <dd>{history.sources.usageRaw}</dd>
+          <dt>index</dt>
+          <dd>{history.sources.index}</dd>
+        </dl>
+      </Statement>
+      <Statement line={<><b>Computed:</b> each window's list-price cost and what a point of it cost</>}>
+        <p>{history.caveat}</p>
+      </Statement>
+      <Statement
+        line={
+          <>
+            <b>Not shown:</b> anything before {history.since === null ? 'the first reading' : dayDate(history.since)}, and
+            any window the sampler did not measure
+          </>
+        }
+      >
+        <p>
+          A block with no price per point had one reading, no movement, a sampler gap over 20 minutes, or a meter already
+          at 100%. Its line says which, and the charts draw it as a cross on the axis.
+        </p>
+      </Statement>
+    </Question>
   )
 }
