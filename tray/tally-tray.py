@@ -108,7 +108,7 @@ def parse_config(raw: object) -> dict:
     pure, so the menu shape is testable without a config file on disk. every key
     is optional and a malformed value falls back to its default instead of
     raising: a hand-edited config must never stop the tray from coming up. keys
-    the server owns (plan, agentsviewUrl, takeaway) are ignored here.
+    the server owns (plan, agentsviewUrl) are ignored here.
     """
     cfg = default_config()
     if not isinstance(raw, dict):

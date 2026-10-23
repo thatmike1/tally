@@ -6,7 +6,7 @@ actually costs you.
 
 Ubuntu (or Windows, see [Windows](#windows)), a Claude subscription, Node 22+
 and Python 3. Everything else is
-optional and detected: Codex, AgentsView, T3 Code, `agy`, and whatever local
+optional and detected: Codex, AgentsView, T3 Code, and whatever local
 pages you want in the tray.
 
 ## Install
@@ -43,7 +43,6 @@ back, so you can delete the file and tally still runs.
 | `plan` | `{"name": "Max 5x", "usdPerMonth": 100}` | what "the sub is worth" compares your list-price usage against |
 | `codexPlan` | `{"name": "ChatGPT Pro", "usdPerMonth": 100}` | the same for the Codex history tab |
 | `agentsviewUrl` | `null` | base url of a local AgentsView. `null` means no transcript links are drawn at all, rather than dead ones |
-| `takeaway` | `null` | `{"command": "agy", "model": "..."}`. Off unless the command is on PATH |
 | `tray.links` | `[]` | rows that open a local page, starting the row's unit if the port is closed |
 | `tray.toggles` | `[]` | rows that start *and stop* a unit, for a service that costs something while it runs |
 | `python` | `null` | the python 3 that runs the sampler where the server runs it itself (Windows): a command or full path, no arguments. `null` tries `python`, then `py -3` |
@@ -78,8 +77,8 @@ Install pnpm with the [standalone installer](https://pnpm.io/installation).
 The service serves the built `ui/dist`, so after ui changes run `pnpm run build`
 and `systemctl --user restart tally`.
 
-Flags: `--port <n>` (wins over the config), `--no-open`, `--no-widget`,
-`--no-takeaway`. `bin/tally.mjs` is a launcher that works from any directory, so
+Flags: `--port <n>` (wins over the config), `--no-open`, `--no-widget`.
+`bin/tally.mjs` is a launcher that works from any directory, so
 `ln -s "$PWD/bin/tally.mjs" ~/.local/bin/tally` is enough to run it anywhere.
 
 `tray/tally-tray.py --print` dumps the tray label and rows without a tray, which

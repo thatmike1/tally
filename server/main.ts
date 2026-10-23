@@ -9,7 +9,6 @@ import { startCodexUsageReader } from './codex-usage'
 import { defaultConfig, tallyConfig } from './config'
 import { bootedBySystemd, inProcessSampler, systemdSampler } from './sampler'
 import { buildState } from './state'
-import { takeawayFromConfig } from './takeaway'
 import { TranscriptIndex, type RefreshCounts } from './transcript-index'
 import { removeWidget, writeWidget } from './widget'
 
@@ -17,10 +16,9 @@ export interface Options {
   port: number
   open: boolean
   widget: boolean
-  takeaway: boolean
 }
 
-/** parses `tally [--port <n>] [--no-open] [--no-widget] [--no-takeaway]`; the flag wins over the config's port */
+/** parses `tally [--port <n>] [--no-open] [--no-widget]`; the flag wins over the config's port */
 export function parseOptions(argv: string[], defaultPort: number = defaultConfig().port): Options {
   const { values } = parseArgs({
     args: argv,
@@ -28,7 +26,6 @@ export function parseOptions(argv: string[], defaultPort: number = defaultConfig
       port: { type: 'string' },
       'no-open': { type: 'boolean' },
       'no-widget': { type: 'boolean' },
-      'no-takeaway': { type: 'boolean' },
     },
     allowPositionals: false,
   })
@@ -40,7 +37,6 @@ export function parseOptions(argv: string[], defaultPort: number = defaultConfig
     port,
     open: !values['no-open'],
     widget: !values['no-widget'],
-    takeaway: !values['no-takeaway'],
   }
 }
 
@@ -77,9 +73,8 @@ function main(): void {
   }
 
   const uiDist = resolve(dirname(fileURLToPath(import.meta.url)), '../ui/dist')
-  const takeaway = options.takeaway ? takeawayFromConfig(config.takeaway) : null
   const index = new TranscriptIndex()
-  const app = createApp({ uiDist, index, takeaway, config })
+  const app = createApp({ uiDist, index, config })
 
   // the first build reads the whole tree, so it runs in the background and the
   // page says it is building; every window falls back to a live scan until the
@@ -122,8 +117,7 @@ function main(): void {
   const sampler = bootedBySystemd() ? systemdSampler() : inProcessSampler(config.python)
   let kickedFor: number | null = null
 
-  // one state build a minute feeds the widget file and the reset kick. the
-  // browser requests the Gemini takeaway only while Tally is visible and focused
+  // one state build a minute feeds the widget file and the reset kick
   const tick = async () => {
     try {
       const state = await buildState({ index, recordLook: false, config })
