@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { errorLine, fetchSession, type AgentLane, type RequestPoint, type SessionDetail } from '../api'
 import { dayDate, dayKey, duration, hm, money, projectName, tokens } from '../format'
 import { useWidth } from './charts'
+import { useTip } from './tip'
 
 /** requests further apart than this are two stretches of work, not one long one */
 const GAP = 5 * 60
@@ -158,6 +159,7 @@ function laneName(lane: AgentLane, index: number): string {
 function Rows({ lanes, amount }: { lanes: AgentLane[]; amount: (value: number) => string }) {
   const box = useRef<HTMLDivElement>(null)
   const width = useWidth(box, 480)
+  const tip = useTip()
   const withRequests = lanes.filter((lane) => lane.requests.length > 0)
   const times = withRequests.flatMap((lane) => lane.requests.map((request) => request.t))
   if (!times.length) return <p className="more">no priced requests in this session's transcripts.</p>
@@ -178,6 +180,7 @@ function Rows({ lanes, amount }: { lanes: AgentLane[]; amount: (value: number) =
     <div ref={box}>
       <h2>this session on the clock</h2>
       <svg width={width} height={height} role="img" aria-label="every request of this session on a time axis">
+        {tip.layer}
         {ticks.map((t) => (
           <g key={t}>
             <line x1={x(t)} x2={x(t)} y1={TOP - 6} y2={TOP + lanes.length * ROW} className="grid" />
@@ -197,9 +200,8 @@ function Rows({ lanes, amount }: { lanes: AgentLane[]; amount: (value: number) =
           return (
             <g key={lane.file}>
               <line x1={LABELS} x2={width - RIGHT} y1={top + BAND / 2} y2={top + BAND / 2} className="sd-base" />
-              <text x={LABELS - 12} y={mid + 4} className="sd-row" textAnchor="end">
+              <text x={LABELS - 12} y={mid + 4} className="sd-row" textAnchor="end" {...tip.bind(lane.file)}>
                 {name}
-                <title>{lane.file}</title>
               </text>
               {lane.requests.map((request) => {
                 const weight = Math.sqrt(Math.min(1, request.cost / maxCost))
@@ -214,13 +216,12 @@ function Rows({ lanes, amount }: { lanes: AgentLane[]; amount: (value: number) =
                     height={size}
                     rx={1.5}
                     opacity={0.35 + 0.55 * weight}
-                  >
-                    <title>
-                      {`${hm(request.t)} · ${request.model} · ${amount(request.cost)}${
+                    {...tip.bind(
+                      `${hm(request.t)} · ${request.model} · ${amount(request.cost)}${
                         request.priced ? '' : ' (no price row)'
-                      } · ${tokens(totalOf(request))} tokens`}
-                    </title>
-                  </rect>
+                      } · ${tokens(totalOf(request))} tokens`,
+                    )}
+                  />
                 )
               })}
               <FamilyLabels requests={lane.requests} x={x} y={top - 3} />
