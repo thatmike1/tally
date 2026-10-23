@@ -113,17 +113,6 @@ h2 {
   color: var(--fg);
 }
 
-.legend {
-  color: var(--faint);
-  font-size: 13px;
-  margin-bottom: 28px;
-}
-
-.legend b {
-  color: var(--fg);
-  font-weight: 500;
-}
-
 .warn {
   color: var(--accent);
   font-size: 13px;
@@ -132,35 +121,6 @@ h2 {
 
 
 /* shared small pieces: history and the session drawer use these */
-.meter {
-  height: 6px;
-  background: var(--track);
-  border-radius: 3px;
-  margin: 0 0 40px;
-  position: relative;
-}
-
-.meter i {
-  display: block;
-  height: 100%;
-  background: var(--accent);
-  border-radius: 3px;
-}
-
-.meter u {
-  position: absolute;
-  top: 0;
-  height: 100%;
-  background: repeating-linear-gradient(90deg, var(--accent) 0 4px, transparent 4px 8px);
-  opacity: 0.5;
-}
-
-.stripcap {
-  color: var(--faint);
-  font-size: 13px;
-  margin-bottom: 18px;
-}
-
 .nd {
   color: var(--dim);
   font-size: 14px;
@@ -175,17 +135,6 @@ h2 {
   margin: 14px 0 0;
   color: var(--faint);
   font-size: 13px;
-}
-
-.calc {
-  margin: 0 0 12px;
-  color: var(--soft);
-}
-
-.calc small {
-  color: var(--faint);
-  font-size: 12px;
-  margin-left: 8px;
 }
 
 svg {
@@ -234,106 +183,6 @@ svg {
 
 .nav .here {
   color: var(--faint);
-}
-
-/* history: the block and week strips */
-.hday {
-  display: grid;
-  grid-template-columns: 96px 1fr;
-  align-items: start;
-  border-top: 1px solid var(--line-soft);
-  padding: 8px 0;
-}
-
-.hd {
-  font-size: 12px;
-  color: var(--muted);
-  padding-top: 14px;
-}
-
-.htiles {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.tile {
-  position: relative;
-  display: block;
-  width: 104px;
-  padding: 7px 9px 12px;
-  border: 1px solid var(--line);
-  border-radius: 5px;
-  color: inherit;
-  text-decoration: none;
-}
-
-.tile:hover {
-  border-color: var(--dim);
-}
-
-/* a block with no dollars-per-point figure is drawn as unfinished, never as a zero */
-.tile.un {
-  border-style: dashed;
-}
-
-.tile.wide {
-  width: 210px;
-}
-
-.tile em {
-  display: block;
-  font-style: normal;
-  font-size: 11px;
-  color: var(--faint);
-}
-
-.tile b {
-  display: block;
-  font-size: 21px;
-  font-weight: 600;
-  line-height: 1.25;
-  font-variant-numeric: tabular-nums;
-}
-
-.tile span {
-  display: block;
-  font-size: 11px;
-  color: var(--muted);
-}
-
-/* how far the meter moved inside the window, beside the percentage it ended on
-   so the tile keeps its three-line height */
-.tile .tdel {
-  margin-left: 4px;
-  font-size: 11px;
-  font-weight: 400;
-  color: var(--faint);
-  white-space: nowrap;
-}
-
-.tile .nd {
-  font-style: normal;
-  font-size: 11px;
-}
-
-.tfill {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  height: 4px;
-  display: block;
-  background: var(--track);
-  border-radius: 0 0 4px 4px;
-  overflow: hidden;
-  text-decoration: none;
-}
-
-.tfill i {
-  display: block;
-  height: 100%;
-  background: var(--lane);
 }
 
 /* history charts */
@@ -455,17 +304,6 @@ svg {
   color: var(--faint);
 }
 
-/* the sub-value bar: one month against one price */
-.meter.sub {
-  height: 10px;
-  max-width: 520px;
-  margin-bottom: 8px;
-}
-
-.meter.sub i {
-  opacity: 0.85;
-}
-
 /* the drill-in banner */
 .frozen {
   border: 1px solid var(--line);
@@ -584,59 +422,6 @@ svg {
   letter-spacing: 0.04em;
 }
 
-/* history grid: one row per day, tiles placed on the clock */
-.htrack {
-  position: relative;
-  height: 58px;
-  background-image: repeating-linear-gradient(
-    to right,
-    var(--line-soft) 0 1px,
-    transparent 1px calc(100% * 6 / 29)
-  );
-}
-
-.haxis {
-  border-top: 0;
-  padding: 0;
-}
-
-.haxis .htrack {
-  height: 18px;
-  background: none;
-}
-
-.haxis span {
-  position: absolute;
-  font-size: 11px;
-  color: var(--faint);
-  padding-left: 4px;
-}
-
-.tile.at {
-  position: absolute;
-  top: 2px;
-  width: calc(100% * 5 / 29 - 6px);
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  background: var(--bg);
-  overflow: hidden;
-  white-space: nowrap;
-}
-
-.tile.at b {
-  flex: none;
-}
-
-.tile.at .tmeta {
-  min-width: 0;
-}
-
-.tile.at .tmeta span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
 /* the frozen bar stays on screen: the page under it looks exactly like today */
 .frozen {
   position: sticky;
@@ -709,28 +494,6 @@ body.drawer-open {
   padding: 3px 9px;
   cursor: pointer;
 }
-
-/* a folded section: older weeks in history, the week-wide parts of a frozen block */
-.fold {
-  border-top: 1px solid var(--line-soft);
-  padding: 10px 0;
-  margin-top: 8px;
-}
-
-.fold summary {
-  cursor: pointer;
-  font-size: 13px;
-  color: var(--muted);
-}
-
-.fold summary:hover {
-  color: var(--fg);
-}
-
-.fold[open] summary {
-  margin-bottom: 14px;
-}
-
 
 /* ================= the answer page: the letter on the left, the questions on the right ================= */
 
@@ -1052,6 +815,100 @@ button.link:hover {
 .q-body {
   min-width: 0;
   padding-top: 4px;
+}
+
+/* history: a week line in the letter opens the page frozen at that week */
+a.mline {
+  text-decoration: none;
+}
+
+a.mline:hover .mp {
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+
+/* history: a day's blocks as small letters, each one opening its frozen page */
+.blocks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 22px 40px;
+}
+
+.answer a.blk {
+  display: block;
+  width: 240px;
+  text-decoration: none;
+}
+
+.blk .bn {
+  display: block;
+  font-family: 'Plus Jakarta Sans', Figtree, sans-serif;
+  font-weight: 700;
+  font-size: 40px;
+  line-height: 1;
+  letter-spacing: -0.04em;
+}
+
+.blk .bn small {
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0;
+  color: var(--faint);
+  margin-left: 6px;
+}
+
+.blk .bt {
+  display: block;
+  font-size: 13.5px;
+  color: var(--faint);
+  margin-top: 6px;
+}
+
+.blk .bs {
+  display: block;
+  font-size: 14.5px;
+  line-height: 1.5;
+  color: var(--soft);
+  margin-top: 3px;
+}
+
+.answer a.blk:hover .bt {
+  color: var(--fg);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.answer a.blk.idle {
+  width: 140px;
+}
+
+.blk.idle .bn {
+  color: var(--faint);
+  font-size: 28px;
+}
+
+.blk.cur .bt {
+  color: var(--ok);
+}
+
+.st-sub {
+  color: var(--soft);
+  margin-left: 6px;
+}
+
+.st-more .blocks {
+  padding-top: 6px;
+}
+
+/* the frozen week's blocks, under its bar */
+.fz-blocks {
+  margin-top: 18px;
+}
+
+.fz-blocks-head {
+  font-size: 13.5px;
+  color: var(--faint);
+  margin-bottom: 6px;
 }
 
 /* the block's token mix */
