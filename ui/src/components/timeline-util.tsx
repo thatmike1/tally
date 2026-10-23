@@ -1,6 +1,7 @@
 // pure time and shape helpers for the timeline tab: Prague day bounds, the
-// three zoom periods, axis ticks, and how much of a lane falls in a range.
-// nothing here touches the dom, so it is tested without a browser.
+// three preset periods, the free view's zoom and pan, what a span on screen
+// draws (ticks, snap step, lane resolution, detail), and how much of a lane
+// falls in a range. nothing here touches the dom, so it is tested without a browser.
 import { TZ } from '../format'
 
 export const MIN = 60
@@ -120,13 +121,13 @@ export function shortDay(t: number): string {
   return tickDay.format(new Date(t * 1000))
 }
 
-const TICK_STEPS = [15 * MIN, 30 * MIN, HOUR, 2 * HOUR, 3 * HOUR, 6 * HOUR, 12 * HOUR, DAY, 2 * DAY, 7 * DAY]
+const TICK_STEPS = [5 * MIN, 10 * MIN, 15 * MIN, 30 * MIN, HOUR, 2 * HOUR, 3 * HOUR, 6 * HOUR, 12 * HOUR, DAY, 2 * DAY, 7 * DAY, 14 * DAY]
 
 /** axis ticks at least `minGap` pixels apart, on local clock marks */
 export function ticks(view: Span, width: number, minGap = 90): Tick[] {
   const span = view.to - view.from
   if (span <= 0 || width <= 0) return []
-  const step = TICK_STEPS.find((s) => width / (span / s) >= minGap) ?? 7 * DAY
+  const step = TICK_STEPS.find((s) => width / (span / s) >= minGap) ?? TICK_STEPS.at(-1)!
   const out: Tick[] = []
   if (step >= DAY) {
     for (let t = dayStart(view.from); t <= view.to; t = dayAfter(t, step / DAY)) {
@@ -187,9 +188,12 @@ export function snap(t: number, step: number): number {
   return Math.round(t / step) * step
 }
 
-/** the snapping step for a drag at this zoom */
-export function snapStep(zoom: Zoom): number {
-  return zoom === 'day' ? 5 * MIN : zoom === 'week' ? 30 * MIN : HOUR
+const SNAP_STEPS = [MIN, 5 * MIN, 15 * MIN, 30 * MIN, HOUR]
+
+/** the snapping step for a drag: the smallest round step at least two pixels wide, an hour at most */
+export function snapStep(view: Span, width: number): number {
+  const perPixel = (view.to - view.from) / Math.max(1, width)
+  return SNAP_STEPS.find((step) => step >= 2 * perPixel) ?? HOUR
 }
 
 /** `~4`, `<1`, `~12`: an approximate point figure, never shown as exact */
@@ -204,4 +208,70 @@ export function share(value: number): string {
   if (value <= 0) return '0%'
   if (value < 0.005) return '<1%'
   return `${Math.round(value * 100)}%`
+}
+
+/** the narrowest view the wheel zooms to */
+export const MIN_SPAN = HOUR
+
+/**
+ * what the plots draw at this density, by how wide one 5-hour block is on
+ * screen: `fine` has room for block bands, tile text and lane labels, `mid`
+ * draws a block as a bar of where it ended, `coarse` thins the lines.
+ */
+export type Detail = 'fine' | 'mid' | 'coarse'
+
+export function detailFor(view: Span, width: number): Detail {
+  const blockPixels = (5 * HOUR * width) / Math.max(1, view.to - view.from)
+  return blockPixels >= 60 ? 'fine' : blockPixels >= 12 ? 'mid' : 'coarse'
+}
+
+/** the lanes' merge gap and meter step: half a pixel of time, rounded up to 5 minutes doubled until it fits */
+export function laneResolution(view: Span, width: number): number {
+  const halfPixel = (view.to - view.from) / Math.max(1, width) / 2
+  let resolution = 5 * MIN
+  while (resolution < halfPixel) resolution *= 2
+  return resolution
+}
+
+/** `view` moved inside `bounds`, and shrunk to them when it is wider */
+export function clampView(view: Span, bounds: Span): Span {
+  const span = Math.min(view.to - view.from, bounds.to - bounds.from)
+  const from = clamp(view.from, bounds.from, bounds.to - span)
+  return { from, to: from + span }
+}
+
+/**
+ * the view zoomed by `factor` (above 1 zooms out) around `at`, which stays
+ * under the pointer; never narrower than `MIN_SPAN` or wider than `bounds`.
+ */
+export function zoomView(view: Span, factor: number, at: number, bounds: Span): Span {
+  const span = view.to - view.from
+  const next = clamp(span * factor, Math.min(MIN_SPAN, bounds.to - bounds.from), bounds.to - bounds.from)
+  const fraction = clamp((at - view.from) / span, 0, 1)
+  const from = at - fraction * next
+  return clampView({ from, to: from + next }, bounds)
+}
+
+/** the view moved by `seconds`, stopped at the ends of `bounds` */
+export function panView(view: Span, seconds: number, bounds: Span): Span {
+  return clampView({ from: view.from + seconds, to: view.to + seconds }, bounds)
+}
+
+/**
+ * the window the lanes are read for: a step of the view's own size or more,
+ * on a grid of that step, so a pan inside it asks the server nothing new. a
+ * view over half the history reads the whole of it.
+ */
+export function lanesWindow(view: Span, bounds: Span): Span {
+  const span = view.to - view.from
+  if (span * 2 >= bounds.to - bounds.from) return bounds
+  let step = 15 * MIN
+  while (step < span) step *= 2
+  const from = Math.max(bounds.from, Math.floor(view.from / step) * step)
+  return { from, to: Math.min(bounds.to, Math.floor(view.from / step) * step + 2 * step) }
+}
+
+/** the same view to within a pixel's worth of time: presets compare with it */
+export function sameView(a: Span, b: Span, slack = 5 * MIN): boolean {
+  return Math.abs(a.from - b.from) <= slack && Math.abs(a.to - b.to) <= slack
 }

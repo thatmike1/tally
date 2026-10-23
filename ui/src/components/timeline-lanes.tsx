@@ -7,7 +7,7 @@ import { duration, hm, labelOn, money, projectName, tokens } from '../format'
 import { sessionHref } from '../route'
 import { xOf } from './timeline-chart'
 import type { PlotHandlers } from './timeline-pointer'
-import { activeIn, approxPoints, modelName, reachIn, realModels, share, type Span, type Tick, type Zoom } from './timeline-util'
+import { activeIn, approxPoints, modelName, reachIn, realModels, share, type Detail, type Span, type Tick } from './timeline-util'
 
 export type CodexThread = NonNullable<State['codex']['split']>['threads'][number]
 
@@ -236,7 +236,7 @@ export interface LaneTrackProps {
   color: string
   view: Span
   width: number
-  zoom: Zoom
+  detail: Detail
   ticks: Tick[]
   sel: Span
   brush: Span | null
@@ -283,7 +283,7 @@ function LaneTrack(props: LaneTrackProps) {
     })
   const activeTotal = (lane?.segments ?? []).reduce((sum, s) => sum + (s.end - s.start), 0)
   const label =
-    lane && props.zoom === 'day'
+    lane && props.detail === 'fine'
       ? claude
         ? `${duration(activeTotal)} active · ${lane.agents ? `${lane.agents} agent${lane.agents === 1 ? '' : 's'} · ` : ''}${money(lane.cost)}`
         : `${duration(activeTotal)} active · ${lane.kind}`
@@ -312,7 +312,7 @@ export interface LanesProps {
   state: State
   view: Span
   width: number
-  zoom: Zoom
+  detail: Detail
   ticks: Tick[]
   sel: Span
   brush: Span | null
@@ -438,7 +438,7 @@ export function Lanes(props: LanesProps) {
                   color={row.color}
                   view={props.view}
                   width={props.width}
-                  zoom={props.zoom}
+                  detail={props.detail}
                   ticks={props.ticks}
                   sel={props.sel}
                   brush={props.brush}

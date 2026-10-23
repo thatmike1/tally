@@ -57,8 +57,10 @@ export function chartHover(
   weeklyResets: number[],
   /** seconds either side of the pointer that count as "on" a reset line */
   slack: number,
+  /** how old the last meter point may be and still be the reading here; wider views keep fewer */
+  maxAge?: number,
 ): ReactNode {
-  const reading = readingAt(meter, t, blocks)
+  const reading = readingAt(meter, t, blocks, maxAge)
   const codexPct = codexAt(codex, t)
   const resets = [
     ...weeklyResets.filter((r) => Math.abs(r - t) <= slack).map((r) => `Claude weekly reset ${when(r, now)}`),

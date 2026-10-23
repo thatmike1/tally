@@ -1,6 +1,11 @@
 // dragging and hovering on any plot of the timeline: the chart and every lane
 // share one axis, so a drag that starts on a lane reads the same range as one
 // on the chart, and the crosshair follows the pointer across all of them.
+//
+// a plain drag reads a range, as it always has. a drag that starts on the time
+// axis under the chart, with shift held, or with the middle button moves the
+// view instead: the axis is where a time axis is grabbed, and shift keeps a pan
+// one key away from anywhere on the plots without taking the plain drag.
 import { useRef } from 'react'
 import { clamp, snap, type Span } from './timeline-util'
 
@@ -25,6 +30,15 @@ export interface PointerOptions {
   onPick: (range: Span) => void
   /** a press and release without a drag */
   onClick: (t: number, laneId: string | null) => void
+  /** the view a pan has moved to, from where it was when the pan started */
+  onPan: (view: Span) => void
+}
+
+/** a press that pans rather than reads: shift, the middle button, or the chart's time axis */
+export function pansFrom(event: { button: number; shiftKey: boolean; target: EventTarget | null }): boolean {
+  if (event.button === 1) return true
+  if (event.button !== 0) return false
+  return event.shiftKey || (event.target instanceof Element && event.target.closest('.tl-axis-band') !== null)
 }
 
 /** pixels the pointer has to travel before a press counts as a drag */
@@ -39,6 +53,7 @@ function timeAt(event: React.PointerEvent<SVGSVGElement>, view: Span): number {
 /** handlers for one plot; `laneId` says which lane a click or hover belongs to */
 export function usePlotPointer(options: PointerOptions): (laneId: string | null) => PlotHandlers {
   const drag = useRef<{ start: number; x: number; moved: boolean; id: number } | null>(null)
+  const pan = useRef<{ x: number; view: Span; width: number; id: number } | null>(null)
   const latest = useRef(options)
   latest.current = options
 
@@ -51,11 +66,26 @@ export function usePlotPointer(options: PointerOptions): (laneId: string | null)
 
   return (laneId) => ({
     onPointerDown: (event) => {
+      if (pansFrom(event)) {
+        event.preventDefault()
+        event.currentTarget.setPointerCapture(event.pointerId)
+        const box = event.currentTarget.getBoundingClientRect()
+        pan.current = { x: event.clientX, view: latest.current.view, width: box.width, id: event.pointerId }
+        document.body.classList.add('tl-panning')
+        latest.current.onHover(null, null, null)
+        return
+      }
       if (event.button !== 0) return
       event.currentTarget.setPointerCapture(event.pointerId)
       drag.current = { start: timeAt(event, latest.current.view), x: event.clientX, moved: false, id: event.pointerId }
     },
     onPointerMove: (event) => {
+      const panning = pan.current
+      if (panning && panning.id === event.pointerId) {
+        const seconds = ((panning.x - event.clientX) / panning.width) * (panning.view.to - panning.view.from)
+        latest.current.onPan({ from: panning.view.from + seconds, to: panning.view.to + seconds })
+        return
+      }
       const t = timeAt(event, latest.current.view)
       const current = drag.current
       if (current && current.id === event.pointerId) {
@@ -69,6 +99,11 @@ export function usePlotPointer(options: PointerOptions): (laneId: string | null)
       latest.current.onHover(t, event, laneId)
     },
     onPointerUp: (event) => {
+      if (pan.current?.id === event.pointerId) {
+        pan.current = null
+        document.body.classList.remove('tl-panning')
+        return
+      }
       const current = drag.current
       drag.current = null
       if (!current || current.id !== event.pointerId) return
@@ -82,10 +117,12 @@ export function usePlotPointer(options: PointerOptions): (laneId: string | null)
       latest.current.onClick(t, laneId)
     },
     onPointerLeave: () => {
-      if (!drag.current) latest.current.onHover(null, null, null)
+      if (!drag.current && !pan.current) latest.current.onHover(null, null, null)
     },
     onPointerCancel: () => {
       drag.current = null
+      pan.current = null
+      document.body.classList.remove('tl-panning')
       latest.current.onBrush(null)
       latest.current.onHover(null, null, null)
     },

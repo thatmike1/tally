@@ -422,6 +422,19 @@
   cursor: crosshair;
 }
 
+/* the time axis under the chart pans the view; so does shift anywhere on a plot */
+.tl-axis-band {
+  fill: transparent;
+  cursor: grab;
+}
+
+body.tl-panning,
+body.tl-panning .tl-chart,
+body.tl-panning .tl-lane,
+body.tl-panning .tl-axis-band {
+  cursor: grabbing;
+}
+
 .tl text {
   font-family: Figtree, sans-serif;
 }

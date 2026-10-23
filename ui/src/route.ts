@@ -4,8 +4,8 @@
 export type Route =
   | { kind: 'today' }
   | { kind: 'history' }
-  /** the time axis; `from`/`to` pin a picked range, absent means the current block */
-  | { kind: 'timeline'; from?: number; to?: number }
+  /** the time axis; `from`/`to` pin a picked range, absent means the current block; `view` is what the chart shows */
+  | { kind: 'timeline'; from?: number; to?: number; view?: TimelineView }
   /** one 5-hour block, identified by its reset key */
   | { kind: 'block'; resetKey: number }
   /** one weekly window, identified by the reset that closes it */
@@ -13,13 +13,16 @@ export type Route =
   /** `at` freezes the session at a past instant, set when it was opened from a history drill-in */
   | { kind: 'session'; id: string; at?: number }
 
+/** the timeline's view: a preset button's period around `anchor`, or a free stretch the wheel or a pan left */
+export type TimelineView = { preset: 'day' | 'week' | 'since'; anchor: number } | { from: number; to: number }
+
 /** every route that is a page of its own; a session is a drawer over one of these */
 export type PageRoute = Exclude<Route, { kind: 'session' }>
 
 /** the hash that leads back to a page, used when the session drawer closes */
 export function routeHref(route: PageRoute): string {
   if (route.kind === 'history') return '#/history'
-  if (route.kind === 'timeline') return timelineHref(route.from, route.to)
+  if (route.kind === 'timeline') return timelineHref(route.from, route.to, route.view)
   if (route.kind === 'block') return blockHref(route.resetKey)
   if (route.kind === 'week') return weekHref(route.resetsAt)
   return '#/'
@@ -33,7 +36,8 @@ const TODAY: Route = { kind: 'today' }
  * showing an error page: a bad hash is a typo, not a failure.
  */
 export function parseRoute(hash: string): Route {
-  const path = hash.replace(/^#\/?/, '').replace(/\/+$/, '')
+  const [bare = '', query = ''] = hash.split('?', 2)
+  const path = bare.replace(/^#\/?/, '').replace(/\/+$/, '')
   if (!path) return TODAY
   const parts = path.split('/').map((part) => decodeURIComponent(part))
   const [head, second, third] = parts
@@ -50,7 +54,9 @@ export function parseRoute(hash: string): Route {
     // `#/timeline/<from>/<to>`; a half-given or non-numeric range reads as no range
     const from = Number(second)
     const to = Number(third)
-    return Number.isFinite(from) && Number.isFinite(to) && to > from ? { kind: 'timeline', from, to } : { kind: 'timeline' }
+    const view = parseView(new URLSearchParams(query).get('v'))
+    const route: Route = Number.isFinite(from) && Number.isFinite(to) && to > from ? { kind: 'timeline', from, to } : { kind: 'timeline' }
+    return view ? { ...route, view } : route
   }
   if (head === 'session' && second) {
     // `#/session/<id>/<at>`; an `at` that is not a number is dropped, not the session
@@ -60,9 +66,21 @@ export function parseRoute(hash: string): Route {
   return TODAY
 }
 
-/** the href of the timeline tab, with a picked range when both ends are given */
-export function timelineHref(from?: number, to?: number): string {
-  return from !== undefined && to !== undefined ? `#/timeline/${Math.round(from)}/${Math.round(to)}` : '#/timeline'
+/** `?v=week@1792000000` or `?v=1792000000-1792003600`; anything else is no view */
+function parseView(text: string | null): TimelineView | null {
+  if (!text) return null
+  const preset = /^(day|week|since)@(\d+)$/.exec(text)
+  if (preset) return { preset: preset[1] as 'day' | 'week' | 'since', anchor: Number(preset[2]) }
+  const span = /^(\d+)-(\d+)$/.exec(text)
+  if (span && Number(span[2]) > Number(span[1])) return { from: Number(span[1]), to: Number(span[2]) }
+  return null
+}
+
+/** the href of the timeline tab, with a picked range when both ends are given and the view when there is one */
+export function timelineHref(from?: number, to?: number, view?: TimelineView): string {
+  const base = from !== undefined && to !== undefined ? `#/timeline/${Math.round(from)}/${Math.round(to)}` : '#/timeline'
+  if (!view) return base
+  return 'preset' in view ? `${base}?v=${view.preset}@${Math.round(view.anchor)}` : `${base}?v=${Math.round(view.from)}-${Math.round(view.to)}`
 }
 
 /** the href a block tile points at */

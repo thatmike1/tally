@@ -1,5 +1,24 @@
 import { describe, expect, it } from 'vitest'
-import { activeIn, approxPoints, dayAfter, dayStart, modelName, periodOf, reachIn, ticks, trimDay, zoomFor } from './timeline-util'
+import {
+  activeIn,
+  approxPoints,
+  clampView,
+  dayAfter,
+  dayStart,
+  detailFor,
+  laneResolution,
+  lanesWindow,
+  MIN_SPAN,
+  modelName,
+  panView,
+  periodOf,
+  reachIn,
+  snapStep,
+  ticks,
+  trimDay,
+  zoomFor,
+  zoomView,
+} from './timeline-util'
 
 // 2026-09-23 14:00 in Prague (CEST, UTC+2)
 const WED_1400 = Date.UTC(2026, 8, 23, 12, 0) / 1000
@@ -71,5 +90,75 @@ describe('axis and lanes', () => {
     expect(approxPoints(null)).toBe('not measured')
     expect(approxPoints(0.2)).toBe('<1')
     expect(approxPoints(11.6)).toBe('~12')
+  })
+})
+
+describe('a free view', () => {
+  const HOUR = 3600
+  const DAY = 86400
+  const history = { from: WED_MIDNIGHT - 30 * DAY, to: WED_MIDNIGHT + DAY + 3 * HOUR }
+  const day = { from: WED_MIDNIGHT, to: WED_MIDNIGHT + DAY }
+
+  it('ticks follow the span and the width, from minutes to weeks', () => {
+    const hour = ticks({ from: WED_1400, to: WED_1400 + HOUR }, 1700)
+    expect(hour[1]!.t - hour[0]!.t).toBe(5 * 60)
+    expect(hour[0]!.label).toBe('14:00')
+    const narrowDay = ticks(day, 300)
+    expect(narrowDay[1]!.t - narrowDay[0]!.t).toBe(12 * HOUR)
+    const wideDay = ticks(day, 1700)
+    expect(wideDay[1]!.t - wideDay[0]!.t).toBe(2 * HOUR)
+    const all = ticks(history, 300)
+    expect(all.every((t) => t.major)).toBe(true)
+    expect(all.length).toBeLessThanOrEqual(4)
+    expect(all.length).toBeGreaterThanOrEqual(2)
+  })
+
+  it('merges lanes at about half a pixel of time, never under five minutes', () => {
+    expect(laneResolution({ from: WED_1400, to: WED_1400 + HOUR }, 1700)).toBe(300)
+    expect(laneResolution(day, 1700)).toBe(300)
+    expect(laneResolution({ from: WED_MIDNIGHT, to: WED_MIDNIGHT + 7 * DAY }, 700)).toBe(600)
+    expect(laneResolution(history, 300)).toBe(300 * 2 ** 4)
+    // a span between two rungs rounds up, so a pan or a small zoom asks for the same one
+    expect(laneResolution({ from: 0, to: 602 * 1000 }, 1000)).toBe(600)
+  })
+
+  it('snaps a drag to a round step about two pixels wide', () => {
+    expect(snapStep({ from: WED_1400, to: WED_1400 + HOUR }, 1700)).toBe(60)
+    expect(snapStep(day, 1100)).toBe(5 * 60)
+    expect(snapStep({ from: WED_MIDNIGHT, to: WED_MIDNIGHT + 7 * DAY }, 1100)).toBe(30 * 60)
+    expect(snapStep(history, 300)).toBe(HOUR)
+  })
+
+  it('draws block detail by how wide a block is, so a narrow chart thins sooner', () => {
+    expect(detailFor(day, 1700)).toBe('fine')
+    expect(detailFor(day, 300)).toBe('fine')
+    expect(detailFor({ from: WED_MIDNIGHT, to: WED_MIDNIGHT + 7 * DAY }, 1700)).toBe('mid')
+    expect(detailFor({ from: WED_MIDNIGHT, to: WED_MIDNIGHT + 7 * DAY }, 300)).toBe('coarse')
+    expect(detailFor(history, 1700)).toBe('coarse')
+  })
+
+  it('zooms around the point under the pointer and stops at an hour and at the history', () => {
+    const at = WED_MIDNIGHT + 6 * HOUR
+    const zoomed = zoomView(day, 0.5, at, history)
+    expect(zoomed.to - zoomed.from).toBe(12 * HOUR)
+    expect((at - zoomed.from) / (zoomed.to - zoomed.from)).toBeCloseTo(0.25)
+    expect(zoomView(day, 1e-6, at, history).to - zoomView(day, 1e-6, at, history).from).toBe(MIN_SPAN)
+    expect(zoomView(day, 1e6, at, history)).toEqual(history)
+  })
+
+  it('pans and stops at the ends of the history', () => {
+    expect(panView(day, HOUR, history)).toEqual({ from: day.from + HOUR, to: day.to + HOUR })
+    expect(panView(day, 365 * DAY, history)).toEqual({ from: history.to - DAY, to: history.to })
+    expect(panView(day, -365 * DAY, history)).toEqual({ from: history.from, to: history.from + DAY })
+    expect(clampView({ from: 0, to: 1e12 }, history)).toEqual(history)
+  })
+
+  it('reads lanes for a window a pan inside it does not change', () => {
+    const view = { from: WED_1400, to: WED_1400 + 2 * HOUR }
+    const window = lanesWindow(view, history)
+    expect(window.from).toBeLessThanOrEqual(view.from)
+    expect(window.to).toBeGreaterThanOrEqual(view.to)
+    expect(lanesWindow(panView(view, 600, history), history)).toEqual(window)
+    expect(lanesWindow({ from: history.from, to: history.from + 20 * DAY }, history)).toEqual(history)
   })
 })

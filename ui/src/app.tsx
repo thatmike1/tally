@@ -100,7 +100,7 @@ export function App() {
       {page.kind === 'history' ? (
         <History />
       ) : page.kind === 'timeline' ? (
-        <Timeline from={page.from} to={page.to} />
+        <Timeline from={page.from} to={page.to} view={page.view} />
       ) : page.kind === 'block' ? (
         // keyed on the route so a hash change between two windows remounts: without
         // it the previous window's banner and frozen page stay up under the new key
