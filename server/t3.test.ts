@@ -188,9 +188,9 @@ describe('V2 alongside imported history', () => {
     expect(otherThreads(0, 2000, path, 100)).toMatchObject([{ id: 't-1', project: 'tally', live: true, segments: [{ start: 50, end: 60 }, { start: 900, end: 1000 }] }])
     expect(otherThreads(0, 100, path)[0]?.segments).toEqual([{ start: 50, end: 60 }])
     expect([...t3CodexThreads(path)]).toEqual([
-      ['old-codex', { title: 'same title', live: false }],
-      ['new-codex', { title: 'same title', live: true }],
-      ['old-handoff', { title: 'same title', live: false }],
+      ['old-codex', { threadId: 't-1', title: 'same title', live: false }],
+      ['new-codex', { threadId: 't-1', title: 'same title', live: true }],
+      ['old-handoff', { threadId: 't-1', title: 'same title', live: false }],
     ])
   })
 
