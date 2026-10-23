@@ -10,7 +10,7 @@ import {
 } from '../api'
 import { dayDate, hm, money, pct, rate, ratio, tokens } from '../format'
 import { blockHref, weekHref } from '../route'
-import { Blocks } from './history'
+import { DayStatements } from './history'
 import { PageBody } from './page'
 import { Tip } from './tip'
 
@@ -113,7 +113,12 @@ export function Frozen({ kind, resetKey }: { kind: 'block' | 'week'; resetKey: n
         <div className="fz-note warn">no window with this key is in the history answer.</div>
       ) : null}
       {error ? <p className="warn">tally: {error}</p> : null}
-      {inside.length ? <Blocks blocks={inside} title={`the ${inside.length} blocks inside this week`} /> : null}
+      {inside.length ? (
+        <div className="fz-blocks">
+          <div className="fz-blocks-head">the {inside.length} blocks inside this week</div>
+          <DayStatements blocks={inside} />
+        </div>
+      ) : null}
     </div>
   )
 
