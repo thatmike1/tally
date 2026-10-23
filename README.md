@@ -5,7 +5,7 @@ in three seconds, and keeps every past block so you can see what a meter point
 actually costs you.
 
 Ubuntu, a Claude subscription, Node 22+ and Python 3. Everything else is
-optional and detected: Codex, AgentsView, T3 Code, `agy`, and whatever local
+optional and detected: Codex, AgentsView, T3 Code, and whatever local
 pages you want in the tray.
 
 ## Install
@@ -42,7 +42,6 @@ back, so you can delete the file and tally still runs.
 | `plan` | `{"name": "Max 5x", "usdPerMonth": 100}` | what "the sub is worth" compares your list-price usage against |
 | `codexPlan` | `{"name": "ChatGPT Pro", "usdPerMonth": 100}` | the same for the Codex history tab |
 | `agentsviewUrl` | `null` | base url of a local AgentsView. `null` means no transcript links are drawn at all, rather than dead ones |
-| `takeaway` | `null` | `{"command": "agy", "model": "..."}`. Off unless the command is on PATH |
 | `tray.links` | `[]` | rows that open a local page, starting the row's unit if the port is closed |
 | `tray.toggles` | `[]` | rows that start *and stop* a unit, for a service that costs something while it runs |
 
@@ -73,8 +72,8 @@ npm start          # builds the ui, serves on 127.0.0.1:1337, opens the browser
 The service serves the built `ui/dist`, so after ui changes run `npm run build`
 and `systemctl --user restart tally`.
 
-Flags: `--port <n>` (wins over the config), `--no-open`, `--no-widget`,
-`--no-takeaway`. `bin/tally.mjs` is a launcher that works from any directory, so
+Flags: `--port <n>` (wins over the config), `--no-open`, `--no-widget`.
+`bin/tally.mjs` is a launcher that works from any directory, so
 `ln -s "$PWD/bin/tally.mjs" ~/.local/bin/tally` is enough to run it anywhere.
 
 `tray/tally-tray.py --print` dumps the tray label and rows without a tray, which

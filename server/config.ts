@@ -16,12 +16,6 @@ export interface PlanConfig {
   usdPerMonth: number
 }
 
-/** the command that writes the one-line takeaway, and the model it runs */
-export interface TakeawayConfig {
-  command: string
-  model: string
-}
-
 /** one tray row: a local service, and the unit that starts it when it is down */
 export interface TrayEntry {
   name: string
@@ -42,8 +36,6 @@ export interface TallyConfig {
   codexPlan: PlanConfig
   /** base url of a local AgentsView; null means no transcript links anywhere */
   agentsviewUrl: string | null
-  /** null turns the takeaway off, which is what a machine without the command wants */
-  takeaway: TakeawayConfig | null
   tray: TrayConfig
 }
 
@@ -54,7 +46,6 @@ export function defaultConfig(): TallyConfig {
     plan: { name: 'Max 5x', usdPerMonth: 100 },
     codexPlan: { name: 'ChatGPT Pro', usdPerMonth: 100 },
     agentsviewUrl: null,
-    takeaway: null,
     tray: { links: [], toggles: [] },
   }
 }
@@ -84,14 +75,6 @@ function plan(value: unknown, fallback: PlanConfig): PlanConfig {
 function baseUrl(value: unknown): string | null {
   const raw = text(value)
   return raw === null ? null : raw.replace(/\/+$/, '')
-}
-
-function takeaway(value: unknown): TakeawayConfig | null {
-  if (!isRecord(value)) return null
-  const command = text(value.command)
-  const model = text(value.model)
-  // a takeaway with no command or no model is off, not half-configured
-  return command && model ? { command, model } : null
 }
 
 function trayEntries(value: unknown): TrayEntry[] {
@@ -138,7 +121,6 @@ export function loadConfig(path: string): TallyConfig {
     plan: plan(raw.plan, base.plan),
     codexPlan: plan(raw.codexPlan, base.codexPlan),
     agentsviewUrl: baseUrl(raw.agentsviewUrl),
-    takeaway: takeaway(raw.takeaway),
     tray: tray(raw.tray),
   }
 }
