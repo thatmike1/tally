@@ -250,7 +250,7 @@ describe('buildState frozen at a past instant', () => {
     const later = { sampledAt: AT + 3600, usedPercent: 56, resetsAt, windowDurationMins: 7 * 24 * 60 }
     writeFileSync(paths.history, `${JSON.stringify(earlier)}\n${JSON.stringify(later)}\n`)
     writeFileSync(paths.status, JSON.stringify({ checkedAt: later.sampledAt, ok: true }))
-    const options = { home: FIXTURE_HOME, codexPaths: paths, codexSessions: join(dir, 'no-sessions'), lastLookedPath: tempLook() }
+    const options = { home: FIXTURE_HOME, codexInstalled: true, codexPaths: paths, codexSessions: join(dir, 'no-sessions'), lastLookedPath: tempLook() }
 
     const frozen = await buildState({ ...options, at: AT })
     expect(frozen.codex.usedPercent).toBe(20)

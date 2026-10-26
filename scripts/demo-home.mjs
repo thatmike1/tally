@@ -2,7 +2,7 @@
 // writes a made-up home for screenshots and UI checks: three weeks of meter
 // samples and the Claude transcripts that moved them, ending at the moment it
 // runs. nothing in it comes from a real machine. run the server against it with
-//   node scripts/demo-home.mjs /tmp/tally-demo && HOME=/tmp/tally-demo npm run serve -- --no-open
+//   node scripts/demo-home.mjs /tmp/tally-demo && HOME=/tmp/tally-demo pnpm run serve --no-open
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 

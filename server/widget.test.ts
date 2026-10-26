@@ -27,6 +27,7 @@ async function fixtureState(lastLooked?: string) {
   }
   return buildState({
     home: FIXTURE_HOME,
+    codexInstalled: true,
     now: NOW,
     lastLookedPath: lookPath,
     recordLook: false,
