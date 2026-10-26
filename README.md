@@ -58,19 +58,22 @@ key means touching `server/config.ts`, `tray/tally-tray.py` and
 ## Running it by hand
 
 ```
-npm install
-npm start          # builds the ui, serves on 127.0.0.1:1337, opens the browser
+pnpm install --frozen-lockfile
+pnpm start          # builds the ui, serves on 127.0.0.1:1337, opens the browser
 ```
+
+Use pnpm 12.15.0 (pinned in `packageManager`) with Node.js 22 or newer.
+Install pnpm with the [standalone installer](https://pnpm.io/installation).
 
 | command | what it does |
 |---|---|
-| `npm run dev` | tsx watch on the server plus the vite dev server on 5174 |
-| `npm run serve` | the server alone, against the already-built ui |
-| `npm test` | vitest, including the comparison against the python oracle |
-| `npm run typecheck` | tsc over server and ui |
-| `npm run oracle` | regenerate the expected tables from the proof scripts (see Tests) |
+| `pnpm run dev` | tsx watch on the server plus the vite dev server on 5174 |
+| `pnpm run serve` | the server alone, against the already-built ui |
+| `pnpm test` | vitest, including the comparison against the python oracle |
+| `pnpm run typecheck` | tsc over server and ui |
+| `pnpm run oracle` | regenerate the expected tables from the proof scripts (see Tests) |
 
-The service serves the built `ui/dist`, so after ui changes run `npm run build`
+The service serves the built `ui/dist`, so after ui changes run `pnpm run build`
 and `systemctl --user restart tally`.
 
 Flags: `--port <n>` (wins over the config), `--no-open`, `--no-widget`,
@@ -230,7 +233,7 @@ that comment on it so it can be replaced without touching anything else.
 
 ## Tests
 
-`npm test`. The interesting ones compare against the python that produced the
+`pnpm test`. The interesting ones compare against the python that produced the
 proof:
 
 - `server/transcripts.test.ts` — every request must match `jobs/extract.py`'s own
@@ -240,10 +243,10 @@ proof:
 
 Both fixtures are frozen in `test/fixtures/`. The transcripts there are real ones
 with every message body stripped out; only the fields both parsers read survive.
-Rebuild them with `python3 scripts/make-fixtures.py` and then `npm run oracle`,
+Rebuild them with `python3 scripts/make-fixtures.py` and then `pnpm run oracle`,
 which needs the proof scripts that produced the attribution numbers
 (`TALLY_JOBS`; they are not in this repo, so the oracle refresh only runs where
-they are and `npm test` never needs them — the fixtures it compares against are
+they are and `pnpm test` never needs them — the fixtures it compares against are
 checked in).
 
 ## Screenshots

@@ -139,7 +139,7 @@ export function createApp(options: AppConfig = {}) {
     app.get('/*', serveStatic({ path: `${uiDist}/index.html` }))
   } else {
     app.get('/', (c) =>
-      c.text('tally: the ui is not built yet. run `npm run build`, or `npm run dev` for the vite server.', 503),
+      c.text('tally: the ui is not built yet. run `pnpm run build`, or `pnpm run dev` for the vite server.', 503),
     )
   }
 

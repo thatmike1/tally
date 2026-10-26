@@ -40,8 +40,8 @@ echo "node:     $NODE"
 # ---- build -----------------------------------------------------------------
 
 cd "$REPO"
-npm ci || npm install
-npm run build
+pnpm install --frozen-lockfile
+pnpm run build
 chmod +x "$REPO/tray/tally-tray.py" "$REPO/sampler/usage-sample.py"
 
 # ---- migrate off the pre-tally sampler and off symlinked units -------------
