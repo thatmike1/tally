@@ -61,6 +61,8 @@ describe('Codex allowance JSON-line reader', () => {
     const pending = begin()
     expect(mocks.spawn).toHaveBeenCalledWith('/offline/codex', ['app-server', '--stdio'], {
       stdio: ['pipe', 'pipe', 'pipe'],
+      shell: false,
+      windowsHide: true,
     })
     expect(child.writes).toEqual([{
       id: 1,
