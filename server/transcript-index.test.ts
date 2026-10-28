@@ -1,6 +1,6 @@
 // the index against the parser it caches: same records, and a file that has not
 // changed is never read twice.
-import { chmodSync, cpSync, mkdtempSync, appendFileSync, rmSync, statSync, utimesSync } from 'node:fs'
+import { appendFileSync, chmodSync, cpSync, mkdirSync, mkdtempSync, rmSync, statSync, utimesSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -276,5 +276,84 @@ describe('TranscriptIndex', () => {
     const pass = await second.refresh()
     expect(pass.parsed).toBe(0)
     second.close()
+  })
+})
+
+describe('TranscriptIndex on hand-written transcripts', () => {
+  const T0 = Date.UTC(2026, 9, 20, 10) / 1000
+
+  /** a projects root holding one lead transcript of the given lines */
+  function oneFile(lines: object[]): { root: string; path: string } {
+    const dir = mkdtempSync(join(tmpdir(), 'tally-index-hand-'))
+    temps.push(dir)
+    const root = join(dir, 'projects')
+    const project = join(root, '-home-me-git-app')
+    mkdirSync(project, { recursive: true })
+    const path = join(project, 'lead.jsonl')
+    writeFileSync(path, lines.map((line) => JSON.stringify(line)).join('\n') + '\n')
+    utimesSync(path, T0 + 60, T0 + 60)
+    return { root, path }
+  }
+
+  const request = (mid: string, model: string) => ({
+    type: 'assistant',
+    timestamp: new Date(T0 * 1000).toISOString(),
+    message: { id: mid, model, usage: { input_tokens: 1000, output_tokens: 100 } },
+  })
+
+  it('shares one pass between callers that ask while it runs', async () => {
+    const { root } = oneFile([request('m1', 'claude-opus-5-5')])
+    const index = new TranscriptIndex({ root, path: ':memory:' })
+    const first = index.refresh()
+    expect(index.refresh()).toBe(first)
+    expect((await first).parsed).toBe(1)
+    // the next call is a fresh pass, and it finds nothing new
+    expect((await index.refresh()).parsed).toBe(0)
+    index.close()
+  })
+
+  it('keeps a model with no price row unpriced through a reprice', async () => {
+    const { root } = oneFile([request('known', 'claude-opus-5-5'), request('unknown', 'some-new-model')])
+    const path = join(root, '..', 'index.sqlite')
+    const first = new TranscriptIndex({ root, path })
+    await first.refresh()
+    first.close()
+    const raw = new DatabaseSync(path)
+    raw.exec("UPDATE requests SET cost = 99, priced = 1; UPDATE meta SET value = 'stale' WHERE key = 'prices'")
+    raw.close()
+
+    const reopened = new TranscriptIndex({ root, path })
+    const byMid = new Map(reopened.query(0, 9_999_999_999).records.map((record) => [record.mid, record]))
+    expect(byMid.get('unknown')).toMatchObject({ priced: false, cost: 0 })
+    expect(byMid.get('known')?.priced).toBe(true)
+    expect(byMid.get('known')?.cost).toBeGreaterThan(0)
+    expect(byMid.get('known')?.cost).not.toBe(99)
+    reopened.close()
+  })
+
+  it('stores a session with no user turn as untitled and keeps its cwd', async () => {
+    const { root, path } = oneFile([{ type: 'system', cwd: '/home/me/git/app' }, request('m1', 'claude-opus-5-5')])
+    const index = new TranscriptIndex({ root, path: ':memory:' })
+    await index.refresh()
+    expect(index.fileState(path)).toMatchObject({ title: null, cwd: '/home/me/git/app' })
+    expect(index.query(T0 - 60, T0 + 60).sessions.get('lead')).toMatchObject({ title: null, cwd: '/home/me/git/app' })
+    index.close()
+  })
+
+  it('knows nothing of a file it never read', () => {
+    const index = new TranscriptIndex({ root: join(tmpdir(), 'tally-no-such-root'), path: ':memory:' })
+    expect(index.fileState('/nowhere/lead.jsonl')).toBeNull()
+    expect(index.fileRecords('/nowhere/lead.jsonl')).toEqual([])
+    expect(index.sessionRecords('lead')).toEqual([])
+    index.close()
+  })
+
+  it('stores a file with no requests and answers an empty window for it', async () => {
+    const { root, path } = oneFile([{ type: 'user', message: { content: 'only a question' } }])
+    const index = new TranscriptIndex({ root, path: ':memory:' })
+    expect((await index.refresh()).parsed).toBe(1)
+    expect(index.fileState(path)?.title).toBe('only a question')
+    expect(index.query(0, 9_999_999_999).records).toEqual([])
+    index.close()
   })
 })
