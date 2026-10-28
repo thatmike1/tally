@@ -97,13 +97,13 @@ skips anything that does not answer as Python 3 (the Microsoft Store stub).
 Sampler failures land in the server's own output.
 
 ```
-npm install
-npm run build
+pnpm install --frozen-lockfile
+pnpm run build
 node --import file:///C:/path/to/tally/node_modules/tsx/dist/loader.mjs C:\path\to\tally\server\main.ts --no-open
 ```
 
 That command is the whole of tally in one `node.exe` and works from any
-directory. `npm run serve` and `bin/tally.mjs` work too, but each starts a
+directory. `pnpm run serve` and `bin/tally.mjs` work too, but each starts a
 second node process under the first, so killing the outer one leaves the
 server running. Write `%USERPROFILE%\.config\tally\config.json` by hand if
 you want one (the table above); everything else lives where it does on Linux,
