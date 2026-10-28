@@ -112,7 +112,7 @@ describe('transcriptFiles', () => {
     writeFileSync(join(project, 'lead', 'subagents', 'agent-a.jsonl'), '')
     writeFileSync(join(project, 'lead', 'subagents', 'agent-a.meta.json'), '')
     const files = transcriptFiles(root)
-    expect(files.map((file) => [file.sessionId, file.agent, file.path.slice(project.length)])).toEqual(
+    expect(files.map((file) => [file.sessionId, file.agent, file.path.slice(project.length).replaceAll('\\', '/')])).toEqual(
       expect.arrayContaining([
         ['lead', false, '/lead.jsonl'],
         ['lead', true, '/lead/subagents/agent-a.jsonl'],
