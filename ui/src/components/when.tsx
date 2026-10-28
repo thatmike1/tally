@@ -28,12 +28,12 @@ function laneName(lane: Lane): string {
 }
 
 /** the colour a lane takes: its split row's, so the chart matches the ledger */
-function laneColor(state: State, lane: Lane): string {
+export function laneColor(state: State, lane: Lane): string {
   if (lane.kind === 'claude') {
     return state.split?.sessions.find((row) => row.sessionId === lane.id)?.color ?? 'var(--faint)'
   }
   if (lane.kind === 'codex') {
-    return state.codex.split?.threads.find((thread) => thread.title === lane.title)?.color ?? 'var(--codex)'
+    return state.codex.split?.threads.find((thread) => thread.t3ThreadId === lane.id)?.color ?? 'var(--codex)'
   }
   return 'var(--faint)'
 }

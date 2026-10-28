@@ -14,6 +14,7 @@ knowing the difference; the fields the endpoint adds sit alongside.
 import json
 import os
 import subprocess
+import tempfile
 import time
 import urllib.error
 import urllib.request
@@ -28,6 +29,9 @@ LOG = os.path.join(CACHE, "limits.jsonl")
 # carry, and a field nobody logged cannot be backfilled. kept apart so readers
 # of LOG do not parse ~2.5 KB a row
 RAW_LOG = os.path.join(CACHE, "usage-raw.jsonl")
+# every append writes plain \n: text mode on windows would write \r\n, and a log
+# should read the same byte for byte whichever machine sampled it
+LF = "\n"
 URL = "https://api.anthropic.com/api/oauth/usage"
 
 # a rejected token stays rejected until claude refreshes it, which rewrites the
@@ -135,7 +139,7 @@ def pull_upstream() -> bool:
                 fresh.append(line)
         if fresh:
             os.makedirs(os.path.dirname(path), exist_ok=True)
-            with open(path, "a") as f:
+            with open(path, "a", newline=LF) as f:
                 f.write("\n".join(fresh) + "\n")
     return time.time() - newest < UPSTREAM_FRESH
 
@@ -203,7 +207,7 @@ def token():
 def refreshed(stamp) -> bool:
     """have claude renew the token. true when the credentials file changed"""
     try:
-        subprocess.run(REFRESH_CMD, capture_output=True, timeout=120, cwd="/tmp")
+        subprocess.run(REFRESH_CMD, capture_output=True, timeout=120, cwd=tempfile.gettempdir())
     except (subprocess.SubprocessError, OSError):
         return False
     return str(os.path.getmtime(CREDS)) != stamp
@@ -255,7 +259,7 @@ def sample() -> int:
 
     now = int(time.time())
     os.makedirs(os.path.dirname(RAW_LOG), exist_ok=True)
-    with open(RAW_LOG, "a") as f:
+    with open(RAW_LOG, "a", newline=LF) as f:
         f.write(json.dumps({"t": now, "payload": u}, separators=(",", ":")) + "\n")
 
     row = {"t": now, "src": "api", "limits": {}}
@@ -315,7 +319,7 @@ def sample() -> int:
     os.makedirs(os.path.dirname(LOG), exist_ok=True)
     # every sample is written, unchanged or not: a flat stretch and an unobserved
     # one look identical in a deduped log, and telling them apart is the point
-    with open(LOG, "a") as f:
+    with open(LOG, "a", newline=LF) as f:
         f.write(json.dumps(row, separators=(",", ":")) + "\n")
     return 0
 

@@ -76,12 +76,14 @@ export function pct(value: number): string {
  * server could not resolve against the filesystem arrives as Claude's encoded
  * name (`-home-thatmike1-git-old-thing`), which has no slash in it: the piece
  * after the last dash is the closest thing to a directory name it carries.
+ * windows paths (`I:\git\ccChat-general`) split on the backslash, and their
+ * encoded names start with the drive (`I--git-old-thing`) instead of a dash.
  */
 export function projectName(path: string): string {
-  const trimmed = path.replace(/\/+$/, '')
-  const cut = trimmed.lastIndexOf('/')
+  const trimmed = path.replace(/[\\/]+$/, '')
+  const cut = Math.max(trimmed.lastIndexOf('/'), trimmed.lastIndexOf('\\'))
   if (cut >= 0) return trimmed.slice(cut + 1)
-  if (trimmed.startsWith('-')) {
+  if (trimmed.startsWith('-') || /^[A-Za-z]--/.test(trimmed)) {
     const dash = trimmed.lastIndexOf('-')
     if (dash > 0) return trimmed.slice(dash + 1)
   }

@@ -7,22 +7,18 @@ import { serve } from '@hono/node-server'
 import { createApp } from './app'
 import { startCodexUsageReader } from './codex-usage'
 import { defaultConfig, tallyConfig } from './config'
+import { bootedBySystemd, inProcessSampler, systemdSampler } from './sampler'
 import { buildState } from './state'
-import { takeawayFromConfig } from './takeaway'
 import { TranscriptIndex, type RefreshCounts } from './transcript-index'
 import { removeWidget, writeWidget } from './widget'
-
-/** the unit the reset kick starts; `systemd/install.sh` writes it */
-const SAMPLER_UNIT = 'tally-sampler.service'
 
 export interface Options {
   port: number
   open: boolean
   widget: boolean
-  takeaway: boolean
 }
 
-/** parses `tally [--port <n>] [--no-open] [--no-widget] [--no-takeaway]`; the flag wins over the config's port */
+/** parses `tally [--port <n>] [--no-open] [--no-widget]`; the flag wins over the config's port */
 export function parseOptions(argv: string[], defaultPort: number = defaultConfig().port): Options {
   const { values } = parseArgs({
     args: argv,
@@ -30,7 +26,6 @@ export function parseOptions(argv: string[], defaultPort: number = defaultConfig
       port: { type: 'string' },
       'no-open': { type: 'boolean' },
       'no-widget': { type: 'boolean' },
-      'no-takeaway': { type: 'boolean' },
     },
     allowPositionals: false,
   })
@@ -42,8 +37,17 @@ export function parseOptions(argv: string[], defaultPort: number = defaultConfig
     port,
     open: !values['no-open'],
     widget: !values['no-widget'],
-    takeaway: !values['no-takeaway'],
   }
+}
+
+/**
+ * how to open a url in the default browser: `xdg-open` on linux, and on windows
+ * the url protocol handler, which takes the url as one argument with no shell
+ * quoting to get wrong
+ */
+export function openCommand(url: string, platform: NodeJS.Platform = process.platform): { command: string; args: string[] } {
+  if (platform === 'win32') return { command: 'rundll32', args: ['url.dll,FileProtocolHandler', url] }
+  return { command: 'xdg-open', args: [url] }
 }
 
 /** the counts one index pass did, as one line in the server log */
@@ -69,9 +73,8 @@ function main(): void {
   }
 
   const uiDist = resolve(dirname(fileURLToPath(import.meta.url)), '../ui/dist')
-  const takeaway = options.takeaway ? takeawayFromConfig(config.takeaway) : null
   const index = new TranscriptIndex()
-  const app = createApp({ uiDist, index, takeaway, config })
+  const app = createApp({ uiDist, index, config })
 
   // the first build reads the whole tree, so it runs in the background and the
   // page says it is building; every window falls back to a live scan until the
@@ -103,16 +106,18 @@ function main(): void {
     console.log(`tally: ${url}`)
     console.log('press Ctrl-C to stop')
     if (options.open) {
-      const child = spawn('xdg-open', [url], { stdio: 'ignore', detached: true })
-      child.on('error', () => console.error('tally: could not run xdg-open; open the url yourself'))
+      const opener = openCommand(url)
+      const child = spawn(opener.command, opener.args, { stdio: 'ignore', detached: true })
+      child.on('error', () => console.error(`tally: could not run ${opener.command}; open the url yourself`))
       child.unref()
     }
   })
 
+  // systemd's timer samples on linux; anywhere else the server runs the sampler itself
+  const sampler = bootedBySystemd() ? systemdSampler() : inProcessSampler(config.python)
   let kickedFor: number | null = null
 
-  // one state build a minute feeds the widget file and the reset kick. the
-  // browser requests the Gemini takeaway only while Tally is visible and focused
+  // one state build a minute feeds the widget file and the reset kick
   const tick = async () => {
     try {
       const state = await buildState({ index, recordLook: false, config })
@@ -120,8 +125,7 @@ function main(): void {
       // the sampler runs every five minutes; a block that just reset gets read now instead
       if (five?.ended && state.now - five.ageSeconds < five.resetsAt && kickedFor !== five.resetsAt) {
         kickedFor = five.resetsAt
-        const child = spawn('systemctl', ['--user', 'start', '--no-block', SAMPLER_UNIT], { stdio: 'ignore' })
-        child.on('error', () => console.error(`tally: could not start ${SAMPLER_UNIT}`))
+        sampler.kick()
       }
       // the directory is resolved per tick, so installing T3 later starts the widget
       if (options.widget) writeWidget(state)
@@ -138,6 +142,7 @@ function main(): void {
 
   const stop = () => {
     clearInterval(tickInterval)
+    sampler.stop()
     codexUsage.stop()
     index.close()
     if (options.widget) {
@@ -147,6 +152,11 @@ function main(): void {
   }
   process.on('SIGINT', stop)
   process.on('SIGTERM', stop)
+  if (process.platform === 'win32') {
+    // Ctrl-Break, and the console window closing; windows never sends SIGTERM
+    process.on('SIGBREAK', stop)
+    process.on('SIGHUP', stop)
+  }
 }
 
 // only run when executed, so tests can import the helpers

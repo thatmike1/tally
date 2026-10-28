@@ -35,7 +35,7 @@ describe('GET /api/session/:id', () => {
     const body = await detail()
     expect(body.sessionId).toBe(WITH_AGENTS)
     expect(body.subagents.length).toBeGreaterThan(0)
-    expect(body.subagents.every((lane) => lane.agent && lane.file.includes('/subagents/'))).toBe(true)
+    expect(body.subagents.every((lane) => lane.agent && /[\\/]subagents[\\/]/.test(lane.file))).toBe(true)
     expect(new Set(body.subagents.map((lane) => lane.file)).size).toBe(body.subagents.length)
     expect(body.parent.label).toBe('main')
     expect(body.parent.agent).toBe(false)
@@ -153,5 +153,13 @@ describe('GET /api/state', () => {
     expect(state.codex).toMatchObject({ status: 'absent', usedPercent: null, split: null })
     const history = (await (await bare.request('/api/history/codex')).json()) as { installed: boolean }
     expect(history.installed).toBe(false)
+  })
+})
+
+describe('/api/takeaway', () => {
+  // the v5 page computes its sentence; the model one-liner and its route are gone
+  it('is not a route any more', async () => {
+    expect((await app().request('/api/takeaway')).status).toBe(404)
+    expect((await app().request('/api/takeaway', { method: 'POST' })).status).toBe(404)
   })
 })

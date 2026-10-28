@@ -8,11 +8,11 @@
     "tally": "./bin/tally.mjs"
   },
   "scripts": {
-    "dev": "concurrently -n server,ui -c blue,magenta \"npm:dev:server\" \"npm:dev:ui\"",
+    "dev": "concurrently -n server,ui -c blue,magenta \"pnpm run dev:server\" \"pnpm run dev:ui\"",
     "dev:server": "tsx watch server/main.ts --no-open",
     "dev:ui": "vite --config ui/vite.config.ts",
     "build": "vite build --config ui/vite.config.ts",
-    "start": "npm run build && tsx server/main.ts",
+    "start": "pnpm run build && tsx server/main.ts",
     "serve": "tsx server/main.ts",
     "typecheck": "tsc -p server/tsconfig.json --noEmit && tsc -p ui/tsconfig.json --noEmit",
     "test": "vitest run",
@@ -34,5 +34,6 @@
     "typescript": "^7.0.2",
     "vite": "^8.2.2",
     "vitest": "^5.0.0"
-  }
+  },
+  "packageManager": "pnpm@12.15.0"
 }

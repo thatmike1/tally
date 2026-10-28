@@ -28,11 +28,11 @@ describe('loadConfig', () => {
         plan: { name: 'Max 20x', usdPerMonth: 200 },
         codexPlan: { name: 'ChatGPT Plus', usdPerMonth: 20 },
         agentsviewUrl: 'http://127.0.0.1:8080',
-        takeaway: { command: 'agy', model: 'gemini-3.8-flash-low' },
         tray: {
           links: [{ name: 'beadside', url: 'http://127.0.0.1:1338', unit: 'beadside.service' }],
           toggles: [{ name: 'AgentsView', url: 'http://127.0.0.1:8080', unit: 'agentsview.service' }],
         },
+        python: 'py',
       }),
     )
     expect(loadConfig(path)).toEqual({
@@ -40,12 +40,18 @@ describe('loadConfig', () => {
       plan: { name: 'Max 20x', usdPerMonth: 200 },
       codexPlan: { name: 'ChatGPT Plus', usdPerMonth: 20 },
       agentsviewUrl: 'http://127.0.0.1:8080',
-      takeaway: { command: 'agy', model: 'gemini-3.8-flash-low' },
       tray: {
         links: [{ name: 'beadside', url: 'http://127.0.0.1:1338', unit: 'beadside.service' }],
         toggles: [{ name: 'AgentsView', url: 'http://127.0.0.1:8080', unit: 'agentsview.service' }],
       },
+      python: 'py',
     })
+  })
+
+  it('ignores the takeaway an older install wrote', () => {
+    const config = loadConfig(configFile('{"takeaway":{"command":"agy","model":"gemini-3.8-flash-low"}}'))
+    expect(config).toEqual(defaultConfig())
+    expect(config).not.toHaveProperty('takeaway')
   })
 
   it('trims the trailing slash off the AgentsView url', () => {
@@ -69,8 +75,8 @@ describe('loadConfig', () => {
           port: 'nine thousand',
           plan: { name: 42, usdPerMonth: -5 },
           agentsviewUrl: '',
-          takeaway: { command: 'agy' },
           tray: { links: 'beadside', toggles: [{ name: 'AgentsView' }] },
+          python: ['py', '-3'],
         }),
       ),
     )
@@ -86,10 +92,10 @@ describe('loadConfig', () => {
 
 describe('defaultConfigPath', () => {
   it('sits under the home when XDG says nothing', () => {
-    expect(defaultConfigPath({}, '/home/someone')).toBe('/home/someone/.config/tally/config.json')
+    expect(defaultConfigPath({}, '/home/someone')).toBe(join('/home/someone', '.config', 'tally', 'config.json'))
   })
 
   it('follows XDG_CONFIG_HOME when it is set', () => {
-    expect(defaultConfigPath({ XDG_CONFIG_HOME: '/tmp/xdg' }, '/home/someone')).toBe('/tmp/xdg/tally/config.json')
+    expect(defaultConfigPath({ XDG_CONFIG_HOME: '/tmp/xdg' }, '/home/someone')).toBe(join('/tmp/xdg', 'tally', 'config.json'))
   })
 })

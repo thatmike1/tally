@@ -23,9 +23,9 @@ import type { RequestRecord, SessionMeta } from './transcripts'
 /** a lead transcript written this recently is a session that is still running */
 export const LIVE_WINDOW = 120
 
-/** `…/<session>/subagents/<agent>.jsonl` is a fan-out file, not the lead transcript */
+/** `…/<session>/subagents/<agent>.jsonl` is a fan-out file, not the lead transcript; either separator, for windows */
 export function isSubagentFile(path: string): boolean {
-  return path.includes('/subagents/')
+  return /[\\/]subagents[\\/]/.test(path)
 }
 
 /**
@@ -37,6 +37,10 @@ export function isSubagentFile(path: string): boolean {
  * directory name may contain. replacing every dash with a slash guesses wrong
  * on every hyphenated directory, so the filesystem decides instead — the walk
  * takes the longest piece-join that exists at each level.
+ *
+ * on windows the drive's colon and every backslash are dashes too, so
+ * `I:\git\ccChat-general` is `I--git-ccChat-general`: the drive is read off the
+ * front and the walk joins with backslashes.
  *
  * when a level is not on disk the rest of the decode would be a guess, so the
  * encoded name comes back unchanged: a name that reads as an encoding is
@@ -52,14 +56,16 @@ export function projectPath(
   exists: (path: string) => boolean = isDirectory,
 ): string {
   if (cwd) return cwd
-  if (!project.startsWith('-')) return project
-  const pieces = project.replace(/^-+/, '').split('-')
-  let path = ''
+  const drive = /^([A-Za-z])--/.exec(project)
+  if (!project.startsWith('-') && !drive) return project
+  const sep = drive ? '\\' : '/'
+  const pieces = (drive ? project.slice(drive[0].length) : project.replace(/^-+/, '')).split('-')
+  let path = drive ? `${drive[1]}:` : ''
   for (let i = 0; i < pieces.length; ) {
     // longest first, so `ccChat-general` wins over `ccChat` when both exist
     let step: string | null = null
     for (let take = pieces.length - i; take >= 1; take--) {
-      const candidate = `${path}/${pieces.slice(i, i + take).join('-')}`
+      const candidate = `${path}${sep}${pieces.slice(i, i + take).join('-')}`
       if (exists(candidate)) {
         step = candidate
         i += take

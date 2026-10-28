@@ -40,8 +40,8 @@ echo "node:     $NODE"
 # ---- build -----------------------------------------------------------------
 
 cd "$REPO"
-npm ci || npm install
-npm run build
+pnpm install --frozen-lockfile
+pnpm run build
 chmod +x "$REPO/tray/tally-tray.py" "$REPO/sampler/usage-sample.py"
 
 # ---- migrate off the pre-tally sampler and off symlinked units -------------
@@ -93,10 +93,6 @@ else
   if command -v agentsview >/dev/null 2>&1 || [[ -x "$HOME/.local/bin/agentsview" ]]; then
     agentsview_url='"http://127.0.0.1:8080"'
   fi
-  takeaway=null
-  if command -v agy >/dev/null 2>&1; then
-    takeaway='{ "command": "agy", "model": "gemini-3.8-flash-low" }'
-  fi
   # a tray row is only useful when the unit behind it exists: the row starts it
   links=
   if unit_known beadside.service; then
@@ -113,7 +109,6 @@ else
   "plan":      { "name": "Max 5x", "usdPerMonth": 100 },
   "codexPlan": { "name": "ChatGPT Pro", "usdPerMonth": 100 },
   "agentsviewUrl": $agentsview_url,
-  "takeaway": $takeaway,
   "tray": {
     "links":   [ $links ],
     "toggles": [ $toggles ]

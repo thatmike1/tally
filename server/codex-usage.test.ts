@@ -54,10 +54,11 @@ describe('codexBinaryPath', () => {
 
   it('finds a user-level Bun install when the service PATH does not include it', () => {
     const home = mkdtempSync(join(tmpdir(), 'tally-codex-home-'))
-    const binary = join(home, '.bun', 'bin', 'codex')
+    // bun installs `codex.exe` on windows, and a bare `codex` there is nothing windows runs
+    const binary = join(home, '.bun', 'bin', process.platform === 'win32' ? 'codex.exe' : 'codex')
     mkdirSync(join(home, '.bun', 'bin'), { recursive: true })
     writeFileSync(binary, '')
-    expect(codexBinaryPath(home, { PATH: '/usr/bin' })).toBe(binary)
+    expect(codexBinaryPath(home, { PATH: '/nowhere' })).toBe(binary)
   })
 })
 

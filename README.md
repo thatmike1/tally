@@ -4,8 +4,9 @@ A local page that answers "I'm suddenly at 60% of my 5-hour limit, what ate it"
 in three seconds, and keeps every past block so you can see what a meter point
 actually costs you.
 
-Ubuntu, a Claude subscription, Node 22+ and Python 3. Everything else is
-optional and detected: Codex, AgentsView, T3 Code, `agy`, and whatever local
+Ubuntu (or Windows, see [Windows](#windows)), a Claude subscription, Node 22+
+and Python 3. Everything else is
+optional and detected: Codex, AgentsView, T3 Code, and whatever local
 pages you want in the tray.
 
 ## Install
@@ -42,9 +43,9 @@ back, so you can delete the file and tally still runs.
 | `plan` | `{"name": "Max 5x", "usdPerMonth": 100}` | what "the sub is worth" compares your list-price usage against |
 | `codexPlan` | `{"name": "ChatGPT Pro", "usdPerMonth": 100}` | the same for the Codex history tab |
 | `agentsviewUrl` | `null` | base url of a local AgentsView. `null` means no transcript links are drawn at all, rather than dead ones |
-| `takeaway` | `null` | `{"command": "agy", "model": "..."}`. Off unless the command is on PATH |
 | `tray.links` | `[]` | rows that open a local page, starting the row's unit if the port is closed |
 | `tray.toggles` | `[]` | rows that start *and stop* a unit, for a service that costs something while it runs |
+| `python` | `null` | the python 3 that runs the sampler where the server runs it itself (Windows): a command or full path, no arguments. `null` tries `python`, then `py -3` |
 
 The `links` / `toggles` split is the whole tray design: beadside is an always-on
 service, so its row is just "open it". AgentsView costs about 7% of a core while
@@ -58,28 +59,56 @@ key means touching `server/config.ts`, `tray/tally-tray.py` and
 ## Running it by hand
 
 ```
-npm install
-npm start          # builds the ui, serves on 127.0.0.1:1337, opens the browser
+pnpm install --frozen-lockfile
+pnpm start          # builds the ui, serves on 127.0.0.1:1337, opens the browser
 ```
+
+Use pnpm 12.15.0 (pinned in `packageManager`) with Node.js 22 or newer.
+Install pnpm with the [standalone installer](https://pnpm.io/installation).
 
 | command | what it does |
 |---|---|
-| `npm run dev` | tsx watch on the server plus the vite dev server on 5174 |
-| `npm run serve` | the server alone, against the already-built ui |
-| `npm test` | vitest, including the comparison against the python oracle |
-| `npm run typecheck` | tsc over server and ui |
-| `npm run oracle` | regenerate the expected tables from the proof scripts (see Tests) |
+| `pnpm run dev` | tsx watch on the server plus the vite dev server on 5174 |
+| `pnpm run serve` | the server alone, against the already-built ui |
+| `pnpm test` | vitest, including the comparison against the python oracle |
+| `pnpm run typecheck` | tsc over server and ui |
+| `pnpm run oracle` | regenerate the expected tables from the proof scripts (see Tests) |
 
-The service serves the built `ui/dist`, so after ui changes run `npm run build`
+The service serves the built `ui/dist`, so after ui changes run `pnpm run build`
 and `systemctl --user restart tally`.
 
-Flags: `--port <n>` (wins over the config), `--no-open`, `--no-widget`,
-`--no-takeaway`. `bin/tally.mjs` is a launcher that works from any directory, so
+Flags: `--port <n>` (wins over the config), `--no-open`, `--no-widget`.
+`bin/tally.mjs` is a launcher that works from any directory, so
 `ln -s "$PWD/bin/tally.mjs" ~/.local/bin/tally` is enough to run it anywhere.
 
 `tray/tally-tray.py --print` dumps the tray label and rows without a tray, which
 is the fastest way to see what a given config produces; `TALLY_CONFIG=/tmp/c.json`
 points it at a scratch file.
+
+## Windows
+
+There is no installer and no tray on Windows; tally is one process you start
+and stop yourself. With no systemd to put the sampler on a timer, the server
+runs `sampler/usage-sample.py` itself on the same wall-clock five-minute marks,
+one run at a time, and once at startup when the newest reading is already five
+minutes old. It uses the config's `python`, else `python`, else `py -3`, and
+skips anything that does not answer as Python 3 (the Microsoft Store stub).
+Sampler failures land in the server's own output.
+
+```
+pnpm install --frozen-lockfile
+pnpm run build
+node --import file:///C:/path/to/tally/node_modules/tsx/dist/loader.mjs C:\path\to\tally\server\main.ts --no-open
+```
+
+That command is the whole of tally in one `node.exe` and works from any
+directory. `pnpm run serve` and `bin/tally.mjs` work too, but each starts a
+second node process under the first, so killing the outer one leaves the
+server running. Write `%USERPROFILE%\.config\tally\config.json` by hand if
+you want one (the table above); everything else lives where it does on Linux,
+under `%USERPROFILE%\.cache\tally`, `.claude`, `.codex` and `.t3`. Ctrl-C and
+Ctrl-Break stop it cleanly; a hard kill (`Stop-Process`, `taskkill /F`) skips
+the cleanup, so the T3 sidebar keeps the last widget until the next start.
 
 ## Routes and endpoints
 
@@ -230,7 +259,7 @@ that comment on it so it can be replaced without touching anything else.
 
 ## Tests
 
-`npm test`. The interesting ones compare against the python that produced the
+`pnpm test`. The interesting ones compare against the python that produced the
 proof:
 
 - `server/transcripts.test.ts` — every request must match `jobs/extract.py`'s own
@@ -240,14 +269,15 @@ proof:
 
 Both fixtures are frozen in `test/fixtures/`. The transcripts there are real ones
 with every message body stripped out; only the fields both parsers read survive.
-Rebuild them with `python3 scripts/make-fixtures.py` and then `npm run oracle`,
+Rebuild them with `python3 scripts/make-fixtures.py` and then `pnpm run oracle`,
 which needs the proof scripts that produced the attribution numbers
 (`TALLY_JOBS`; they are not in this repo, so the oracle refresh only runs where
-they are and `npm test` never needs them — the fixtures it compares against are
+they are and `pnpm test` never needs them — the fixtures it compares against are
 checked in).
 
 ## Screenshots
 
-`docs/v1.png` and `docs/v2-week.png` are earlier versions: no tray face, no T3
-sidebar widget, no takeaway line over the split, no Codex. Tally renders no
+`docs/v5-history.png` is the history page against the demo home
+(`scripts/demo-home.mjs`). `docs/v1.png` and `docs/v2-week.png` are earlier
+versions: no tray face, no T3 sidebar widget, no Codex. Tally renders no
 transcripts itself and never will; that is AgentsView's job.

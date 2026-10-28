@@ -350,14 +350,25 @@ export function cutRollout(rollout: CodexRollout, until: number): CodexRollout {
   return { ...rollout, calls, readings, lastT: stamps.length ? Math.max(...stamps) : null }
 }
 
-/** T3 thread titles keyed by the Codex thread id T3 resumes, plus whether a turn is in flight */
-export function t3CodexThreads(path: string): Map<string, { title: string; live: boolean }> {
-  return new Map([...nativeThreads('codex', path)].map(([id, thread]) => [id, { title: thread.title, live: thread.live }]))
+/** what T3 knows about a Codex thread it ran */
+export interface T3CodexThread {
+  /** T3's own thread id, the id its lane carries */
+  threadId: string
+  title: string
+  /** a turn is in flight */
+  live: boolean
+}
+
+/** T3's threads keyed by the Codex thread id T3 resumes */
+export function t3CodexThreads(path: string): Map<string, T3CodexThread> {
+  return new Map([...nativeThreads('codex', path)].map(([id, thread]) => [id, { threadId: thread.threadId, title: thread.title, live: thread.live }]))
 }
 
 export interface CodexThreadRow {
   /** the root Codex thread id; AgentsView knows it as `codex:<id>` */
   id: string
+  /** the T3 thread that ran it, which its timeline lane is keyed on; null when T3 never saw it */
+  t3ThreadId: string | null
   title: string
   /** `t3`, `exec`, `cli` or the raw originator */
   via: string
@@ -448,7 +459,7 @@ export function splitCodexWeek(
   rollouts: CodexRollout[],
   window: { from: number; resetsAt: number },
   anchor: { t: number; pct: number } | null,
-  t3: Map<string, { title: string; live: boolean }>,
+  t3: Map<string, T3CodexThread>,
   now: number,
 ): CodexWeekSplit | null {
   const openai = rollouts.filter((rollout) => rollout.openai)
@@ -514,6 +525,7 @@ export function splitCodexWeek(
       const project = lead.cwd ? basename(lead.cwd) : null
       return {
         id,
+        t3ThreadId: known?.threadId ?? null,
         title: known?.title ?? lead.firstPrompt ?? `${project ?? 'codex'} · ${id.slice(0, 8)}`,
         via: via(lead.originator),
         project,
@@ -612,7 +624,7 @@ export function codexLane(rollout: CodexRollout, seen: Set<string>): CodexLane {
  */
 export function threadSince(rootId: string, root: string | string[]): number | null {
   const lead = rolloutFiles(root).find((file) => file.path.endsWith(`-${rootId}.jsonl`))
-  const day = lead?.path.match(/\/(\d{4})\/(\d{2})\/(\d{2})\/[^/]+$/)
+  const day = lead?.path.match(/[\\/](\d{4})[\\/](\d{2})[\\/](\d{2})[\\/][^\\/]+$/)
   if (!lead || !day) return lead ? 0 : null
   return Date.UTC(Number(day[1]), Number(day[2]) - 1, Number(day[3])) / 1000 - 86400
 }

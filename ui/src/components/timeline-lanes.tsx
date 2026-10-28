@@ -56,9 +56,8 @@ export function buildGroups(lanes: Lane[], split: RangeSplit | null, range: Span
   const byLane = new Map(lanes.map((lane) => [lane.id, lane]))
   const paths = new Map(lanes.map((lane) => [encoded(lane.project), lane.project]))
   const weekly = new Map((split?.weekly.sessions ?? []).map((row) => [row.sessionId, row]))
-  const codexById = new Map(codex.map((thread) => [thread.id, thread]))
-  // a lane carries T3's thread id and the Codex split its own; the T3 title is the only shared key
-  const codexByTitle = new Map(codex.filter((thread) => thread.via === 't3').map((thread) => [thread.title, thread]))
+  // a Codex lane is T3's thread; the split row names the T3 thread that ran it
+  const codexByT3 = new Map(codex.filter((thread) => thread.t3ThreadId).map((thread) => [thread.t3ThreadId, thread]))
   const rows: RowModel[] = []
   const seen = new Set<string>()
 
@@ -104,7 +103,7 @@ export function buildGroups(lanes: Lane[], split: RangeSplit | null, range: Span
       reach,
       // a Claude session with no request in the range is idle, whatever its lane shows
       touched: !claude && reach !== null,
-      codex: claude ? null : (codexById.get(lane.id) ?? codexByTitle.get(lane.title) ?? null),
+      codex: claude ? null : (codexByT3.get(lane.id) ?? null),
     })
   }
 

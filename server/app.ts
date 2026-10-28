@@ -14,18 +14,15 @@ import { codexHistoryRoutes } from './history-codex'
 import { historyRoutes } from './history-claude'
 import { BadRange, parseRange, rangeLanes, rangeSplit } from './range'
 import { buildState, type Options } from './state'
-import type { TakeawayRefresher } from './takeaway'
 import { projectsRoot } from './transcripts'
 
 export interface AppConfig extends Options {
   /** absolute path to the built ui, served at / when it exists */
   uiDist?: string | null
-  /** the on-demand takeaway generator; null under --no-takeaway */
-  takeaway?: Pick<TakeawayRefresher, 'current' | 'refresh'> | null
 }
 
 export function createApp(options: AppConfig = {}) {
-  const { uiDist = null, takeaway = null, ...stateOptions } = options
+  const { uiDist = null, ...stateOptions } = options
   // the config the routes read; `stateOptions` carries it on to `buildState`
   const config = stateOptions.config ?? defaultConfig()
   const app = new Hono()
@@ -122,24 +119,12 @@ export function createApp(options: AppConfig = {}) {
     historyRoutes({ home: stateOptions.home, index: stateOptions.index, now: stateOptions.now, plan: config.plan }),
   )
 
-  // reads the last generated line without spending tokens
-  app.get('/api/takeaway', (c) => c.json(takeaway?.current() ?? { text: null, model: null }))
-
-  // the focused, visible page calls this when the user opens or returns to it
-  app.post('/api/takeaway', async (c) => {
-    if (takeaway) {
-      const state = await buildState({ ...stateOptions, recordLook: false })
-      await takeaway.refresh(state)
-    }
-    return c.json(takeaway?.current() ?? { text: null, model: null })
-  })
-
   if (uiDist && existsSync(uiDist)) {
     app.use('/*', serveStatic({ root: uiDist }))
     app.get('/*', serveStatic({ path: `${uiDist}/index.html` }))
   } else {
     app.get('/', (c) =>
-      c.text('tally: the ui is not built yet. run `npm run build`, or `npm run dev` for the vite server.', 503),
+      c.text('tally: the ui is not built yet. run `pnpm run build`, or `pnpm run dev` for the vite server.', 503),
     )
   }
 
