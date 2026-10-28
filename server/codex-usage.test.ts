@@ -58,7 +58,7 @@ describe('codexBinaryPath', () => {
     const binary = join(home, '.bun', 'bin', process.platform === 'win32' ? 'codex.exe' : 'codex')
     mkdirSync(join(home, '.bun', 'bin'), { recursive: true })
     writeFileSync(binary, '')
-    expect(codexBinaryPath(home, { PATH: '/usr/bin' })).toBe(binary)
+    expect(codexBinaryPath(home, { PATH: '/nowhere' })).toBe(binary)
   })
 })
 
