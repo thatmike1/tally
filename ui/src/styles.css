@@ -1339,6 +1339,72 @@ button.row-line:hover .pm {
   margin: 0 0 8px;
 }
 
+/* a ledger too narrow for its figures: the name on its own line, the figures under it with their heads */
+.ledger.stacked .rail {
+  padding-bottom: 8px;
+}
+
+.ledger.stacked .row-line {
+  position: relative;
+  grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
+  row-gap: 10px;
+}
+
+.ledger.stacked .who {
+  grid-column: 1 / -1;
+  padding-right: 30px;
+}
+
+.ledger.stacked .who .ttl {
+  white-space: normal;
+}
+
+.ledger.stacked .row-line > .n {
+  text-align: left;
+}
+
+.ledger.stacked .n .lhd {
+  display: block;
+  font-size: 12.5px;
+  color: var(--faint);
+  line-height: 1.3;
+  margin-bottom: 2px;
+}
+
+.ledger.stacked .pm {
+  position: absolute;
+  top: 12px;
+  right: 0;
+}
+
+.ledger.stacked .row-more {
+  padding: 2px 0 22px 22px;
+}
+
+/* a question holding a ledger puts its head over the ledger until the window is wide enough for both side by side */
+@media (max-width: 2199px) {
+  .q:has(.ledger) {
+    grid-template-columns: 1fr;
+    row-gap: 18px;
+  }
+
+  .q:has(.ledger) .q-head {
+    max-width: 760px;
+  }
+}
+
+/* below this the body column is narrower than the block chart's 600px, so every question stacks */
+@media (max-width: 1699px) {
+  .q {
+    grid-template-columns: 1fr;
+    row-gap: 18px;
+  }
+
+  .q-head {
+    max-width: 760px;
+  }
+}
+
 /* codex: ledger and chart side by side */
 .two {
   display: grid;
@@ -1351,6 +1417,13 @@ button.row-line:hover .pm {
 .chart {
   width: 100%;
   position: relative;
+}
+
+/* a phone is narrower than a chart's floor width, so the chart scrolls on its own instead of the page */
+@media (max-width: 1099px) {
+  .chart {
+    overflow-x: auto;
+  }
 }
 
 .chart svg {

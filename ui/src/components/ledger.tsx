@@ -1,4 +1,4 @@
-import { useState, type CSSProperties, type ReactNode } from 'react'
+import { useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import type { SplitUsage } from '../api'
 import { money, tokens } from '../format'
 import { Tip } from './tip'
@@ -49,6 +49,35 @@ export interface Column {
   width: string
 }
 
+/** the narrowest the name column may get before a row stacks its figures under the name */
+const NAME_MIN = 280
+/** the grid's column gap, as in `.rail` and `.row-line` */
+const GAP = 18
+/** the open/close mark's track */
+const MARK = 28
+
+/** the width a ledger needs to keep every figure on the name's line */
+export function ledgerWidth(columns: Column[]): number {
+  const fixed = columns.reduce((sum, column) => sum + (Number.parseFloat(column.width) || 0), 0)
+  return NAME_MIN + fixed + MARK + GAP * (columns.length + 1)
+}
+
+/** true while the element is narrower than `min`, so the ledger stacks */
+function useNarrow(min: number) {
+  const ref = useRef<HTMLDivElement>(null)
+  const [narrow, setNarrow] = useState(false)
+  useLayoutEffect(() => {
+    const node = ref.current
+    if (!node) return
+    const check = (width: number) => setNarrow(width < min)
+    check(node.getBoundingClientRect().width)
+    const observer = new ResizeObserver(([entry]) => entry && check(entry.contentRect.width))
+    observer.observe(node)
+    return () => observer.disconnect()
+  }, [min])
+  return [ref, narrow] as const
+}
+
 export interface LedgerRow {
   key: string
   color: string
@@ -65,6 +94,8 @@ export interface LedgerRow {
 /**
  * one row per session, every meter on the same line. the first column is the
  * name; `columns` are the figures after it, right-aligned, in the order given.
+ * when the ledger is too narrow for that, each row puts its name on a line of
+ * its own and the figures under it, each with its column head as a label.
  */
 export function Ledger({
   columns,
@@ -87,17 +118,18 @@ export function Ledger({
       else next.add(key)
       return next
     })
-  const grid: CSSProperties = {
-    gridTemplateColumns: `minmax(0, 1fr) ${columns.map((column) => column.width).join(' ')} 28px`,
-  }
+  const [ref, narrow] = useNarrow(ledgerWidth(columns))
+  const grid: CSSProperties | undefined = narrow
+    ? undefined
+    : { gridTemplateColumns: `minmax(0, 1fr) ${columns.map((column) => column.width).join(' ')} ${MARK}px` }
   return (
-    <div className="ledger">
+    <div className={narrow ? 'ledger stacked' : 'ledger'} ref={ref}>
       <div className="rail" style={grid}>
         <div>{first}</div>
-        {columns.map((column, index) => (
-          <div key={index}>{column.head}</div>
-        ))}
-        <div />
+        {narrow
+          ? null
+          : columns.map((column, index) => <div key={index}>{column.head}</div>)}
+        {narrow ? null : <div />}
       </div>
       {rows.map((row) => {
         const isOpen = open.has(row.key)
@@ -115,6 +147,7 @@ export function Ledger({
             </span>
             {row.cells.map((cell, index) => (
               <span className="n" key={index}>
+                {narrow ? <span className="lhd">{columns[index]?.head}</span> : null}
                 <span className={cell.small ? 'main small' : 'main'}>{cell.main}</span>
                 {cell.sub ? <span className="sub">{cell.sub}</span> : null}
               </span>
