@@ -60,8 +60,7 @@ it('demo home refuses to run without an explicit output directory', async () => 
   expect(console.error).toHaveBeenCalledWith('usage: demo-home.mjs <dir>')
 })
 
-// ccChat-general-96mv: keep the stale-field bug visible without changing source
-it.fails('state dump omits the removed day.lanesError diagnostic', async () => {
+it('state dump omits the removed day.lanesError diagnostic', async () => {
   mocks.buildState.mockResolvedValue({
     fiveHour: { used: 42 }, weekly: null, fable: null, block: { samples: [1, 2] }, notes: ['sample note'], extra: null,
     split: { sessions: [{ title: 'a'.repeat(45), share: 0.12345, points: 2.34, subagents: 2, live: true }], costBeforeFirstSample: 1, costAfterLastSample: 2, totalCost: 3 },
