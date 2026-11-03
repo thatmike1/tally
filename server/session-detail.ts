@@ -25,6 +25,8 @@ export interface DetailOptions {
   root?: string
   index?: TranscriptIndex | null
   now?: number
+  /** include only requests written by this history instant */
+  at?: number
   /** base url of the local AgentsView; null means no transcript link */
   agentsviewUrl?: string | null
 }
@@ -71,7 +73,8 @@ function laneOf(file: TranscriptFile, records: RequestRecord[]): AgentLane {
  */
 export async function sessionDetail(sessionId: string, options: DetailOptions = {}): Promise<SessionDetail | null> {
   const root = options.root ?? projectsRoot()
-  const now = options.now ?? Date.now() / 1000
+  const at = options.at
+  const now = at ?? options.now ?? Date.now() / 1000
   const index = options.index ?? null
   const files = transcriptFiles(root).filter((file) => file.sessionId === sessionId)
   if (!files.length) return null
@@ -103,12 +106,16 @@ export async function sessionDetail(sessionId: string, options: DetailOptions = 
       project = file.project
       modified = file.mtime
     }
-    lanes.push(laneOf(file, records))
+    if (at !== undefined) {
+      records = records.filter((record) => record.t <= at)
+      if (file.agent && !records.length) continue
+    }
+    lanes.push(laneOf(options.at === undefined ? file : { ...file, mtime: Math.min(file.mtime, options.at) }, records))
   }
 
-  const leadIndex = files.findIndex((file) => !file.agent)
+  if (options.at !== undefined && !lanes.some((lane) => lane.requests.length)) return null
   // a session whose lead transcript is gone still has its fan-out files; show an empty parent
-  const parent: AgentLane = lanes[leadIndex === -1 ? 0 : leadIndex]!
+  const parent: AgentLane = lanes.find((lane) => !lane.agent) ?? lanes[0]!
   const subagents = lanes.filter((lane) => lane !== parent)
   let cost = 0
   let tokens = 0
@@ -138,7 +145,7 @@ export async function sessionDetail(sessionId: string, options: DetailOptions = 
     cost,
     tokens,
     requests,
-    live: modified > 0 && now - modified < LIVE_WINDOW,
+    live: options.at === undefined ? modified > 0 && now - modified < LIVE_WINDOW : now - end < LIVE_WINDOW,
     parent,
     subagents,
     agentsview: agentsviewUrl(options.agentsviewUrl ?? null, sessionId),

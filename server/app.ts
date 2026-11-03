@@ -49,11 +49,11 @@ export function createApp(options: AppConfig = {}) {
   // link here, and the detail view phase two draws reads exactly this
   app.get('/api/session/:id', async (c) => {
     const id = c.req.param('id')
+    // both providers honour the same history cutoff
+    const atRaw = c.req.query('at')
+    const at = atRaw === undefined ? undefined : Number(atRaw)
+    if (at !== undefined && !Number.isFinite(at)) return c.json({ error: 'at must be unix seconds' }, 400)
     if (id.startsWith('codex:')) {
-      // `?at=<unix seconds>` freezes the thread for a history drill-in, as on /api/state
-      const atRaw = c.req.query('at')
-      const at = atRaw === undefined ? undefined : Number(atRaw)
-      if (at !== undefined && !Number.isFinite(at)) return c.json({ error: 'at must be unix seconds' }, 400)
       const codexDetail = await codexSessionDetail(id.slice('codex:'.length), {
         root: codexSessionRoots(stateOptions.home ?? homedir()),
         t3: statePath(stateOptions.home ?? homedir()),
@@ -71,6 +71,7 @@ export function createApp(options: AppConfig = {}) {
       index: stateOptions.index ?? null,
       now: stateOptions.now,
       agentsviewUrl: config.agentsviewUrl,
+      at,
     })
     if (!detail) return c.json({ error: `no transcript for session ${id}` }, 404)
     return c.json(detail)
