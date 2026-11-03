@@ -27,6 +27,15 @@ export function createApp(options: AppConfig = {}) {
   const config = stateOptions.config ?? defaultConfig()
   const app = new Hono()
 
+  // a loopback bind alone does not stop a website rebinding its own hostname
+  app.use('*', async (c, next) => {
+    const host = new URL(c.req.url).hostname
+    if (host !== 'localhost' && host !== '127.0.0.1' && host !== '[::1]') {
+      return c.text('tally: use a localhost or loopback address', 403)
+    }
+    await next()
+  })
+
   app.onError((error, c) => {
     const message = error instanceof Error ? error.message : 'server error'
     return c.json({ error: message }, 500)
