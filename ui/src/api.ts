@@ -81,7 +81,7 @@ export async function fetchCodexHistory(): Promise<CodexHistory> {
   return await getJson<CodexHistory>('/api/history/codex')
 }
 
-/** one session; `at` freezes it at a past instant (the server honours it for Codex threads) */
+/** one session; `at` freezes either provider at a past instant */
 export async function fetchSession(id: string, at?: number): Promise<SessionDetail> {
   const path = `/api/session/${encodeURIComponent(id)}`
   return await getJson<SessionDetail>(at === undefined ? path : `${path}?at=${Math.round(at)}`)
