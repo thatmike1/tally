@@ -213,7 +213,7 @@ export async function parseTranscript(
       if (wantTitle) title = titleFrom(line)
       if (line.type !== 'assistant') continue
       const t = parseTimestamp(line.timestamp)
-      if (t === null || t < start || t >= end) continue
+      if (t === null) continue
       const message = line.message ?? {}
       const mid = message.id
       const usage = message.usage
@@ -250,7 +250,8 @@ export async function parseTranscript(
     reader.close()
     stream.close()
   }
-  return { records: [...last.values()], title, cwd, lines }
+  // deduplicate before cutting the window, as the full-file index does
+  return { records: [...last.values()].filter((record) => record.t >= start && record.t < end), title, cwd, lines }
 }
 
 export interface ScanResult {
