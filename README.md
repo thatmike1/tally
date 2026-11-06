@@ -157,16 +157,36 @@ upstream's newest sample is stale. That is for a second machine (a VPS that is u
 overnight) on the same account: the endpoint answers 429 when two machines ask at
 once, and a 24/7 sampler leaves no holes where background agents ran.
 
-The same upstream's Codex rollouts are mirrored too, every 15 minutes after the
-sample, with `rsync --append-verify` from its `~/.codex/sessions/` into
-`~/.cache/tally/codex-upstream/`. The Codex meter is account-wide, so without
-them a week of agents run over there shows up as meter points with no calls
-behind them. The copy stays out of `~/.codex/sessions` so `codex resume` does
-not list threads that cannot run here, and a call seen in both places counts
-once. `CODEX_UPSTREAM=` (empty) on the unit turns the copy off, and
-`CODEX_UPSTREAM=user@host` copies from a machine other than the meter's
-upstream. Those calls carry no speed (the speed comes from this machine's T3
-state), so they count at standard rate under the unknown-speed caveat.
+Other machines' Codex rollouts are mirrored too, every 15 minutes after the
+sample, with `rsync --append-verify` and never a delete. The Codex meter is
+account-wide, so without them a week of agents run elsewhere shows up as meter
+points with no calls behind them. `CODEX_SOURCES="vps=root@host laptop=laptop"`
+on the sampler unit names one source per machine; each lands in
+`~/.cache/tally/codex-sources/<name>/` as `sessions/`, the machine's own meter
+log when it runs the headless meter below, and `status.json` with the last
+copy's outcome, so an asleep laptop only fails its own copy and is retried on
+the next cadence. `usage-sample.py --codex-sync` copies every source now, for a
+first large copy by hand. The copies stay out of `~/.codex/sessions` so `codex
+resume` does not list threads that cannot run here, the same rollout found under
+two roots is read once from its longer copy, and a call seen twice counts once.
+Without `CODEX_SOURCES` the older form still works: the meter's upstream (or
+`CODEX_UPSTREAM=user@host`) is mirrored into `~/.cache/tally/codex-upstream/`,
+which is read either way, and `CODEX_UPSTREAM=` (empty) turns it off. Those calls
+carry no speed (the speed comes from this machine's T3 state), so they count at
+standard rate under the unknown-speed caveat.
+
+**The headless Codex meter** — for an always-on machine that runs no tally (the
+VPS), so the Codex meter is read while the desktop sleeps. `pnpm run
+build:codex-meter` bundles `sampler/codex-meter.ts` into one
+`dist/codex-meter.mjs` that needs only node 22 and a logged-in `codex`; copy it
+with `systemd/tally-codex-meter.*` and `systemd/install-codex-meter.sh` to the
+machine and run the script there. It installs a five-minute timer (system units
+as root) that writes the reader's own line format to that machine's
+`~/.cache/tally/codex-usage.jsonl`, which the desktop's `CODEX_SOURCES` copy
+picks up. The running week on the page and every window of
+`/api/history/codex` are cut from the same set: this machine's readings, every
+copied meter log and every rollout's readings. Nothing is interpolated, so an
+hour no source read stays a gap in the line.
 
 **Per-request tokens and cost** — `~/.claude/projects/*/*.jsonl` plus
 `*/subagents/*.jsonl`, last line per (file, message id), subagent files folded

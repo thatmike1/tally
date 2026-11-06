@@ -194,7 +194,8 @@ export interface CodexHistory {
     unknownModels: string[]
   }
   prices: { source: string; readAt: string; models: Record<string, OpenAiPrice> }
-  sources: { usage: string; rollouts: string[] }
+  /** `usage` is this machine's reader log, `meters` every meter log read, `machines` the copied sources */
+  sources: { usage: string; meters: string[]; rollouts: string[]; machines: string[] }
 }
 
 /** one request on a session's time axis */

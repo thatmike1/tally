@@ -12,6 +12,7 @@
     "dev:server": "tsx watch server/main.ts --no-open",
     "dev:ui": "vite --config ui/vite.config.ts",
     "build": "vite build --config ui/vite.config.ts",
+    "build:codex-meter": "vite build --config sampler/codex-meter.vite.config.ts",
     "start": "pnpm run build && tsx server/main.ts",
     "serve": "tsx server/main.ts",
     "typecheck": "tsc -p server/tsconfig.json --noEmit && tsc -p ui/tsconfig.json --noEmit",

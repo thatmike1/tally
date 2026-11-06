@@ -446,7 +446,7 @@ function TimelineBody({ state, history, codexWindows, tick, from, to, initialVie
       </div>
 
       <div className="tl-grid-row tl-top">
-        <Hero state={state} split={split.data} picked={picked !== null} label={label} sel={sel} />
+        <Hero state={state} codex={codex} split={split.data} picked={picked !== null} label={label} sel={sel} />
         <div ref={track} className="tl-track">
           <Chart
             view={view}

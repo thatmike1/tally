@@ -3,7 +3,8 @@ import { readFileSync, mkdirSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { codexSessionRoots, scanRollouts, splitCodexWeek, t3CodexThreads, type CodexWeekSplit } from './codex-sessions'
-import { codexBinaryPath, codexUsagePaths, codexUsageView, type CodexUsageView } from './codex-usage'
+import { codexMeterLogs, meterReadings, observedReadings, runningWindow } from './codex-observed'
+import { codexBinaryPath, codexPace, codexUsagePaths, codexUsageView, thinHistory, type CodexUsageView } from './codex-usage'
 import { defaultConfig, type TallyConfig } from './config'
 import type { IndexProgress, Lane } from './history-types'
 import { buildLanes, LIVE_WINDOW } from './lanes'
@@ -63,6 +64,8 @@ export interface Options {
   weekMode?: 'recent' | 'whole'
   /** `~/.codex/sessions` and the upstream copy, unless a test points elsewhere */
   codexSessions?: string | string[]
+  /** every Codex meter log to read; defaults to this machine's reader and each copied source's */
+  codexMeterLogs?: string[]
   /**
    * freeze the page at this instant (unix seconds): samples and requests after
    * it are ignored, `now` is `at`, and the "last looked" marker is neither read
@@ -233,19 +236,28 @@ export async function buildState(options: Options = {}): Promise<State> {
   // containing it, no reading after it, and the rollouts cut at the same instant
   const config = options.config ?? defaultConfig()
   const codexInstalled = options.codexInstalled ?? codexBinaryPath(home) !== null
-  const codexView = codexUsageView(options.codexPaths ?? codexUsagePaths(home), now, {
+  const codexPaths = options.codexPaths ?? codexUsagePaths(home)
+  const codexView = codexUsageView(codexPaths, now, {
     installed: codexInstalled,
     ...(frozen ? { at: now } : {}),
   })
   let codexSplit: CodexWeekSplit | null = null
+  let codexObserved = codexView
   if (codexView.windowStart !== null && codexView.resetsAt !== null) {
     const rollouts = await scanRollouts(codexView.windowStart, options.codexSessions ?? codexSessionRoots(home), frozen ? now : undefined, statePath(home))
     const anchor = codexView.status === 'fresh' && codexView.sampledAt !== null && codexView.usedPercent !== null
       ? { t: codexView.sampledAt, pct: codexView.usedPercent }
       : null
     codexSplit = splitCodexWeek(rollouts, { from: codexView.windowStart, resetsAt: codexView.resetsAt }, anchor, t3CodexThreads(statePath(home)), now)
+    // the week's line and pace from every source that read the meter, as
+    // `/api/history/codex` cuts its running window, not this reader's log alone
+    const meters = meterReadings(options.codexMeterLogs ?? [codexPaths.history, ...codexMeterLogs(home).slice(1)])
+    const running = runningWindow(observedReadings(meters, rollouts), now)
+    if (running) {
+      codexObserved = { ...codexView, history: thinHistory(running), pace: codexView.pace === null ? null : codexPace(running) }
+    }
   }
-  const codex = { ...codexView, split: codexSplit }
+  const codex = { ...codexObserved, split: codexSplit }
   if (options.recordLook !== false && !frozen) writeLastLooked(lookPath, now)
 
   const log = readLog(limitsLogPath(home))

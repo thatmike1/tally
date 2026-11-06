@@ -3,10 +3,13 @@
 // made of (the token mix, its list cost per kind, the predecessor's price).
 import type { RangeMeterSplit, RangeSplit, State } from '../api'
 import { days, hm, money, tokens, until } from '../format'
+import type { CodexSeries } from './timeline-chart'
 import { modelName, realModels, type Span } from './timeline-util'
 
 export interface HeroProps {
   state: State
+  /** the Codex meter over every week, as the chart draws it */
+  codex: CodexSeries
   split: RangeSplit | null
   picked: boolean
   label: string
@@ -18,20 +21,34 @@ function movement(meter: RangeMeterSplit | null): { start: number; end: number; 
   return { start: meter.pieces[0]!.startPct, end: meter.pieces.at(-1)!.endPct, delta: meter.delta }
 }
 
-function moved(m: { start: number; end: number; delta: number | null } | null): string {
+function moved(m: { start: number; end: number; delta: number | null; weeks?: number } | null): string {
   if (!m) return 'no reading in the range'
-  if (m.delta === null) return `${m.end}% · one reading, nothing measured`
-  if (m.delta === 0) return `${m.start} → ${m.end}% · did not move`
-  return `${m.start} → ${m.end}% · +${m.delta}`
+  const across = m.weeks && m.weeks > 1 ? ` across ${m.weeks} weeks` : ''
+  if (m.delta === null) return `${m.end}% · ${across ? `no week read twice${across}` : 'one reading, nothing measured'}`
+  if (m.delta === 0) return `${m.start} → ${m.end}% · did not move${across}`
+  return `${m.start} → ${m.end}% · +${Math.round(m.delta * 10) / 10}${across}`
 }
 
-/** the Codex meter's readings inside the range: the current week's only */
-function codexMovement(state: State, sel: Span): { start: number; end: number; delta: number | null } | null {
-  const inside = (state.codex.history ?? []).filter((p) => p.t >= sel.from && p.t <= sel.to)
+/**
+ * the Codex meter's movement inside the range, over every week the series holds.
+ * each week is measured on its own readings and the weeks are added up, so a
+ * reset inside the range never reads as a drop, and no point is assumed for a
+ * stretch no reading covers. `delta` is null until one week has two readings.
+ */
+export function codexMovement(series: CodexSeries, sel: Span): { start: number; end: number; delta: number | null; weeks: number } | null {
+  const inside = series.points.filter((p) => p.t >= sel.from && p.t <= sel.to)
   const first = inside[0]
   const last = inside.at(-1)
   if (!first || !last) return null
-  return { start: first.pct, end: last.pct, delta: inside.length > 1 ? last.pct - first.pct : null }
+  const weeks: (typeof inside)[] = [[]]
+  for (const point of inside) {
+    const previous = weeks.at(-1)!.at(-1)
+    if (previous && series.resets.some((r) => r.t > previous.t && r.t <= point.t)) weeks.push([])
+    weeks.at(-1)!.push(point)
+  }
+  const measured = weeks.filter((week) => week.length > 1)
+  const delta = measured.length ? measured.reduce((sum, week) => sum + week.at(-1)!.pct - week[0]!.pct, 0) : null
+  return { start: first.pct, end: last.pct, delta, weeks: weeks.length }
 }
 
 function verdict(state: State) {
@@ -46,12 +63,12 @@ function verdict(state: State) {
   )
 }
 
-export function Hero({ state, split, picked, label, sel }: HeroProps) {
+export function Hero({ state, codex: codexReadings, split, picked, label, sel }: HeroProps) {
   const five = state.fiveHour
   const range = split?.fiveHour ?? null
   const weekly = picked ? movement(split?.weekly ?? null) : null
   const fable = picked ? movement(split?.fable ?? null) : null
-  const codex = picked ? codexMovement(state, sel) : null
+  const codex = picked ? codexMovement(codexReadings, sel) : null
   const pieces = range?.pieces ?? []
 
   return (

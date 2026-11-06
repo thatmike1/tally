@@ -1,0 +1,11 @@
+[Unit]
+Description=read the Codex weekly meter every 5 minutes
+
+[Timer]
+# a minute off the Claude sampler's marks, so the two never start together
+OnCalendar=*:1/5
+AccuracySec=30s
+Persistent=true
+
+[Install]
+WantedBy=timers.target

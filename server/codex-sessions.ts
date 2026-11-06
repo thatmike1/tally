@@ -11,6 +11,7 @@ import { createReadStream, readdirSync, statSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { basename, dirname, join } from 'node:path'
 import { createInterface } from 'node:readline'
+import { codexSourceNames, codexSourcesDir } from './codex-observed'
 import { CODEX_WEEK_MINUTES } from './codex-usage'
 import { agentsviewUrl } from './session-detail'
 import { nativeThreads, statePath } from './t3'
@@ -230,17 +231,22 @@ export function codexSessionsRoot(home = homedir()): string {
 }
 
 /**
- * rollouts another machine wrote, copied here by the sampler when
- * `USAGE_UPSTREAM` names one. kept out of `~/.codex/sessions` so `codex resume`
- * does not list threads that cannot run here; absent on a machine with no upstream.
+ * rollouts another machine wrote, copied here by the sampler's older
+ * single-source form (`CODEX_UPSTREAM`, or `USAGE_UPSTREAM` alone). kept out of
+ * `~/.codex/sessions` so `codex resume` does not list threads that cannot run
+ * here; absent on a machine with no upstream.
  */
 export function codexUpstreamRoot(home = homedir()): string {
   return join(home, '.cache', 'tally', 'codex-upstream')
 }
 
-/** every directory Tally reads rollouts from, this machine's own first */
+/**
+ * every directory Tally reads rollouts from: this machine's own first, then the
+ * legacy upstream copy, then each `CODEX_SOURCES` machine's own copy
+ */
 export function codexSessionRoots(home = homedir()): string[] {
-  return [codexSessionsRoot(home), codexUpstreamRoot(home)]
+  const sources = codexSourceNames(home).map((name) => join(codexSourcesDir(home), name, 'sessions'))
+  return [codexSessionsRoot(home), codexUpstreamRoot(home), ...sources]
 }
 
 function safeReaddir(dir: string): string[] {
@@ -253,22 +259,21 @@ function safeReaddir(dir: string): string[] {
 
 /**
  * every rollout under each root's `YYYY/MM/DD/`. a file name carries the thread
- * id, so one already found under an earlier root is the same thread and skipped
+ * id, so the same name under two roots is one thread, read once: rollouts only
+ * grow, so the longer copy is the more complete one, and on a tie the earlier root
  */
 export function rolloutFiles(roots: string | string[]): { path: string; mtime: number; size: number }[] {
-  const out: { path: string; mtime: number; size: number }[] = []
-  const names = new Set<string>()
+  const byName = new Map<string, { path: string; mtime: number; size: number }>()
   for (const root of typeof roots === 'string' ? [roots] : roots) {
-    const before = out.length
-    collectRollouts(root, out)
-    for (const file of out.splice(before)) {
+    const found: { path: string; mtime: number; size: number }[] = []
+    collectRollouts(root, found)
+    for (const file of found) {
       const name = basename(file.path)
-      if (names.has(name)) continue
-      names.add(name)
-      out.push(file)
+      const seen = byName.get(name)
+      if (!seen || file.size > seen.size) byName.set(name, file)
     }
   }
-  return out
+  return [...byName.values()]
 }
 
 function collectRollouts(root: string, out: { path: string; mtime: number; size: number }[]): void {

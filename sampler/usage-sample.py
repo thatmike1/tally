@@ -14,6 +14,7 @@ knowing the difference; the fields the endpoint adds sit alongside.
 import json
 import os
 import subprocess
+import sys
 import tempfile
 import time
 import urllib.error
@@ -53,18 +54,35 @@ UPSTREAM = os.environ.get("USAGE_UPSTREAM")
 UPSTREAM_FRESH = 12 * 60
 
 # the Codex meter is account-wide too, but which threads moved it is only in the
-# rollouts each machine writes. with an upstream, its `~/.codex/sessions` is
-# mirrored into CODEX_COPY, which the server reads beside this machine's own;
-# outside `~/.codex/sessions` so `codex resume` here does not list threads that
-# cannot run here. rollouts are append-only, so `--append-verify` sends only the
-# new tail. at most every CODEX_EVERY, after the sample, so a slow copy never
-# delays a meter reading. `CODEX_UPSTREAM=` (empty) turns it off, another
-# user@host copies from a machine other than the meter's upstream.
-CODEX_UPSTREAM = os.environ.get("CODEX_UPSTREAM", UPSTREAM or "")
+# rollouts each machine writes. other machines' `~/.codex/sessions` are mirrored
+# under CACHE, which the server reads beside this machine's own; outside
+# `~/.codex/sessions` so `codex resume` here does not list threads that cannot
+# run here. rollouts are append-only, so `--append-verify` sends only the new
+# tail, and nothing is ever deleted here when the other machine prunes its copy.
+# at most every CODEX_EVERY per source, after the sample, so a slow copy never
+# delays a meter reading.
+#
+# `CODEX_SOURCES="vps=root@host laptop=laptop"` names one source per machine,
+# space or comma separated, `name=[user@]host`. each gets its own directory,
+# `codex-sources/<name>/`, holding `sessions/` (the rollouts), `codex-usage.jsonl`
+# (that machine's own meter log, when it runs `codex-meter`) and `status.json`
+# (the last copy's outcome), so an asleep laptop only fails its own copy.
+#
+# the older single-source form still works: `CODEX_UPSTREAM=user@host` (or the
+# meter's USAGE_UPSTREAM when CODEX_SOURCES is unset) mirrors into
+# `codex-upstream/`, and `CODEX_UPSTREAM=` (empty) turns it off.
+CODEX_SOURCES = os.environ.get("CODEX_SOURCES", "")
+CODEX_UPSTREAM = os.environ.get("CODEX_UPSTREAM", "" if CODEX_SOURCES.strip() else (UPSTREAM or ""))
 CODEX_COPY = os.path.join(CACHE, "codex-upstream")
 CODEX_STAMP = os.path.join(CACHE, "codex-upstream.synced")
+CODEX_SOURCES_DIR = os.path.join(CACHE, "codex-sources")
 # a few seconds under three timer ticks, so the 15-minute cadence does not slip to 20
 CODEX_EVERY = 15 * 60 - 30
+# ssh gives up on an asleep or offline machine fast, and rsync on a stalled one
+SSH = "ssh -o BatchMode=yes -o ConnectTimeout=8 -o ServerAliveInterval=15 -o ServerAliveCountMax=2"
+RSYNC = ["rsync", "-a", "--append-verify", "--timeout=120", "-e", SSH]
+# rsync's exit status when ssh itself failed: the machine was not reachable
+RSYNC_UNREACHABLE = 255
 
 # `USAGE_REFRESH=1` is for a machine where claude sits idle (the VPS): the access
 # token lasts 8 h and only a claude that talks to the api renews it, `claude auth
@@ -144,31 +162,80 @@ def pull_upstream() -> bool:
     return time.time() - newest < UPSTREAM_FRESH
 
 
-def sync_codex() -> None:
-    """mirror the upstream's Codex rollouts into CODEX_COPY, at most every CODEX_EVERY"""
-    if not CODEX_UPSTREAM:
-        return
+def codex_sources(spec: str) -> list:
+    """`name=target` pairs from CODEX_SOURCES; a bad name is skipped, never a path outside CACHE"""
+    out = []
+    seen = set()
+    for item in spec.replace(",", " ").split():
+        name, sep, target = item.partition("=")
+        if not sep or not target or name in seen or not name.replace("-", "").replace("_", "").isalnum():
+            print(f"usage-sample: ignoring CODEX_SOURCES entry {item!r}")
+            continue
+        seen.add(name)
+        out.append((name, target))
+    return out
+
+
+def due(stamp: str, force: bool) -> bool:
+    """true when the cadence allows a copy; stamped before it, so a failing source waits its turn"""
     try:
-        if time.time() - os.path.getmtime(CODEX_STAMP) < CODEX_EVERY:
-            return
+        if not force and time.time() - os.path.getmtime(stamp) < CODEX_EVERY:
+            return False
     except OSError:
         pass
-    os.makedirs(CODEX_COPY, exist_ok=True)
-    # stamped before the copy: a failing upstream is retried on the cadence, not every tick
-    with open(CODEX_STAMP, "w") as f:
+    os.makedirs(os.path.dirname(stamp), exist_ok=True)
+    with open(stamp, "w") as f:
         f.write(str(int(time.time())))
+    return True
+
+
+def rsync(args: list) -> tuple:
     try:
-        subprocess.run(
-            [
-                "rsync", "-a", "--append-verify", "--prune-empty-dirs",
-                "--include=*/", "--include=rollout-*.jsonl", "--exclude=*",
-                "-e", "ssh -o BatchMode=yes -o ConnectTimeout=8",
-                f"{CODEX_UPSTREAM}:.codex/sessions/", CODEX_COPY + "/",
-            ],
-            capture_output=True, timeout=1800,
-        )
-    except (subprocess.SubprocessError, OSError):
-        pass
+        done = subprocess.run(RSYNC + args, capture_output=True, text=True, timeout=1800)
+    except (subprocess.SubprocessError, OSError) as e:
+        return (None, str(e))
+    return (done.returncode, done.stderr.strip()[-300:])
+
+
+ROLLOUTS = ["--prune-empty-dirs", "--include=*/", "--include=rollout-*.jsonl", "--exclude=*"]
+
+
+def sync_source(name: str, target: str, force: bool = False) -> None:
+    """mirror one machine's rollouts and meter log into codex-sources/<name>/, and say how it went"""
+    root = os.path.join(CODEX_SOURCES_DIR, name)
+    if not due(os.path.join(root, "synced"), force):
+        return
+    os.makedirs(os.path.join(root, "sessions"), exist_ok=True)
+    status_path = os.path.join(root, "status.json")
+    try:
+        with open(status_path) as f:
+            previous = json.load(f)
+    except (OSError, ValueError):
+        previous = {}
+    started = int(time.time())
+    code, err = rsync(ROLLOUTS + [f"{target}:.codex/sessions/", os.path.join(root, "sessions") + "/"])
+    status = {"name": name, "target": target, "checkedAt": started, "ok": code == 0, "lastOkAt": previous.get("lastOkAt")}
+    if code == 0:
+        status["lastOkAt"] = started
+    else:
+        status["error"] = "unreachable" if code == RSYNC_UNREACHABLE else (err or f"rsync exited {code}")
+    if code != RSYNC_UNREACHABLE and code is not None:
+        # the machine answered; its meter log is optional, so a missing one is no error
+        meter_code, _ = rsync([f"{target}:.cache/tally/codex-usage.jsonl", os.path.join(root, "codex-usage.jsonl")])
+        status["meter"] = meter_code == 0
+    temporary = status_path + ".tmp"
+    with open(temporary, "w") as f:
+        json.dump(status, f)
+    os.replace(temporary, status_path)
+
+
+def sync_codex(force: bool = False) -> None:
+    """mirror every configured machine's Codex rollouts, at most every CODEX_EVERY each"""
+    for name, target in codex_sources(CODEX_SOURCES):
+        sync_source(name, target, force)
+    if CODEX_UPSTREAM and due(CODEX_STAMP, force):
+        os.makedirs(CODEX_COPY, exist_ok=True)
+        rsync(ROLLOUTS + [f"{CODEX_UPSTREAM}:.codex/sessions/", CODEX_COPY + "/"])
 
 
 def backing_off() -> bool:
@@ -325,4 +392,9 @@ def sample() -> int:
 
 
 if __name__ == "__main__":
+    # `--codex-sync` copies every Codex source now, cadence or not, and samples
+    # nothing: for a first copy by hand, or to check a new CODEX_SOURCES entry
+    if "--codex-sync" in sys.argv[1:]:
+        sync_codex(force=True)
+        raise SystemExit(0)
     raise SystemExit(main())

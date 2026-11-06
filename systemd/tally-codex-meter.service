@@ -1,0 +1,16 @@
+# template: install-codex-meter.sh fills in the paths and writes the result into
+# /etc/systemd/system (as root) or ~/.config/systemd/user. editing this file
+# changes nothing until it runs again.
+[Unit]
+Description=read the Codex weekly meter into tally's codex-usage log
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# the codex launcher is a node script, so node's directory goes on PATH too
+Environment=HOME=@HOME@
+Environment=PATH=@PATH@
+Environment=CODEX_BIN=@CODEX@
+ExecStart=@NODE@ @METER@
+TimeoutStartSec=90
