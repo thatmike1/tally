@@ -16,7 +16,7 @@ import { codexSessionRoots, scanRollouts, type CodexRollout } from './codex-sess
 import { codexBinaryPath, thinHistory, CODEX_WEEK_MINUTES } from './codex-usage'
 import { defaultConfig, type PlanConfig } from './config'
 import type { CodexHistory, CodexWindow } from './history-types'
-import { OPENAI_PRICE_TABLE, openAiCost } from './openai-prices'
+import { openAiCost, openAiPriceTable } from './openai-prices'
 import { startOfMonth } from './time'
 import { statePath } from './t3'
 
@@ -171,7 +171,7 @@ export async function buildCodexHistory(options: CodexHistoryOptions = {}): Prom
       planName: plan.name,
       unknownModels: month.unknownModels,
     },
-    prices: OPENAI_PRICE_TABLE,
+    prices: openAiPriceTable(),
     sources: { usage: meters[0]!, meters, rollouts: root, machines: codexSourceNames(home) },
   }
 }

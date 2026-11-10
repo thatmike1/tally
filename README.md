@@ -46,6 +46,8 @@ back, so you can delete the file and tally still runs.
 | `tray.links` | `[]` | rows that open a local page, starting the row's unit if the port is closed |
 | `tray.toggles` | `[]` | rows that start *and stop* a unit, for a service that costs something while it runs |
 | `python` | `null` | the python 3 that runs the sampler where the server runs it itself (Windows): a command or full path, no arguments. `null` tries `python`, then `py -3` |
+| `modelsPath` | `null` | the `models.json` to read prices from. `null` means `~/git/ccChat-general/claude/model-map/models.json`; `$TALLY_MODELS` wins over both |
+| `modelsUrl` | `null` | where `models.json` is fetched when there is no local file. `null` means `https://models.thatmike1.dev/models.json`; `$TALLY_MODELS_URL` wins, and an empty one turns the fetch off |
 
 The `links` / `toggles` split is the whole tray design: beadside is an always-on
 service, so its row is just "open it". AgentsView costs about 7% of a core while
@@ -125,6 +127,17 @@ and the "since you last looked" marker is neither read nor written.
 
 ## Where the numbers come from
 
+Every price, Codex credit rate, model name and alias comes from `models.json`,
+the model facts file the model map in ccChat-general generates
+(`claude/model-map/models_json.py`): list prices from LiteLLM's published table,
+credit rates and names from the map's own registry. Tally keeps no table of its
+own. It reads the local file first (`modelsPath`), then the url (`modelsUrl`),
+then the last good copy in `~/.cache/tally/models.json`, and picks up a
+regenerated local file within a minute. With none of them every model is
+unpriced and its totals show as floors; a model id the file does not know is
+never priced as its neighbour, so `claude-fable-5-3` stays unpriced until the
+map lists it rather than borrowing Fable 5.2's row.
+
 Claude prices include Sonnet 5.5's $0.10/M cache reads and Haiku 5.5's
 request-level 100,000-token prompt threshold. Cache reads and writes count
 towards the prompt threshold; output tokens do not. Stored transcript costs
@@ -190,7 +203,7 @@ hour no source read stays a gap in the line.
 
 **Per-request tokens and cost** — `~/.claude/projects/*/*.jsonl` plus
 `*/subagents/*.jsonl`, last line per (file, message id), subagent files folded
-into the parent session. The price table is cc-browse's, to the cent.
+into the parent session, priced from `models.json`.
 
 **The transcript index** — `~/.cache/tally/transcripts.sqlite`, one row per
 transcript file keyed on its path with the mtime and size that were parsed, plus
@@ -231,7 +244,7 @@ Claude cost model and attributes nothing to threads.
 call writes a `token_usage_record` (tokens and a response id) and a `token_count`
 event with the weekly reading OpenAI returned for it. The week's movement is
 split across root threads by credits, priced per model from the Codex rate card
-(`CODEX_RATES` in `server/codex-sessions.ts`, read 15 Sep 2026). Subagent
+(`codexCredits` in `models.json`). Subagent
 rollouts fold into their root, a forked subagent's copied history is left to its
 parent, and threads routed to another provider are dropped. Titles come from T3
 (`provider_session_runtime.resume_cursor_json.threadId`), else the first typed
@@ -282,18 +295,19 @@ that comment on it so it can be replaced without touching anything else.
 `pnpm test`. The interesting ones compare against the python that produced the
 proof:
 
-- `server/transcripts.test.ts` — every request must match `jobs/extract.py`'s own
+- `server/transcripts.test.ts` — every request must match `scripts/oracle/extract.py`'s own
   output over `test/fixtures/home`, field by field.
 - `server/blocks.test.ts` — every block's points, tokens and list cost must match
-  `jobs/survey.py`'s printed table over the same fixture.
+  `scripts/oracle/survey.py`'s printed table over the same fixture.
 
 Both fixtures are frozen in `test/fixtures/`. The transcripts there are real ones
 with every message body stripped out; only the fields both parsers read survive.
 Rebuild them with `python3 scripts/make-fixtures.py` and then `pnpm run oracle`,
-which needs the proof scripts that produced the attribution numbers
-(`TALLY_JOBS`; they are not in this repo, so the oracle refresh only runs where
-they are and `pnpm test` never needs them — the fixtures it compares against are
-checked in).
+which runs the proof scripts that produced the attribution numbers
+(`scripts/oracle/`, moved here from ccChat-general's `projects/tally/jobs` on
+10 Nov 2026). Prices in the tests and the oracle both come from
+`test/fixtures/models.json`, a frozen copy of the model map's file, so neither
+this machine's checkout nor the network changes a test result.
 
 ## Screenshots
 

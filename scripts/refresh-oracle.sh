@@ -1,22 +1,20 @@
 #!/usr/bin/env bash
 # regenerate the expected tables from the python oracle.
 #
-# the proof's `jobs/*.py` are the authority for these numbers, so the fixtures
-# they produce are checked in and the vitest suite compares against them. run
-# this only when the fixture home changes (scripts/make-fixtures.py).
+# the proof's scripts in `scripts/oracle/` are the authority for these numbers, so
+# the fixtures they produce are checked in and the vitest suite compares against
+# them. they price from `test/fixtures/models.json`, the same frozen facts the
+# tests use. run this only when the fixture home or that file changes
+# (scripts/make-fixtures.py).
 set -euo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-jobs="${TALLY_JOBS:-$HOME/git/ccChat-general/projects/tally/jobs}"
+oracle="$here/scripts/oracle"
 home="$here/test/fixtures/home"
+export TALLY_MODELS="$here/test/fixtures/models.json"
 
-if [ ! -d "$jobs" ]; then
-  echo "oracle scripts not found at $jobs (set TALLY_JOBS)" >&2
-  exit 2
-fi
-
-HOME="$home" python3 "$jobs/extract.py" 0 9999999999 > "$here/test/fixtures/requests-expected.jsonl"
-HOME="$home" python3 "$jobs/survey.py" > "$here/test/fixtures/survey-expected.txt"
+HOME="$home" python3 "$oracle/extract.py" 0 9999999999 > "$here/test/fixtures/requests-expected.jsonl"
+HOME="$home" python3 "$oracle/survey.py" > "$here/test/fixtures/survey-expected.txt"
 
 echo "wrote:"
 wc -l "$here/test/fixtures/requests-expected.jsonl"

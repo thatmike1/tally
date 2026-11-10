@@ -1,7 +1,7 @@
 // tests for the OpenAI api list-price table: matching, and the provenance that
 // makes a dollar figure checkable.
 import { describe, expect, it } from 'vitest'
-import { OPENAI_PRICE_READ_AT, OPENAI_PRICE_SOURCE, OPENAI_PRICE_TABLE, openAiCost, openAiPrice } from './openai-prices'
+import { openAiCost, openAiPrice, openAiPriceTable } from './openai-prices'
 
 describe('openAiPrice', () => {
   it('prices the ids Codex reports', () => {
@@ -46,14 +46,17 @@ describe('openAiCost', () => {
 
 describe('the table itself', () => {
   it('records where and when it was read', () => {
-    expect(OPENAI_PRICE_TABLE.source).toBe(OPENAI_PRICE_SOURCE)
-    expect(OPENAI_PRICE_SOURCE).toMatch(/^https:\/\//)
-    expect(OPENAI_PRICE_TABLE.readAt).toBe(OPENAI_PRICE_READ_AT)
-    expect(OPENAI_PRICE_READ_AT).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+    expect(openAiPriceTable().source).toMatch(/^https:\/\//)
+    expect(openAiPriceTable().readAt).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+  })
+
+  it('carries only openai rows', () => {
+    expect(openAiPriceTable().models['gpt-6.1-terra']).toEqual({ input: 1.0, cachedInput: 0.05, output: 5.0 })
+    expect(openAiPriceTable().models['claude-opus-5-5']).toBeUndefined()
   })
 
   it('has a positive input, cached and output rate on every row', () => {
-    for (const [model, price] of Object.entries(OPENAI_PRICE_TABLE.models)) {
+    for (const [model, price] of Object.entries(openAiPriceTable().models)) {
       expect(price.input, model).toBeGreaterThan(0)
       expect(price.cachedInput, model).toBeGreaterThan(0)
       expect(price.output, model).toBeGreaterThan(0)

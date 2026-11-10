@@ -1,47 +1,9 @@
-// the list-price table, first ported from cc-browse's `ccbrowse.py` (`PRICES`,
-// `usage_cost`). list price is the divider the attribution proof settled on.
-// read from https://platform.claude.com/docs/en/about-claude/pricing on 9 Oct
-// 2026; standard Claude speed only. fable 5.2 and mythos 5.2 read from the same
-// page and https://platform.claude.com/docs/en/models/fable-5-2/overview on 10 Nov
-// 2026.
-
-/** usd per million tokens, as (input, output), keyed by model-id prefix */
-export const PRICES: Record<string, readonly [number, number]> = {
-  'claude-fable-5-2': [8.0, 40.0],
-  'claude-fable-5-1': [10.0, 50.0],
-  'claude-fable-5': [10.0, 50.0],
-  'claude-mythos-5-2': [8.0, 40.0],
-  'claude-mythos-5-1': [10.0, 50.0],
-  'claude-mythos-5': [10.0, 50.0],
-  'claude-opus-5-5': [4.0, 20.0],
-  'claude-opus-': [5.0, 25.0],
-  'claude-sonnet-5-5': [2.0, 10.0],
-  'claude-sonnet-5': [2.0, 10.0],
-  'claude-sonnet-4-6': [3.0, 15.0],
-  'claude-sonnet-4-5': [3.0, 15.0],
-  'claude-haiku-4-5': [1.0, 5.0],
-  'claude-haiku-5-5': [0.1, 0.5],
-}
-
-// multipliers on the base input price. a 1h cache write costs 2x and a 5m write
-// 1.25x, so lumping the two would misprice whichever kind dominates.
-export const CACHE_WRITE_1H_MULT = 2.0
-export const CACHE_WRITE_5M_MULT = 1.25
-export const CACHE_READ_MULT = 0.1
-
-/** models whose cache reads break the 0.1x rule, keyed by the same prefixes as `PRICES` */
-export const CACHE_READ_MULT_BY_PREFIX: Record<string, number> = {
-  'claude-fable-5-2': 0.025,
-  'claude-fable-5-1': 0.025,
-  'claude-mythos-5-2': 0.025,
-  'claude-mythos-5-1': 0.025,
-  'claude-opus-5-5': 0.05,
-  'claude-sonnet-5-5': 0.05,
-}
-
-/** haiku's prompt includes uncached input, cache writes and cache reads, not output */
-export const HAIKU_55_PROMPT_LIMIT = 100_000
-export const HAIKU_55_LONG_MULT = 5
+// claude list prices, read from the model map's `models.json` (`models.ts`) instead of
+// a table kept here: litellm's published prices, filled from hand-verified values only
+// where litellm lacks one. list price is the divider the attribution proof settled on;
+// standard claude speed only. a model the file does not know is unpriced and flagged,
+// never priced as its neighbour, so a new model with no row shows up as a floor.
+import { modelFact, modelFacts, type PriceFields, type PriceTier } from './models'
 
 /**
  * ids that cost nothing by definition. claude code writes `<synthetic>` for its
@@ -50,8 +12,40 @@ export const HAIKU_55_LONG_MULT = 5
  */
 export const FREE_MODELS: readonly string[] = ['<synthetic>']
 
+// anthropic's published multipliers on the base input price, used only for a model
+// whose own cache price is missing from the file
+const CACHE_WRITE_1H_MULT = 2.0
+const CACHE_WRITE_5M_MULT = 1.25
+const CACHE_READ_MULT = 0.1
+
+interface ClaudePrice extends PriceFields {
+  tiers: PriceTier[]
+}
+
+/** the anthropic price row for a model id, or null when the file has none */
+function claudePrice(model: string): ClaudePrice | null {
+  const fact = modelFact(model)
+  return fact && fact.vendor === 'Anthropic' && fact.prices ? fact.prices : null
+}
+
 /** changes whenever a price does, so the transcript index knows to reprice its stored costs */
-export const PRICE_TABLE_KEY = JSON.stringify([PRICES, CACHE_READ_MULT_BY_PREFIX, CACHE_WRITE_1H_MULT, CACHE_WRITE_5M_MULT, CACHE_READ_MULT, FREE_MODELS, HAIKU_55_PROMPT_LIMIT, HAIKU_55_LONG_MULT])
+export function priceTableKey(): string {
+  const rows = Object.entries(modelFacts().models)
+    .filter(([, fact]) => fact.vendor === 'Anthropic')
+    .map(([id, fact]) => [id, fact.prices && { ...fact.prices, source: undefined }, fact.replaces ?? null])
+  return JSON.stringify([rows, modelFacts().aliases, FREE_MODELS])
+}
+
+/** usd per million tokens, as (input, output) */
+export function priceFor(model: string): readonly [number, number] | null {
+  const price = claudePrice(model)
+  return price ? [price.input, price.output] : null
+}
+
+/** false only for a model whose cost we cannot know, which makes any total it is in a floor */
+export function isPriced(model: string): boolean {
+  return FREE_MODELS.includes(model) || priceFor(model) !== null
+}
 
 export const FAMILIES = ['fable', 'mythos', 'opus', 'sonnet', 'haiku', 'other'] as const
 export type Family = (typeof FAMILIES)[number]
@@ -64,31 +58,6 @@ export interface Tokens {
   out: number
 }
 
-/** longest matching prefix wins, so `claude-opus-5-5` beats `claude-opus-` */
-function pricePrefix(model: string): string | null {
-  let best: string | null = null
-  for (const prefix of Object.keys(PRICES)) {
-    if (model.startsWith(prefix) && (best === null || prefix.length > best.length)) best = prefix
-  }
-  return best
-}
-
-export function priceFor(model: string): readonly [number, number] | null {
-  const prefix = pricePrefix(model)
-  return prefix ? PRICES[prefix]! : null
-}
-
-/** false only for a model whose cost we cannot know, which makes any total it is in a floor */
-export function isPriced(model: string): boolean {
-  return FREE_MODELS.includes(model) || priceFor(model) !== null
-}
-
-/** the cache-read multiplier on base input, 0.1x unless the model has its own */
-export function cacheReadMult(model: string): number {
-  const prefix = pricePrefix(model)
-  return (prefix === null ? undefined : CACHE_READ_MULT_BY_PREFIX[prefix]) ?? CACHE_READ_MULT
-}
-
 export function familyOf(model: string): Family {
   for (const name of ['fable', 'mythos', 'opus', 'sonnet', 'haiku'] as const) {
     if (model.includes(name)) return name
@@ -97,45 +66,32 @@ export function familyOf(model: string): Family {
 }
 
 /**
- * the model each model replaced, keyed by the same prefixes as `PRICES`, so a
- * window can say what its tokens would have cost on the older one. the value is
- * a model id that `priceFor` resolves, priced with that model's own cache
- * multipliers: `claude-opus-5` reads its cache at 0.1x where opus 5.5 reads at
- * 0.05x, and that difference is most of what the comparison shows.
+ * the model `model` replaced (`replaces` in models.json), so a window can say what
+ * its tokens would have cost on the older one, priced with that model's own cache
+ * prices: `claude-opus-5` reads its cache at 0.1x where opus 5.5 reads at 0.05x,
+ * and that difference is most of what the comparison shows. null when it has none.
  */
-export const PREDECESSOR: Record<string, string> = {
-  'claude-opus-5-5': 'claude-opus-5',
-  'claude-fable-5-2': 'claude-fable-5-1',
-  'claude-fable-5-1': 'claude-fable-5',
-  'claude-mythos-5-2': 'claude-mythos-5-1',
-  'claude-mythos-5-1': 'claude-mythos-5',
-  'claude-sonnet-5': 'claude-sonnet-4-6',
-  'claude-sonnet-5-5': 'claude-sonnet-5',
-  'claude-haiku-5-5': 'claude-haiku-4-5',
-}
-
-/** the model `model` replaced, or null when it has no row in `PREDECESSOR` */
 export function predecessorOf(model: string): string | null {
-  const prefix = pricePrefix(model)
-  return (prefix === null ? undefined : PREDECESSOR[prefix]) ?? null
+  return modelFact(model)?.replaces ?? null
 }
 
 /**
- * usd per token bucket for one request: the parts `costOf` adds up. an
- * unpriced model is all zeros.
+ * usd per token bucket for one request: the parts `costOf` adds up. a long-prompt
+ * tier (haiku 5.5 past 100k) applies when the whole prompt, cache included, is
+ * over its threshold; output never counts toward it. an unpriced model is all zeros.
  */
 export function costByBucket(model: string, t: Tokens): Tokens {
-  const price = priceFor(model)
-  if (!price) return { in: 0, cw1h: 0, cw5m: 0, cr: 0, out: 0 }
-  const mult = pricePrefix(model) === 'claude-haiku-5-5' && t.in + t.cw1h + t.cw5m + t.cr > HAIKU_55_PROMPT_LIMIT ? HAIKU_55_LONG_MULT : 1
-  const base = price[0] * mult
-  const out = price[1] * mult
+  const row = claudePrice(model)
+  if (!row) return { in: 0, cw1h: 0, cw5m: 0, cr: 0, out: 0 }
+  const prompt = t.in + t.cw1h + t.cw5m + t.cr
+  const tier = row.tiers.filter((x) => prompt > x.aboveInputTokens).sort((a, b) => b.aboveInputTokens - a.aboveInputTokens)[0]
+  const p: PriceFields = tier ? { ...row, ...tier } : row
   return {
-    in: (t.in * base) / 1e6,
-    cw1h: (t.cw1h * base * CACHE_WRITE_1H_MULT) / 1e6,
-    cw5m: (t.cw5m * base * CACHE_WRITE_5M_MULT) / 1e6,
-    cr: (t.cr * base * cacheReadMult(model)) / 1e6,
-    out: (t.out * out) / 1e6,
+    in: (t.in * p.input) / 1e6,
+    cw1h: (t.cw1h * (p.cacheWrite1h ?? p.input * CACHE_WRITE_1H_MULT)) / 1e6,
+    cw5m: (t.cw5m * (p.cacheWrite5m ?? p.input * CACHE_WRITE_5M_MULT)) / 1e6,
+    cr: (t.cr * (p.cacheRead ?? p.input * CACHE_READ_MULT)) / 1e6,
+    out: (t.out * p.output) / 1e6,
   }
 }
 

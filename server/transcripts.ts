@@ -4,9 +4,9 @@
 // lines sharing a message id, the cache figures repeat and output_tokens grows,
 // so the last line for a (file, message id) is the true total.
 //
-// one deliberate difference from `jobs/extract.py`: a subagent record's session
+// one deliberate difference from `scripts/oracle/extract.py`: a subagent record's session
 // id is the *parent* session (the directory the `subagents/` folder sits in),
-// because the page ranks whole runs. extract.py used the agent file name, which
+// because the page ranks whole runs. the oracle used the agent file name, which
 // was fine there since the proof only ever aggregated per block.
 import { createReadStream, readdirSync, statSync } from 'node:fs'
 import { homedir } from 'node:os'

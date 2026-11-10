@@ -57,7 +57,7 @@ export interface BlockSplit {
  * divide the block's measured delta across sessions by list-price cost.
  *
  * `records` may span more than the window; only `from <= t < to` counts, exactly
- * as `jobs/survey.py` does, so tokens outside the observed span are never
+ * as `scripts/oracle/survey.py` does, so tokens outside the observed span are never
  * charged to a meter movement nobody measured.
  */
 export function splitBlock(

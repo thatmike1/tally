@@ -70,7 +70,7 @@ function cacheRatio(tokens: Tokens): CacheRatio {
 
 /**
  * tokens and list cost over `from <= t < to`, the same half-open window
- * `splitBlock` and `jobs/survey.py` use, so the history table and the block
+ * `splitBlock` and `scripts/oracle/survey.py` use, so the history table and the block
  * split can never disagree about what a window cost.
  */
 export function usageOver(records: RequestRecord[], from: number, to: number): WindowUsage {

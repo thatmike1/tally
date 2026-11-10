@@ -1,68 +1,47 @@
 // OpenAI api list prices, the dollar answer to "what would this week have cost
 // without the plan". this is NOT the Codex rate card in `codex-sessions.ts`:
 // credits attribute the meter, these dollars price the same tokens at list.
-// the two tables stay separate on purpose and never fall back to each other.
+// the two stay separate on purpose and never fall back to each other.
 //
-// read from the standard, short-context column of the published table; long
-// context, batch and flex are different rates and are not modelled. fast mode
-// is 2x standard for the supported Codex models, read 9 Oct 2026:
-// https://developers.openai.com/api/docs/models/gpt-6.1-sol
-// cache writes have their own published price, but a Codex rollout only reports
-// input, cached input and output, so only those three are priced here.
+// both come from the model map's `models.json` (`models.ts`): list prices from
+// litellm's table, the standard short-context column; long context, batch and
+// flex are different rates and are not modelled. fast mode is 2x standard for the
+// supported Codex models, read 9 Oct 2026 (`codex-speed.ts`). cache writes have
+// their own published price, but a Codex rollout only reports input, cached input
+// and output, so only those three are priced here.
 import type { OpenAiPrice } from './history-types'
 import { speedMultiplier, type CodexSpeed } from './codex-speed'
+import { modelFact, modelFacts } from './models'
 
-/** where the table below was read */
-export const OPENAI_PRICE_SOURCE = 'https://platform.openai.com/docs/pricing'
-
-/** the day the table was read, ISO; a stale table is a wrong dollar figure */
-export const OPENAI_PRICE_READ_AT = '2026-09-23'
-
-/**
- * usd per million tokens, keyed by the model id Codex reports. the three
- * gpt-6 rows (gpt-6.1-sol added 1 Oct), `gpt-5.6-sol`, `gpt-5.6-cyber` and `gpt-5.3-codex` come from the
- * pricing page itself (23 Sep), the rest from each model's page under
- * `/docs/models/<id>` (16 Sep).
- */
-export const OPENAI_PRICES: Record<string, OpenAiPrice> = {
-  'gpt-6-astra': { input: 10.0, cachedInput: 1.0, output: 50.0 },
-  'gpt-6.1-sol': { input: 2.0, cachedInput: 0.1, output: 10.0 },
-  'gpt-6-sol': { input: 2.0, cachedInput: 0.2, output: 10.0 },
-  'gpt-6-luna': { input: 0.1, cachedInput: 0.01, output: 0.5 },
-  'gpt-5.6-sol': { input: 4.0, cachedInput: 0.4, output: 20.0 },
-  'gpt-5.6-terra': { input: 2.0, cachedInput: 0.2, output: 12.0 },
-  'gpt-5.6-luna': { input: 0.2, cachedInput: 0.02, output: 1.2 },
-  'gpt-5.6-cyber': { input: 12.5, cachedInput: 1.25, output: 75.0 },
-  'gpt-5.5': { input: 5.0, cachedInput: 0.5, output: 30.0 },
-  'gpt-5.4': { input: 2.5, cachedInput: 0.25, output: 15.0 },
-  'gpt-5.4-mini': { input: 0.75, cachedInput: 0.075, output: 4.5 },
-  'gpt-5.3-codex': { input: 1.75, cachedInput: 0.175, output: 14.0 },
-  'gpt-5.2': { input: 1.75, cachedInput: 0.175, output: 14.0 },
-  'gpt-5.1-codex-max': { input: 1.25, cachedInput: 0.125, output: 10.0 },
-  'gpt-5-codex': { input: 1.25, cachedInput: 0.125, output: 10.0 },
+/** where the prices were read, and the day; a stale table is a wrong dollar figure */
+export function openAiPriceTable(): { source: string; readAt: string; models: Record<string, OpenAiPrice> } {
+  const facts = modelFacts()
+  const models: Record<string, OpenAiPrice> = {}
+  for (const [id, fact] of Object.entries(facts.models)) {
+    const price = fact.vendor === 'OpenAI' ? toOpenAi(fact.prices) : null
+    if (price) models[id] = price
+  }
+  return {
+    source: facts.sources?.prices?.url ?? 'https://models.thatmike1.dev/models.json',
+    readAt: (facts.sources?.prices?.fetched ?? facts.generated ?? '').slice(0, 10),
+    models,
+  }
 }
 
-/** the table as the endpoint publishes it, so the page can show where it came from */
-export const OPENAI_PRICE_TABLE = {
-  source: OPENAI_PRICE_SOURCE,
-  readAt: OPENAI_PRICE_READ_AT,
-  models: OPENAI_PRICES,
+function toOpenAi(prices: { input: number; output: number; cacheRead?: number } | null): OpenAiPrice | null {
+  if (!prices || prices.cacheRead === undefined) return null
+  return { input: prices.input, cachedInput: prices.cacheRead, output: prices.output }
 }
 
 /**
- * the list price of one model id, or null when the table has no row for it.
+ * the list price of one model id, or null when models.json has no row for it.
  * matches like `codexRate`: case and spacing are normalised and a dated suffix
- * (`gpt-5.6-sol-2026-08`) falls back to its base row, longest prefix first so
- * `gpt-5.4-mini` never prices as `gpt-5.4`. an id with no row is never guessed.
+ * (`gpt-5.6-sol-2026-08`) falls back to its base row; `gpt-5.4-nano` is never
+ * priced as `gpt-5.4`. an id with no row is never guessed.
  */
 export function openAiPrice(model: string): OpenAiPrice | null {
-  const key = model.toLowerCase().trim().replace(/\s+/g, '-')
-  const exact = OPENAI_PRICES[key]
-  if (exact) return exact
-  const prefix = Object.keys(OPENAI_PRICES)
-    .sort((a, b) => b.length - a.length)
-    .find((name) => key.startsWith(`${name}-`))
-  return prefix ? OPENAI_PRICES[prefix]! : null
+  const fact = modelFact(model)
+  return fact && fact.vendor === 'OpenAI' ? toOpenAi(fact.prices) : null
 }
 
 /**

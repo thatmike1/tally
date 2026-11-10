@@ -33,6 +33,8 @@ describe('loadConfig', () => {
           toggles: [{ name: 'AgentsView', url: 'http://127.0.0.1:8080', unit: 'agentsview.service' }],
         },
         python: 'py',
+        modelsPath: '/srv/models.json',
+        modelsUrl: 'https://example.test/models.json',
       }),
     )
     expect(loadConfig(path)).toEqual({
@@ -45,6 +47,8 @@ describe('loadConfig', () => {
         toggles: [{ name: 'AgentsView', url: 'http://127.0.0.1:8080', unit: 'agentsview.service' }],
       },
       python: 'py',
+      modelsPath: '/srv/models.json',
+      modelsUrl: 'https://example.test/models.json',
     })
   })
 

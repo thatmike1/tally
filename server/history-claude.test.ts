@@ -1,6 +1,6 @@
 // the history table, against the same python oracle the block table uses.
 //
-// `test/fixtures/survey-expected.txt` is `jobs/survey.py`'s own stdout over
+// `test/fixtures/survey-expected.txt` is `scripts/oracle/survey.py`'s own stdout over
 // `test/fixtures/home`; every block here has to report the same measured points,
 // tokens and list cost, because those three are what the whole page divides.
 // the parser below is `blocks.test.ts`'s, copied rather than imported: importing
@@ -89,7 +89,7 @@ async function history(home = FIXTURE_HOME) {
   return claudeHistory({ home, now: NOW })
 }
 
-describe('the history blocks, against jobs/survey.py', () => {
+describe('the history blocks, against scripts/oracle/survey.py', () => {
   it('reports the same points, tokens and list cost per block', async () => {
     const expected = oracleRows()
     const { blocks } = await history()

@@ -7,6 +7,7 @@ import { serve } from '@hono/node-server'
 import { createApp } from './app'
 import { startCodexUsageReader } from './codex-usage'
 import { defaultConfig, tallyConfig } from './config'
+import { loadModelFacts, reloadModelFacts } from './models'
 import { bootedBySystemd, inProcessSampler, systemdSampler } from './sampler'
 import { buildState } from './state'
 import { TranscriptIndex, type RefreshCounts } from './transcript-index'
@@ -62,7 +63,7 @@ function logPass(counts: RefreshCounts): void {
   )
 }
 
-function main(): void {
+async function main(): Promise<void> {
   const config = tallyConfig()
   let options: Options
   try {
@@ -71,6 +72,11 @@ function main(): void {
     console.error(`tally: ${error instanceof Error ? error.message : String(error)}`)
     process.exit(2)
   }
+
+  // prices and names come from the model map's models.json; with none anywhere every
+  // model is unpriced and the page says so, it never stops the server
+  const facts = await loadModelFacts()
+  console.log(`tally: model facts from ${facts}`)
 
   const uiDist = resolve(dirname(fileURLToPath(import.meta.url)), '../ui/dist')
   const index = new TranscriptIndex()
@@ -120,6 +126,8 @@ function main(): void {
   // one state build a minute feeds the widget file and the reset kick
   const tick = async () => {
     try {
+      // a regenerated models.json reprices the index on its next pass
+      if (await reloadModelFacts()) console.log('tally: model facts changed, repricing')
       const state = await buildState({ index, recordLook: false, config })
       const five = state.fiveHour
       // the sampler runs every five minutes; a block that just reset gets read now instead
@@ -161,5 +169,5 @@ function main(): void {
 
 // only run when executed, so tests can import the helpers
 if (process.argv[1] && import.meta.url.startsWith('file:') && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {
-  main()
+  void main()
 }

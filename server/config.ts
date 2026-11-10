@@ -42,6 +42,10 @@ export interface TallyConfig {
    * systemd): a command or a full path, no arguments. null tries `python`, then `py -3`
    */
   python: string | null
+  /** models.json to read before the url; null means the ccChat-general checkout's (`models.ts`) */
+  modelsPath: string | null
+  /** where models.json is fetched when there is no local file; null means the public one */
+  modelsUrl: string | null
 }
 
 /** what tally runs on with no config file at all */
@@ -53,6 +57,8 @@ export function defaultConfig(): TallyConfig {
     agentsviewUrl: null,
     tray: { links: [], toggles: [] },
     python: null,
+    modelsPath: null,
+    modelsUrl: null,
   }
 }
 
@@ -129,6 +135,8 @@ export function loadConfig(path: string): TallyConfig {
     agentsviewUrl: baseUrl(raw.agentsviewUrl),
     tray: tray(raw.tray),
     python: text(raw.python),
+    modelsPath: text(raw.modelsPath),
+    modelsUrl: text(raw.modelsUrl),
   }
 }
 

@@ -1,0 +1,1646 @@
+{
+ "schema": 1,
+ "generated": "2026-11-10T13:46:30+00:00",
+ "url": "https://models.thatmike1.dev/models.json",
+ "sources": {
+  "prices": {
+   "url": "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json",
+   "fetched": "2026-11-10T13:46:30+00:00",
+   "unit": "usd per 1M tokens",
+   "fallback": "registry.py hand-verified values, only where litellm lacks a model or field"
+  },
+  "codexCredits": {
+   "source": "registry.py, from the codex rate card (help.openai.com article 20001106, learn.chatgpt.com/docs/pricing)",
+   "unit": "credits per 1M tokens"
+  },
+  "aa": {
+   "index": 5,
+   "fetched": "2026-11-10"
+  },
+  "registry": "claude/model-map/registry.py in ccChat-general"
+ },
+ "aliases": {
+  "fable": "claude-fable-5-2",
+  "fable-5.2": "claude-fable-5-2",
+  "claude-fable-5.2": "claude-fable-5-2",
+  "fable-5.1": "claude-fable-5-1",
+  "claude-fable-5.1": "claude-fable-5-1",
+  "fable-5": "claude-fable-5",
+  "mythos": "claude-mythos-5-2",
+  "mythos-5.2": "claude-mythos-5-2",
+  "mythos-5.1": "claude-mythos-5-1",
+  "mythos-5": "claude-mythos-5",
+  "opus": "claude-opus-5-5",
+  "opus-5.5": "claude-opus-5-5",
+  "claude-opus-5.5": "claude-opus-5-5",
+  "opus-5": "claude-opus-5",
+  "opus-4.8": "claude-opus-4-8",
+  "opus-4.7": "claude-opus-4-7",
+  "opus-4.6": "claude-opus-4-6",
+  "opus-4.5": "claude-opus-4-5",
+  "sonnet": "claude-sonnet-5-5",
+  "sonnet-5.5": "claude-sonnet-5-5",
+  "claude-sonnet-5.5": "claude-sonnet-5-5",
+  "sonnet-5": "claude-sonnet-5",
+  "sonnet-4.6": "claude-sonnet-4-6",
+  "sonnet-4.5": "claude-sonnet-4-5",
+  "haiku": "claude-haiku-5-5",
+  "haiku-5.5": "claude-haiku-5-5",
+  "claude-haiku-5.5": "claude-haiku-5-5",
+  "haiku-4.5": "claude-haiku-4-5",
+  "astra": "gpt-6-astra",
+  "sol": "gpt-6.1-sol",
+  "terra": "gpt-6.1-terra",
+  "luna": "gpt-6-luna"
+ },
+ "models": {
+  "claude-fable-5-2": {
+   "name": "Claude Fable 5.2",
+   "label": "Fable 5.2",
+   "short": "Fable",
+   "family": "fable",
+   "vendor": "Anthropic",
+   "status": "current",
+   "aliases": [
+    "fable",
+    "fable-5.2",
+    "claude-fable-5.2"
+   ],
+   "replaces": "claude-fable-5-1",
+   "context": 1000000,
+   "maxOutput": 128000,
+   "prices": {
+    "input": 8.0,
+    "output": 40.0,
+    "cacheRead": 0.2,
+    "cacheWrite5m": 10.0,
+    "cacheWrite1h": 16.0,
+    "tiers": [],
+    "source": "litellm"
+   },
+   "codexCredits": null,
+   "aa": {
+    "family": "Fable 5.2",
+    "efforts": {
+     "max": {
+      "name": "Claude Fable 5.2 (Max, Default Fallback)",
+      "score": 64.6,
+      "coding": null,
+      "agentic": null,
+      "costPerTask": 26.5386,
+      "tokensPerTask": 273776,
+      "tokensPerSecond": 94.67,
+      "secondsPerTask": 2784.1,
+      "secondsSource": "aa"
+     },
+     "xhigh": {
+      "name": "Claude Fable 5.2 (Xhigh, Default Fallback)",
+      "score": 62.2,
+      "coding": null,
+      "agentic": null,
+      "costPerTask": 14.8286,
+      "tokensPerTask": 161944,
+      "tokensPerSecond": 83.19,
+      "secondsPerTask": 1582.5,
+      "secondsSource": "aa"
+     },
+     "high": {
+      "name": "Claude Fable 5.2 (High, Default Fallback)",
+      "score": 61.8,
+      "coding": null,
+      "agentic": null,
+      "costPerTask": 9.0784,
+      "tokensPerTask": 97841,
+      "tokensPerSecond": 76.22,
+      "secondsPerTask": 1058.8,
+      "secondsSource": "aa"
+     },
+     "medium": {
+      "name": "Claude Fable 5.2 (Medium, Default Fallback)",
+      "score": 56.4,
+      "coding": null,
+      "agentic": null,
+      "costPerTask": 3.8026,
+      "tokensPerTask": 43131,
+      "tokensPerSecond": 74.85,
+      "secondsPerTask": 500.6,
+      "secondsSource": "aa"
+     },
+     "low": {
+      "name": "Claude Fable 5.2 (Low, Default Fallback)",
+      "score": 53.9,
+      "coding": null,
+      "agentic": null,
+      "costPerTask": 3.0972,
+      "tokensPerTask": 35860,
+      "tokensPerSecond": 74.56,
+      "secondsPerTask": 387.8,
+      "secondsSource": "aa"
+     }
+    }
+   }
+  },
+  "claude-fable-5-1": {
+   "name": "Claude Fable 5.1",
+   "label": "Fable 5.1",
+   "short": "Fable",
+   "family": "fable",
+   "vendor": "Anthropic",
+   "status": "superseded",
+   "aliases": [
+    "fable-5.1",
+    "claude-fable-5.1"
+   ],
+   "replaces": "claude-fable-5",
+   "context": 1000000,
+   "maxOutput": 128000,
+   "prices": {
+    "input": 10.0,
+    "output": 50.0,
+    "cacheRead": 0.25,
+    "cacheWrite5m": 12.5,
+    "cacheWrite1h": 20.0,
+    "tiers": [],
+    "source": "litellm"
+   },
+   "codexCredits": null,
+   "aa": {
+    "family": "Fable 5.1",
+    "efforts": {
+     "xhigh": {
+      "name": "Claude Fable 5.1 (Xhigh, Default Fallback)",
+      "score": 50,
+      "coding": null,
+      "agentic": null,
+      "costPerTask": 10.8475,
+      "tokensPerTask": 97059,
+      "tokensPerSecond": 59.45,
+      "secondsPerTask": 1162.9,
+      "secondsSource": "aa"
+     },
+     "max": {
+      "name": "Claude Fable 5.1 (Max, Default Fallback)",
+      "score": 49.2,
+      "coding": null,
+      "agentic": null,
+      "costPerTask": 12.994,
+      "tokensPerTask": 117941,
+      "tokensPerSecond": 67.99,
+      "secondsPerTask": 1349.5,
+      "secondsSource": "aa"
+     },
+     "high": {
+      "name": "Claude Fable 5.1 (High, Default Fallback)",
+      "score": 47.2,
+      "coding": null,
+      "agentic": null,
+      "costPerTask": 7.54,
+      "tokensPerTask": 66031,
+      "tokensPerSecond": 56.97,
+      "secondsPerTask": 799.3,
+      "secondsSource": "aa"
+     },
+     "medium": {
+      "name": "Claude Fable 5.1 (Medium, Default Fallback)",
+      "score": 43.2,
+      "coding": null,
+      "agentic": null,
+      "costPerTask": 5.5643,
+      "tokensPerTask": 48545,
+      "tokensPerSecond": 56.34,
+      "secondsPerTask": 596.0,
+      "secondsSource": "aa"
+     },
+     "low": {
+      "name": "Claude Fable 5.1 (Low, Default Fallback)",
+      "score": 38.7,
+      "coding": null,
+      "agentic": null,
+      "costPerTask": 4.4711,
+      "tokensPerTask": 37837,
+      "tokensPerSecond": 54.8,
+      "secondsPerTask": 455.0,
+      "secondsSource": "aa"
+     }
+    }
+   }
+  },
+  "claude-fable-5": {
+   "name": "Claude Fable 5",
+   "label": "Fable 5",
+   "short": "Fable",
+   "family": "fable",
+   "vendor": "Anthropic",
+   "status": "superseded",
+   "aliases": [
+    "fable-5"
+   ],
+   "replaces": null,
+   "context": 1000000,
+   "maxOutput": 128000,
+   "prices": {
+    "input": 10.0,
+    "output": 50.0,
+    "cacheRead": 1.0,
+    "cacheWrite5m": 12.5,
+    "cacheWrite1h": 20.0,
+    "tiers": [],
+    "source": "litellm"
+   },
+   "codexCredits": null,
+   "aa": null
+  },
+  "claude-mythos-5-2": {
+   "name": "Claude Mythos 5.2",
+   "label": "Mythos 5.2",
+   "short": "Mythos",
+   "family": "mythos",
+   "vendor": "Anthropic",
+   "status": "current",
+   "aliases": [
+    "mythos",
+    "mythos-5.2"
+   ],
+   "replaces": "claude-mythos-5-1",
+   "context": 1000000,
+   "maxOutput": 128000,
+   "prices": {
+    "input": 8.0,
+    "output": 40.0,
+    "cacheRead": 0.2,
+    "cacheWrite5m": 10.0,
+    "cacheWrite1h": 16.0,
+    "tiers": [],
+    "source": "litellm"
+   },
+   "codexCredits": null,
+   "aa": null
+  },
+  "claude-mythos-5-1": {
+   "name": "Claude Mythos 5.1",
+   "label": "Mythos 5.1",
+   "short": "Mythos",
+   "family": "mythos",
+   "vendor": "Anthropic",
+   "status": "superseded",
+   "aliases": [
+    "mythos-5.1"
+   ],
+   "replaces": "claude-mythos-5",
+   "context": 1000000,
+   "maxOutput": 128000,
+   "prices": {
+    "input": 10.0,
+    "output": 50.0,
+    "cacheRead": 0.25,
+    "cacheWrite5m": 12.5,
+    "cacheWrite1h": 20.0,
+    "tiers": [],
+    "source": "litellm"
+   },
+   "codexCredits": null,
+   "aa": null
+  },
+  "claude-mythos-5": {
+   "name": "Claude Mythos 5",
+   "label": "Mythos 5",
+   "short": "Mythos",
+   "family": "mythos",
+   "vendor": "Anthropic",
+   "status": "superseded",
+   "aliases": [
+    "mythos-5"
+   ],
+   "replaces": null,
+   "context": 1000000,
+   "maxOutput": 128000,
+   "prices": {
+    "input": 10.0,
+    "output": 50.0,
+    "cacheRead": 1.0,
+    "cacheWrite5m": 12.5,
+    "cacheWrite1h": 20.0,
+    "tiers": [],
+    "source": "litellm"
+   },
+   "codexCredits": null,
+   "aa": null
+  },
+  "claude-opus-5-5": {
+   "name": "Claude Opus 5.5",
+   "label": "Opus 5.5",
+   "short": "Opus",
+   "family": "opus",
+   "vendor": "Anthropic",
+   "status": "current",
+   "aliases": [
+    "opus",
+    "opus-5.5",
+    "claude-opus-5.5"
+   ],
+   "replaces": "claude-opus-5",
+   "context": 1000000,
+   "maxOutput": 128000,
+   "prices": {
+    "input": 4.0,
+    "output": 20.0,
+    "cacheRead": 0.2,
+    "cacheWrite5m": 5.0,
+    "cacheWrite1h": 8.0,
+    "tiers": [],
+    "source": "litellm"
+   },
+   "codexCredits": null,
+   "aa": {
+    "family": "Opus 5.5",
+    "efforts": {
+     "max": {
+      "name": "Claude Opus 5.5 (Max, Default Fallback)",
+      "score": 59.1,
+      "coding": null,
+      "agentic": null,
+      "costPerTask": 10.0364,
+      "tokensPerTask": 173313,
+      "tokensPerSecond": 94.06,
+      "secondsPerTask": 1505.0,
+      "secondsSource": "aa"
+     },
+     "xhigh": {
+      "name": "Claude Opus 5.5 (Xhigh, Default Fallback)",
+      "score": 57.4,
+      "coding": null,
+      "agentic": null,
+      "costPerTask": 6.0472,
+      "tokensPerTask": 103395,
+      "tokensPerSecond": 81.43,
+      "secondsPerTask": 972.5,
+      "secondsSource": "aa"
+     },
+     "high": {
+      "name": "Claude Opus 5.5 (High, Default Fallback)",
+      "score": 51.8,
+      "coding": null,
+      "agentic": null,
+      "costPerTask": 3.4647,
+      "tokensPerTask": 60071,
+      "tokensPerSecond": 77.85,
+      "secondsPerTask": 572.4,
+      "secondsSource": "aa"
+     },
+     "medium": {
+      "name": "Claude Opus 5.5 (Medium, Default Fallback)",
+      "score": 48.2,
+      "coding": null,
+      "agentic": null,
+      "costPerTask": 2.4511,
+      "tokensPerTask": 43817,
+      "tokensPerSecond": 76.88,
+      "secondsPerTask": 427.7,
+      "secondsSource": "aa"
+     },
+     "low": {
+      "name": "Claude Opus 5.5 (Low, Default Fallback)",
+      "score": 34.8,
+      "coding": null,
+      "agentic": null,
+      "costPerTask": 0.9755,
+      "tokensPerTask": 19060,
+      "tokensPerSecond": 75.32,
+      "secondsPerTask": 180.7,
+      "secondsSource": "aa"
+     }
+    }
+   }
+  },
+  "claude-opus-5": {
+   "name": "Claude Opus 5",
+   "label": "Opus 5",
+   "short": "Opus",
+   "family": "opus",
+   "vendor": "Anthropic",
+   "status": "superseded",
+   "aliases": [
+    "opus-5"
+   ],
+   "replaces": null,
+   "context": 1000000,
+   "maxOutput": 128000,
+   "prices": {
+    "input": 5.0,
+    "output": 25.0,
+    "cacheRead": 0.5,
+    "cacheWrite5m": 6.25,
+    "cacheWrite1h": 10.0,
+    "tiers": [],
+    "source": "litellm"
+   },
+   "codexCredits": null,
+   "aa": {
+    "family": "Opus 5",
+    "efforts": {
+     "max": {
+      "name": "Claude Opus 5 (Max)",
+      "score": 44.2,
+      "coding": null,
+      "agentic": null,
+      "costPerTask": 11.8215,
+      "tokensPerTask": 118068,
+      "tokensPerSecond": 52.03,
+      "secondsPerTask": 1476.3,
+      "secondsSource": "aa"
+     }
+    }
+   }
+  },
+  "claude-opus-4-8": {
+   "name": "Claude Opus 4.8",
+   "label": "Opus 4.8",
+   "short": "Opus",
+   "family": "opus",
+   "vendor": "Anthropic",
+   "status": "superseded",
+   "aliases": [
+    "opus-4.8"
+   ],
+   "replaces": null,
+   "context": 1000000,
+   "maxOutput": 128000,
+   "prices": {
+    "input": 5.0,
+    "output": 25.0,
+    "cacheRead": 0.5,
+    "cacheWrite5m": 6.25,
+    "cacheWrite1h": 10.0,
+    "tiers": [],
+    "source": "litellm"
+   },
+   "codexCredits": null,
+   "aa": null
+  },
+  "claude-opus-4-7": {
+   "name": "Claude Opus 4.7",
+   "label": "Opus 4.7",
+   "short": "Opus",
+   "family": "opus",
+   "vendor": "Anthropic",
+   "status": "superseded",
+   "aliases": [
+    "opus-4.7"
+   ],
+   "replaces": null,
+   "context": 1000000,
+   "maxOutput": 128000,
+   "prices": {
+    "input": 5.0,
+    "output": 25.0,
+    "cacheRead": 0.5,
+    "cacheWrite5m": 6.25,
+    "cacheWrite1h": 10.0,
+    "tiers": [],
+    "source": "litellm"
+   },
+   "codexCredits": null,
+   "aa": null
+  },
+  "claude-opus-4-6": {
+   "name": "Claude Opus 4.6",
+   "label": "Opus 4.6",
+   "short": "Opus",
+   "family": "opus",
+   "vendor": "Anthropic",
+   "status": "superseded",
+   "aliases": [
+    "opus-4.6"
+   ],
+   "replaces": null,
+   "context": 1000000,
+   "maxOutput": 128000,
+   "prices": {
+    "input": 5.0,
+    "output": 25.0,
+    "cacheRead": 0.5,
+    "cacheWrite5m": 6.25,
+    "cacheWrite1h": 10.0,
+    "tiers": [],
+    "source": "litellm"
+   },
+   "codexCredits": null,
+   "aa": null
+  },
+  "claude-opus-4-5": {
+   "name": "Claude Opus 4.5",
+   "label": "Opus 4.5",
+   "short": "Opus",
+   "family": "opus",
+   "vendor": "Anthropic",
+   "status": "superseded",
+   "aliases": [
+    "opus-4.5"
+   ],
+   "replaces": null,
+   "context": 200000,
+   "maxOutput": 64000,
+   "prices": {
+    "input": 5.0,
+    "output": 25.0,
+    "cacheRead": 0.5,
+    "cacheWrite5m": 6.25,
+    "cacheWrite1h": 10.0,
+    "tiers": [],
+    "source": "litellm"
+   },
+   "codexCredits": null,
+   "aa": null
+  },
+  "claude-sonnet-5-5": {
+   "name": "Claude Sonnet 5.5",
+   "label": "Sonnet 5.5",
+   "short": "Sonnet",
+   "family": "sonnet",
+   "vendor": "Anthropic",
+   "status": "current",
+   "aliases": [
+    "sonnet",
+    "sonnet-5.5",
+    "claude-sonnet-5.5"
+   ],
+   "replaces": "claude-sonnet-5",
+   "context": 1000000,
+   "maxOutput": 128000,
+   "prices": {
+    "input": 2.0,
+    "output": 10.0,
+    "cacheRead": 0.1,
+    "cacheWrite5m": 2.5,
+    "cacheWrite1h": 4.0,
+    "tiers": [],
+    "source": "litellm"
+   },
+   "codexCredits": null,
+   "aa": {
+    "family": "Sonnet 5.5",
+    "efforts": {
+     "max": {
+      "name": "Claude Sonnet 5.5 (Max, Default Fallback)",
+      "score": 54.5,
+      "coding": null,
+      "agentic": null,
+      "costPerTask": 10.0206,
+      "tokensPerTask": 285387,
+      "tokensPerSecond": 127.65,
+      "secondsPerTask": 1884.6,
+      "secondsSource": "aa"
+     },
+     "xhigh": {
+      "name": "Claude Sonnet 5.5 (Xhigh, Default Fallback)",
+      "score": 49.9,
+      "coding": null,
+      "agentic": null,
+      "costPerTask": 4.092,
+      "tokensPerTask": 122205,
+      "tokensPerSecond": 103.37,
+      "secondsPerTask": 903.1,
+      "secondsSource": "aa"
+     },
+     "high": {
+      "name": "Claude Sonnet 5.5 (High, Default Fallback)",
+      "score": 41.5,
+      "coding": null,
+      "agentic": null,
+      "costPerTask": 1.6361,
+      "tokensPerTask": 58421,
+      "tokensPerSecond": 104.56,
+      "secondsPerTask": 418.5,
+      "secondsSource": "aa"
+     },
+     "medium": {
+      "name": "Claude Sonnet 5.5 (Medium, Default Fallback)",
+      "score": 30.8,
+      "coding": null,
+      "agentic": null,
+      "costPerTask": 0.7807,
+      "tokensPerTask": 30746,
+      "tokensPerSecond": 100.97,
+      "secondsPerTask": 218.3,
+      "secondsSource": "aa"
+     },
+     "low": {
+      "name": "Claude Sonnet 5.5 (Low, Default Fallback)",
+      "score": 25.6,
+      "coding": null,
+      "agentic": null,
+      "costPerTask": 0.5113,
+      "tokensPerTask": 20856,
+      "tokensPerSecond": 98.76,
+      "secondsPerTask": 155.8,
+      "secondsSource": "aa"
+     }
+    }
+   }
+  },
+  "claude-sonnet-5": {
+   "name": "Claude Sonnet 5",
+   "label": "Sonnet 5",
+   "short": "Sonnet",
+   "family": "sonnet",
+   "vendor": "Anthropic",
+   "status": "superseded",
+   "aliases": [
+    "sonnet-5"
+   ],
+   "replaces": "claude-sonnet-4-6",
+   "context": 1000000,
+   "maxOutput": 128000,
+   "prices": {
+    "input": 2.0,
+    "output": 10.0,
+    "cacheRead": 0.2,
+    "cacheWrite5m": 2.5,
+    "cacheWrite1h": 4.0,
+    "tiers": [],
+    "source": "litellm"
+   },
+   "codexCredits": null,
+   "aa": null
+  },
+  "claude-sonnet-4-6": {
+   "name": "Claude Sonnet 4.6",
+   "label": "Sonnet 4.6",
+   "short": "Sonnet",
+   "family": "sonnet",
+   "vendor": "Anthropic",
+   "status": "superseded",
+   "aliases": [
+    "sonnet-4.6"
+   ],
+   "replaces": null,
+   "context": 1000000,
+   "maxOutput": 128000,
+   "prices": {
+    "input": 3.0,
+    "output": 15.0,
+    "cacheRead": 0.3,
+    "cacheWrite5m": 3.75,
+    "cacheWrite1h": 6.0,
+    "tiers": [],
+    "source": "litellm"
+   },
+   "codexCredits": null,
+   "aa": null
+  },
+  "claude-sonnet-4-5": {
+   "name": "Claude Sonnet 4.5",
+   "label": "Sonnet 4.5",
+   "short": "Sonnet",
+   "family": "sonnet",
+   "vendor": "Anthropic",
+   "status": "superseded",
+   "aliases": [
+    "sonnet-4.5"
+   ],
+   "replaces": null,
+   "context": 200000,
+   "maxOutput": 64000,
+   "prices": {
+    "input": 3.0,
+    "output": 15.0,
+    "cacheRead": 0.3,
+    "cacheWrite5m": 3.75,
+    "cacheWrite1h": 6.0,
+    "tiers": [],
+    "source": "litellm"
+   },
+   "codexCredits": null,
+   "aa": null
+  },
+  "claude-haiku-5-5": {
+   "name": "Claude Haiku 5.5",
+   "label": "Haiku 5.5",
+   "short": "Haiku",
+   "family": "haiku",
+   "vendor": "Anthropic",
+   "status": "current",
+   "aliases": [
+    "haiku",
+    "haiku-5.5",
+    "claude-haiku-5.5"
+   ],
+   "replaces": "claude-haiku-4-5",
+   "context": 1000000,
+   "maxOutput": 128000,
+   "prices": {
+    "input": 0.1,
+    "output": 0.5,
+    "cacheRead": 0.01,
+    "cacheWrite5m": 0.125,
+    "cacheWrite1h": 0.2,
+    "tiers": [
+     {
+      "aboveInputTokens": 100000,
+      "input": 0.5,
+      "output": 2.5,
+      "cacheWrite5m": 0.625,
+      "cacheWrite1h": 1.0,
+      "cacheRead": 0.05
+     }
+    ],
+    "source": "litellm"
+   },
+   "codexCredits": null,
+   "aa": {
+    "family": "Haiku 5.5",
+    "efforts": {
+     "max": {
+      "name": "Claude Haiku 5.5 (Max)",
+      "score": 36.5,
+      "coding": null,
+      "agentic": null,
+      "costPerTask": 0.411,
+      "tokensPerTask": 225966,
+      "tokensPerSecond": 231.98,
+      "secondsPerTask": 889.0,
+      "secondsSource": "aa"
+     },
+     "xhigh": {
+      "name": "Claude Haiku 5.5 (Xhigh)",
+      "score": 34.6,
+      "coding": null,
+      "agentic": null,
+      "costPerTask": 0.2484,
+      "tokensPerTask": 136177,
+      "tokensPerSecond": 185.97,
+      "secondsPerTask": 578.1,
+      "secondsSource": "aa"
+     },
+     "high": {
+      "name": "Claude Haiku 5.5 (High)",
+      "score": 29.9,
+      "coding": null,
+      "agentic": null,
+      "costPerTask": 0.1586,
+      "tokensPerTask": 88064,
+      "tokensPerSecond": 179.68,
+      "secondsPerTask": 388.1,
+      "secondsSource": "aa"
+     },
+     "medium": {
+      "name": "Claude Haiku 5.5 (Medium)",
+      "score": 24.6,
+      "coding": null,
+      "agentic": null,
+      "costPerTask": 0.0918,
+      "tokensPerTask": 53335,
+      "tokensPerSecond": 172.79,
+      "secondsPerTask": 241.2,
+      "secondsSource": "aa"
+     },
+     "low": {
+      "name": "Claude Haiku 5.5 (Low)",
+      "score": 18.6,
+      "coding": null,
+      "agentic": null,
+      "costPerTask": 0.0438,
+      "tokensPerTask": 28161,
+      "tokensPerSecond": 164.23,
+      "secondsPerTask": 129.9,
+      "secondsSource": "aa"
+     }
+    }
+   }
+  },
+  "claude-haiku-4-5": {
+   "name": "Claude Haiku 4.5",
+   "label": "Haiku 4.5",
+   "short": "Haiku",
+   "family": "haiku",
+   "vendor": "Anthropic",
+   "status": "superseded",
+   "aliases": [
+    "haiku-4.5"
+   ],
+   "replaces": null,
+   "context": 200000,
+   "maxOutput": 64000,
+   "prices": {
+    "input": 1.0,
+    "output": 5.0,
+    "cacheRead": 0.1,
+    "cacheWrite5m": 1.25,
+    "cacheWrite1h": 2.0,
+    "tiers": [],
+    "source": "litellm"
+   },
+   "codexCredits": null,
+   "aa": {
+    "family": "Haiku 4.5",
+    "efforts": {
+     "default": {
+      "name": "Claude 4.5 Haiku (Reasoning)",
+      "score": 7.4,
+      "coding": null,
+      "agentic": null,
+      "costPerTask": 0.5318,
+      "tokensPerTask": 25258,
+      "tokensPerSecond": 88.11,
+      "secondsPerTask": 239.6,
+      "secondsSource": "aa"
+     }
+    }
+   }
+  },
+  "gpt-6-astra": {
+   "name": "GPT-6 Astra",
+   "label": "GPT-6 Astra",
+   "short": "Astra",
+   "family": "astra",
+   "vendor": "OpenAI",
+   "status": "current",
+   "aliases": [
+    "astra"
+   ],
+   "replaces": null,
+   "context": 922000,
+   "maxOutput": 128000,
+   "prices": {
+    "input": 10.0,
+    "output": 50.0,
+    "cacheRead": 1.0,
+    "cacheWrite5m": 12.5,
+    "tiers": [
+     {
+      "aboveInputTokens": 272000,
+      "cacheWrite5m": 25.0,
+      "cacheRead": 2.0,
+      "input": 20.0,
+      "output": 75.0
+     }
+    ],
+    "source": "litellm"
+   },
+   "codexCredits": {
+    "input": 250,
+    "cached": 25,
+    "output": 1250
+   },
+   "aa": {
+    "family": "Astra",
+    "efforts": {
+     "max": {
+      "name": "GPT-6 Astra (Max)",
+      "score": 56.9,
+      "coding": null,
+      "agentic": null,
+      "costPerTask": 6.2447,
+      "tokensPerTask": 51973,
+      "tokensPerSecond": 49.45,
+      "secondsPerTask": 1381.7,
+      "secondsSource": "aa"
+     },
+     "xhigh": {
+      "name": "GPT-6 Astra (Xhigh)",
+      "score": 55.3,
+      "coding": null,
+      "agentic": null,
+      "costPerTask": 3.6589,
+      "tokensPerTask": 26724,
+      "tokensPerSecond": 46.73,
+      "secondsPerTask": 686.2,
+      "secondsSource": "aa"
+     },
+     "high": {
+      "name": "GPT-6 Astra (High)",
+      "score": 54.8,
+      "coding": null,
+      "agentic": null,
+      "costPerTask": 3.2386,
+      "tokensPerTask": 23133,
+      "tokensPerSecond": 45.21,
+      "secondsPerTask": 595.1,
+      "secondsSource": "aa"
+     },
+     "medium": {
+      "name": "GPT-6 Astra (Medium)",
+      "score": 51.6,
+      "coding": null,
+      "agentic": null,
+      "costPerTask": 2.7324,
+      "tokensPerTask": 18052,
+      "tokensPerSecond": 41.8,
+      "secondsPerTask": 418.8,
+      "secondsSource": "aa"
+     },
+     "low": {
+      "name": "GPT-6 Astra (Low)",
+      "score": 43.3,
+      "coding": null,
+      "agentic": null,
+      "costPerTask": 1.4237,
+      "tokensPerTask": 9126,
+      "tokensPerSecond": 41.75,
+      "secondsPerTask": 225.8,
+      "secondsSource": "aa"
+     }
+    }
+   }
+  },
+  "gpt-6.1-sol": {
+   "name": "GPT-6.1 Sol",
+   "label": "GPT-6.1 Sol",
+   "short": "Sol",
+   "family": "sol",
+   "vendor": "OpenAI",
+   "status": "current",
+   "aliases": [
+    "sol"
+   ],
+   "replaces": null,
+   "context": 922000,
+   "maxOutput": 128000,
+   "prices": {
+    "input": 2.0,
+    "output": 10.0,
+    "cacheRead": 0.1,
+    "cacheWrite5m": 2.5,
+    "tiers": [
+     {
+      "aboveInputTokens": 272000,
+      "cacheWrite5m": 5.0,
+      "cacheRead": 0.2,
+      "input": 4.0,
+      "output": 15.0
+     }
+    ],
+    "source": "litellm"
+   },
+   "codexCredits": {
+    "input": 50,
+    "cached": 2.5,
+    "output": 250
+   },
+   "aa": {
+    "family": "GPT-6.1 Sol",
+    "efforts": {
+     "max": {
+      "name": "GPT-6.1 Sol (Max)",
+      "score": 54.6,
+      "coding": null,
+      "agentic": null,
+      "costPerTask": 1.2721,
+      "tokensPerTask": 67824,
+      "tokensPerSecond": 68.82,
+      "secondsPerTask": 1180.4,
+      "secondsSource": "aa"
+     },
+     "xhigh": {
+      "name": "GPT-6.1 Sol (Xhigh)",
+      "score": 52.5,
+      "coding": null,
+      "agentic": null,
+      "costPerTask": 0.764,
+      "tokensPerTask": 30241,
+      "tokensPerSecond": 68.52,
+      "secondsPerTask": 550.3,
+      "secondsSource": "aa"
+     },
+     "high": {
+      "name": "GPT-6.1 Sol (High)",
+      "score": 50.3,
+      "coding": null,
+      "agentic": null,
+      "costPerTask": 0.591,
+      "tokensPerTask": 22606,
+      "tokensPerSecond": 61.26,
+      "secondsPerTask": 386.9,
+      "secondsSource": "aa"
+     },
+     "medium": {
+      "name": "GPT-6.1 Sol (Medium)",
+      "score": 46.3,
+      "coding": null,
+      "agentic": null,
+      "costPerTask": 0.3594,
+      "tokensPerTask": 13518,
+      "tokensPerSecond": 55.1,
+      "secondsPerTask": 225.9,
+      "secondsSource": "aa"
+     },
+     "low": {
+      "name": "GPT-6.1 Sol (Low)",
+      "score": 34.8,
+      "coding": null,
+      "agentic": null,
+      "costPerTask": 0.1615,
+      "tokensPerTask": 5838,
+      "tokensPerSecond": 56.29,
+      "secondsPerTask": 104.0,
+      "secondsSource": "aa"
+     }
+    }
+   }
+  },
+  "gpt-6-sol": {
+   "name": "GPT-6 Sol",
+   "label": "GPT-6 Sol",
+   "short": "Sol",
+   "family": "sol",
+   "vendor": "OpenAI",
+   "status": "superseded",
+   "aliases": [],
+   "replaces": null,
+   "context": 922000,
+   "maxOutput": 128000,
+   "prices": {
+    "input": 2.0,
+    "output": 10.0,
+    "cacheRead": 0.2,
+    "cacheWrite5m": 2.5,
+    "tiers": [
+     {
+      "aboveInputTokens": 272000,
+      "cacheWrite5m": 5.0,
+      "cacheRead": 0.4,
+      "input": 4.0,
+      "output": 15.0
+     }
+    ],
+    "source": "litellm"
+   },
+   "codexCredits": {
+    "input": 50,
+    "cached": 5,
+    "output": 250
+   },
+   "aa": {
+    "family": "GPT-6 Sol",
+    "efforts": {
+     "max": {
+      "name": "GPT-6 Sol (Max)",
+      "score": 44.2,
+      "coding": null,
+      "agentic": null,
+      "costPerTask": 2.4658,
+      "tokensPerTask": 53890,
+      "tokensPerSecond": 154.22,
+      "secondsPerTask": 443.0,
+      "secondsSource": "aa"
+     }
+    }
+   }
+  },
+  "gpt-6.1-terra": {
+   "name": "GPT-6.1 Terra",
+   "label": "GPT-6.1 Terra",
+   "short": "Terra",
+   "family": "terra",
+   "vendor": "OpenAI",
+   "status": "current",
+   "aliases": [
+    "terra"
+   ],
+   "replaces": null,
+   "context": 922000,
+   "maxOutput": 128000,
+   "prices": {
+    "input": 1.0,
+    "output": 5.0,
+    "cacheRead": 0.05,
+    "cacheWrite5m": 1.25,
+    "tiers": [
+     {
+      "aboveInputTokens": 272000,
+      "cacheWrite5m": 2.5,
+      "cacheRead": 0.1,
+      "input": 2.0,
+      "output": 7.5
+     }
+    ],
+    "source": "litellm"
+   },
+   "codexCredits": {
+    "input": 25,
+    "cached": 1.25,
+    "output": 125
+   },
+   "aa": {
+    "family": "GPT-6.1 Terra",
+    "efforts": {
+     "max": {
+      "name": "GPT-6.1 Terra (Max)",
+      "score": 51.3,
+      "coding": null,
+      "agentic": null,
+      "costPerTask": 0.9611,
+      "tokensPerTask": 59883,
+      "tokensPerSecond": 103.35,
+      "secondsPerTask": 813.9,
+      "secondsSource": "aa"
+     },
+     "xhigh": {
+      "name": "GPT-6.1 Terra (Xhigh)",
+      "score": 45.3,
+      "coding": null,
+      "agentic": null,
+      "costPerTask": 0.4007,
+      "tokensPerTask": 26200,
+      "tokensPerSecond": 90.9,
+      "secondsPerTask": 362.7,
+      "secondsSource": "aa"
+     },
+     "high": {
+      "name": "GPT-6.1 Terra (High)",
+      "score": 42.4,
+      "coding": null,
+      "agentic": null,
+      "costPerTask": 0.2593,
+      "tokensPerTask": 16746,
+      "tokensPerSecond": 89.39,
+      "secondsPerTask": 240.5,
+      "secondsSource": "aa"
+     },
+     "medium": {
+      "name": "GPT-6.1 Terra (Medium)",
+      "score": 38.2,
+      "coding": null,
+      "agentic": null,
+      "costPerTask": 0.1688,
+      "tokensPerTask": 10875,
+      "tokensPerSecond": 87.53,
+      "secondsPerTask": 155.8,
+      "secondsSource": "aa"
+     },
+     "none": {
+      "name": "GPT-6.1 Terra (Non-reasoning)",
+      "score": 30.5,
+      "coding": null,
+      "agentic": null,
+      "costPerTask": 0.2259,
+      "tokensPerTask": 9488,
+      "tokensPerSecond": 87.46,
+      "secondsPerTask": 135.5,
+      "secondsSource": "aa"
+     },
+     "low": {
+      "name": "GPT-6.1 Terra (Low)",
+      "score": 29.4,
+      "coding": null,
+      "agentic": null,
+      "costPerTask": 0.0713,
+      "tokensPerTask": 4422,
+      "tokensPerSecond": 87.49,
+      "secondsPerTask": 65.3,
+      "secondsSource": "aa"
+     }
+    }
+   }
+  },
+  "gpt-6-luna": {
+   "name": "GPT-6 Luna",
+   "label": "GPT-6 Luna",
+   "short": "Luna",
+   "family": "luna",
+   "vendor": "OpenAI",
+   "status": "current",
+   "aliases": [
+    "luna"
+   ],
+   "replaces": null,
+   "context": 922000,
+   "maxOutput": 128000,
+   "prices": {
+    "input": 0.1,
+    "output": 0.5,
+    "cacheRead": 0.01,
+    "cacheWrite5m": 0.125,
+    "tiers": [
+     {
+      "aboveInputTokens": 272000,
+      "cacheWrite5m": 0.25,
+      "cacheRead": 0.02,
+      "input": 0.2,
+      "output": 0.75
+     }
+    ],
+    "source": "litellm"
+   },
+   "codexCredits": {
+    "input": 2.5,
+    "cached": 0.25,
+    "output": 12.5
+   },
+   "aa": {
+    "family": "GPT-6 Luna",
+    "efforts": {
+     "max": {
+      "name": "GPT-6 Luna (Max)",
+      "score": 27.9,
+      "coding": null,
+      "agentic": null,
+      "costPerTask": 0.152,
+      "tokensPerTask": 75296,
+      "tokensPerSecond": 125.16,
+      "secondsPerTask": 721.4,
+      "secondsSource": "aa"
+     },
+     "xhigh": {
+      "name": "GPT-6 Luna (Xhigh)",
+      "score": 23.5,
+      "coding": null,
+      "agentic": null,
+      "costPerTask": 0.1041,
+      "tokensPerTask": 43893,
+      "tokensPerSecond": 120.01,
+      "secondsPerTask": 423.9,
+      "secondsSource": "aa"
+     },
+     "high": {
+      "name": "GPT-6 Luna (High)",
+      "score": 21.4,
+      "coding": null,
+      "agentic": null,
+      "costPerTask": 0.0729,
+      "tokensPerTask": 32839,
+      "tokensPerSecond": 118.3,
+      "secondsPerTask": 339.9,
+      "secondsSource": "aa"
+     },
+     "medium": {
+      "name": "GPT-6 Luna (Medium)",
+      "score": 18.5,
+      "coding": null,
+      "agentic": null,
+      "costPerTask": 0.0422,
+      "tokensPerTask": 19823,
+      "tokensPerSecond": 114,
+      "secondsPerTask": 199.5,
+      "secondsSource": "aa"
+     },
+     "low": {
+      "name": "GPT-6 Luna (Low)",
+      "score": 9.7,
+      "coding": null,
+      "agentic": null,
+      "costPerTask": 0.0051,
+      "tokensPerTask": 3296,
+      "tokensPerSecond": 117.87,
+      "secondsPerTask": 37.1,
+      "secondsSource": "aa"
+     },
+     "none": {
+      "name": "GPT-6 Luna (Non-reasoning)",
+      "score": 9.4,
+      "coding": null,
+      "agentic": null,
+      "costPerTask": 0.0714,
+      "tokensPerTask": 10059,
+      "tokensPerSecond": 112.6,
+      "secondsPerTask": 131.0,
+      "secondsSource": "aa"
+     }
+    }
+   }
+  },
+  "gpt-5.6-sol": {
+   "name": "GPT-5.6 Sol",
+   "label": "GPT-5.6 Sol",
+   "short": "Sol",
+   "family": "sol",
+   "vendor": "OpenAI",
+   "status": "superseded",
+   "aliases": [],
+   "replaces": null,
+   "context": 922000,
+   "maxOutput": 128000,
+   "prices": {
+    "input": 4.0,
+    "output": 20.0,
+    "cacheRead": 0.4,
+    "cacheWrite5m": 5.0,
+    "tiers": [
+     {
+      "aboveInputTokens": 272000,
+      "cacheWrite5m": 10.0,
+      "cacheRead": 0.8,
+      "input": 8.0,
+      "output": 30.0
+     }
+    ],
+    "source": "litellm"
+   },
+   "codexCredits": {
+    "input": 100,
+    "cached": 10,
+    "output": 500
+   },
+   "aa": null
+  },
+  "gpt-5.6-terra": {
+   "name": "GPT-5.6 Terra",
+   "label": "GPT-5.6 Terra",
+   "short": "Terra",
+   "family": "terra",
+   "vendor": "OpenAI",
+   "status": "superseded",
+   "aliases": [],
+   "replaces": null,
+   "context": 922000,
+   "maxOutput": 128000,
+   "prices": {
+    "input": 2.0,
+    "output": 12.0,
+    "cacheRead": 0.2,
+    "cacheWrite5m": 2.5,
+    "tiers": [
+     {
+      "aboveInputTokens": 272000,
+      "cacheWrite5m": 5.0,
+      "cacheRead": 0.4,
+      "input": 4.0,
+      "output": 18.0
+     }
+    ],
+    "source": "litellm"
+   },
+   "codexCredits": {
+    "input": 50,
+    "cached": 5,
+    "output": 300
+   },
+   "aa": {
+    "family": "Terra",
+    "efforts": {
+     "max": {
+      "name": "GPT-5.6 Terra (Max)",
+      "score": 32.3,
+      "coding": null,
+      "agentic": null,
+      "costPerTask": 3.7349,
+      "tokensPerTask": 66249,
+      "tokensPerSecond": 130.34,
+      "secondsPerTask": 625.2,
+      "secondsSource": "aa"
+     }
+    }
+   }
+  },
+  "gpt-5.6-luna": {
+   "name": "GPT-5.6 Luna",
+   "label": "GPT-5.6 Luna",
+   "short": "Luna",
+   "family": "luna",
+   "vendor": "OpenAI",
+   "status": "superseded",
+   "aliases": [],
+   "replaces": null,
+   "context": 922000,
+   "maxOutput": 128000,
+   "prices": {
+    "input": 0.2,
+    "output": 1.2,
+    "cacheRead": 0.02,
+    "cacheWrite5m": 0.25,
+    "tiers": [
+     {
+      "aboveInputTokens": 272000,
+      "cacheWrite5m": 0.5,
+      "cacheRead": 0.04,
+      "input": 0.4,
+      "output": 1.8
+     }
+    ],
+    "source": "litellm"
+   },
+   "codexCredits": {
+    "input": 5,
+    "cached": 0.5,
+    "output": 30
+   },
+   "aa": {
+    "family": "Luna",
+    "efforts": {
+     "max": {
+      "name": "GPT-5.6 Luna (Max)",
+      "score": 23.8,
+      "coding": null,
+      "agentic": null,
+      "costPerTask": 0.3313,
+      "tokensPerTask": 59003,
+      "tokensPerSecond": 127.21,
+      "secondsPerTask": 508.8,
+      "secondsSource": "aa"
+     }
+    }
+   }
+  },
+  "gpt-5.6-cyber": {
+   "name": "GPT-5.6 Cyber",
+   "label": "GPT-5.6 Cyber",
+   "short": "Cyber",
+   "family": "cyber",
+   "vendor": "OpenAI",
+   "status": "superseded",
+   "aliases": [],
+   "replaces": null,
+   "context": 272000,
+   "maxOutput": 128000,
+   "prices": {
+    "input": 12.5,
+    "output": 75.0,
+    "cacheRead": 1.25,
+    "cacheWrite5m": 15.625,
+    "tiers": [
+     {
+      "aboveInputTokens": 272000,
+      "cacheWrite5m": 31.25,
+      "cacheRead": 2.5,
+      "input": 25.0,
+      "output": 112.5
+     }
+    ],
+    "source": "litellm"
+   },
+   "codexCredits": null,
+   "aa": null
+  },
+  "gpt-5.5": {
+   "name": "GPT-5.5",
+   "label": "GPT-5.5",
+   "short": "GPT-5.5",
+   "family": "gpt",
+   "vendor": "OpenAI",
+   "status": "superseded",
+   "aliases": [],
+   "replaces": null,
+   "context": 1050000,
+   "maxOutput": 128000,
+   "prices": {
+    "input": 5.0,
+    "output": 30.0,
+    "cacheRead": 0.5,
+    "tiers": [
+     {
+      "aboveInputTokens": 272000,
+      "cacheRead": 1.0,
+      "input": 10.0,
+      "output": 45.0
+     }
+    ],
+    "source": "litellm"
+   },
+   "codexCredits": {
+    "input": 125,
+    "cached": 12.5,
+    "output": 750
+   },
+   "aa": null
+  },
+  "gpt-5.4": {
+   "name": "GPT-5.4",
+   "label": "GPT-5.4",
+   "short": "GPT-5.4",
+   "family": "gpt",
+   "vendor": "OpenAI",
+   "status": "superseded",
+   "aliases": [],
+   "replaces": null,
+   "context": 1050000,
+   "maxOutput": 128000,
+   "prices": {
+    "input": 2.5,
+    "output": 15.0,
+    "cacheRead": 0.25,
+    "tiers": [
+     {
+      "aboveInputTokens": 272000,
+      "cacheRead": 0.5,
+      "input": 5.0,
+      "output": 22.5
+     }
+    ],
+    "source": "litellm"
+   },
+   "codexCredits": {
+    "input": 62.5,
+    "cached": 6.25,
+    "output": 375
+   },
+   "aa": null
+  },
+  "gpt-5.4-mini": {
+   "name": "GPT-5.4 mini",
+   "label": "GPT-5.4 mini",
+   "short": "GPT-5.4 mini",
+   "family": "gpt",
+   "vendor": "OpenAI",
+   "status": "superseded",
+   "aliases": [],
+   "replaces": null,
+   "context": 272000,
+   "maxOutput": 128000,
+   "prices": {
+    "input": 0.75,
+    "output": 4.5,
+    "cacheRead": 0.075,
+    "tiers": [],
+    "source": "litellm"
+   },
+   "codexCredits": {
+    "input": 18.75,
+    "cached": 1.875,
+    "output": 113
+   },
+   "aa": null
+  },
+  "gpt-5.3-codex": {
+   "name": "GPT-5.3-Codex",
+   "label": "GPT-5.3-Codex",
+   "short": "GPT-5.3-Codex",
+   "family": "codex",
+   "vendor": "OpenAI",
+   "status": "superseded",
+   "aliases": [],
+   "replaces": null,
+   "context": 272000,
+   "maxOutput": 128000,
+   "prices": {
+    "input": 1.75,
+    "output": 14.0,
+    "cacheRead": 0.175,
+    "tiers": [],
+    "source": "litellm"
+   },
+   "codexCredits": {
+    "input": 43.75,
+    "cached": 4.375,
+    "output": 350
+   },
+   "aa": null
+  },
+  "gpt-5.2": {
+   "name": "GPT-5.2",
+   "label": "GPT-5.2",
+   "short": "GPT-5.2",
+   "family": "gpt",
+   "vendor": "OpenAI",
+   "status": "superseded",
+   "aliases": [],
+   "replaces": null,
+   "context": 272000,
+   "maxOutput": 128000,
+   "prices": {
+    "input": 1.75,
+    "output": 14.0,
+    "cacheRead": 0.175,
+    "tiers": [],
+    "source": "litellm"
+   },
+   "codexCredits": {
+    "input": 43.75,
+    "cached": 4.375,
+    "output": 350
+   },
+   "aa": null
+  },
+  "gpt-5.1-codex-max": {
+   "name": "GPT-5.1-Codex-Max",
+   "label": "GPT-5.1-Codex-Max",
+   "short": "GPT-5.1-Codex-Max",
+   "family": "codex",
+   "vendor": "OpenAI",
+   "status": "superseded",
+   "aliases": [],
+   "replaces": null,
+   "context": 400000,
+   "maxOutput": 128000,
+   "prices": {
+    "input": 1.25,
+    "output": 10.0,
+    "cacheRead": 0.125,
+    "tiers": [],
+    "source": "litellm"
+   },
+   "codexCredits": null,
+   "aa": null
+  },
+  "gpt-5-codex": {
+   "name": "GPT-5-Codex",
+   "label": "GPT-5-Codex",
+   "short": "GPT-5-Codex",
+   "family": "codex",
+   "vendor": "OpenAI",
+   "status": "superseded",
+   "aliases": [],
+   "replaces": null,
+   "context": 272000,
+   "maxOutput": 128000,
+   "prices": {
+    "input": 1.25,
+    "output": 10.0,
+    "cacheRead": 0.125,
+    "tiers": [],
+    "source": "litellm"
+   },
+   "codexCredits": null,
+   "aa": null
+  }
+ }
+}

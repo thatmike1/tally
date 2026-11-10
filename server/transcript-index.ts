@@ -21,7 +21,7 @@ import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { DatabaseSync, type StatementSync } from 'node:sqlite'
 import type { IndexProgress } from './history-types'
-import { costOf, familyOf, isPriced, PRICE_TABLE_KEY } from './prices'
+import { costOf, familyOf, isPriced, priceTableKey } from './prices'
 import {
   parseTranscript,
   projectsRoot,
@@ -281,11 +281,13 @@ export class TranscriptIndex {
   /**
    * a stored cost is frozen at the price table it was parsed under, and an
    * unchanged file is never reread, so a price edit reprices every row from the
-   * tokens it kept. runs once per table change, keyed in `meta`.
+   * tokens it kept. runs once per table change, keyed in `meta`, and is checked
+   * again at every pass, since models.json can change under a running server.
    */
   private repriceIfStale(): void {
+    const key = priceTableKey()
     const stored = this.statements.getMeta.get('prices') as { value?: string } | undefined
-    if (stored?.value === PRICE_TABLE_KEY) return
+    if (stored?.value === key) return
     const rows = this.db.prepare('SELECT rowid, model, tin, cw1h, cw5m, cr, tout FROM requests').all()
     const update = this.db.prepare('UPDATE requests SET priced = ?, cost = ? WHERE rowid = ?')
     this.db.exec('BEGIN')
@@ -301,7 +303,7 @@ export class TranscriptIndex {
         })
         update.run(isPriced(model) ? 1 : 0, cost, Number(row.rowid))
       }
-      this.statements.setMeta.run('prices', PRICE_TABLE_KEY, PRICE_TABLE_KEY)
+      this.statements.setMeta.run('prices', key, key)
       this.db.exec('COMMIT')
     } catch (error) {
       this.db.exec('ROLLBACK')
@@ -334,6 +336,7 @@ export class TranscriptIndex {
   /** one incremental pass; concurrent callers share the pass already running */
   refresh(): Promise<RefreshCounts> {
     if (this.running) return this.running
+    this.repriceIfStale()
     const pass = this.pass().finally(() => {
       this.running = null
       this.building = false

@@ -16,25 +16,22 @@ import { CODEX_WEEK_MINUTES } from './codex-usage'
 import { agentsviewUrl } from './session-detail'
 import { nativeThreads, statePath } from './t3'
 import { codexSpeed, jsonObject, speedMultiplier, t3TurnSpeeds, type CodexSpeed } from './codex-speed'
+import { modelFact, modelFacts } from './models'
 
-/** credits per million tokens, from https://help.openai.com/en/articles/20001106-codex-rate-card (read 23 Sep 2026, gpt-6.1-sol 1 Oct) */
-export const CODEX_RATES: Record<string, { input: number; cached: number; output: number }> = {
-  'gpt-6-astra': { input: 250, cached: 25, output: 1250 },
-  'gpt-6.1-sol': { input: 50, cached: 2.5, output: 250 },
-  'gpt-6-sol': { input: 50, cached: 5, output: 250 },
-  'gpt-6-luna': { input: 2.5, cached: 0.25, output: 12.5 },
-  'gpt-5.6-sol': { input: 100, cached: 10, output: 500 },
-  'gpt-5.6-terra': { input: 50, cached: 5, output: 300 },
-  'gpt-5.6-luna': { input: 5, cached: 0.5, output: 30 },
-  'gpt-5.5': { input: 125, cached: 12.5, output: 750 },
-  'gpt-5.4': { input: 62.5, cached: 6.25, output: 375 },
-  'gpt-5.4-mini': { input: 18.75, cached: 1.875, output: 113 },
-  'gpt-5.3-codex': { input: 43.75, cached: 4.375, output: 350 },
-  'gpt-5.2': { input: 43.75, cached: 4.375, output: 350 },
+type CodexRate = { input: number; cached: number; output: number }
+
+/** credits per million tokens by model id, the Codex rate card as models.json carries it */
+export function codexRates(): Record<string, CodexRate> {
+  const out: Record<string, CodexRate> = {}
+  for (const [id, fact] of Object.entries(modelFacts().models)) if (fact.codexCredits) out[id] = fact.codexCredits
+  return out
 }
 
-/** an unknown model is priced like Sol and flagged, so it still gets a row */
-const FALLBACK_RATE = CODEX_RATES['gpt-5.6-sol']!
+/** an unknown model is priced like GPT-5.6 Sol and flagged, so it still gets a row */
+function fallbackRate(): CodexRate {
+  // the literal only matters when models.json is missing entirely, and then every call is flagged
+  return modelFacts().models['gpt-5.6-sol']?.codexCredits ?? { input: 100, cached: 10, output: 500 }
+}
 
 export interface CodexCall {
   t: number
@@ -82,14 +79,9 @@ export interface CodexRollout {
 }
 
 /** `GPT-5.6 Sol`, `gpt-5.6-sol` and `gpt-5.6-sol-2026-08` all price as `gpt-5.6-sol` */
-export function codexRate(model: string): { rate: (typeof CODEX_RATES)[string]; priced: boolean } {
-  const key = model.toLowerCase().trim().replace(/\s+/g, '-')
-  const exact = CODEX_RATES[key]
-  if (exact) return { rate: exact, priced: true }
-  const prefix = Object.keys(CODEX_RATES)
-    .sort((a, b) => b.length - a.length)
-    .find((name) => key.startsWith(`${name}-`))
-  return prefix ? { rate: CODEX_RATES[prefix]!, priced: true } : { rate: FALLBACK_RATE, priced: false }
+export function codexRate(model: string): { rate: CodexRate; priced: boolean } {
+  const rate = modelFact(model)?.codexCredits
+  return rate ? { rate, priced: true } : { rate: fallbackRate(), priced: false }
 }
 
 /** credits for one call; `input` here already excludes the cached part */
