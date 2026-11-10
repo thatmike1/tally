@@ -1,12 +1,16 @@
 // the list-price table, first ported from cc-browse's `ccbrowse.py` (`PRICES`,
 // `usage_cost`). list price is the divider the attribution proof settled on.
 // read from https://platform.claude.com/docs/en/about-claude/pricing on 9 Oct
-// 2026; standard Claude speed only.
+// 2026; standard Claude speed only. fable 5.2 and mythos 5.2 read from the same
+// page and https://platform.claude.com/docs/en/models/fable-5-2/overview on 10 Nov
+// 2026.
 
 /** usd per million tokens, as (input, output), keyed by model-id prefix */
 export const PRICES: Record<string, readonly [number, number]> = {
+  'claude-fable-5-2': [8.0, 40.0],
   'claude-fable-5-1': [10.0, 50.0],
   'claude-fable-5': [10.0, 50.0],
+  'claude-mythos-5-2': [8.0, 40.0],
   'claude-mythos-5-1': [10.0, 50.0],
   'claude-mythos-5': [10.0, 50.0],
   'claude-opus-5-5': [4.0, 20.0],
@@ -27,7 +31,9 @@ export const CACHE_READ_MULT = 0.1
 
 /** models whose cache reads break the 0.1x rule, keyed by the same prefixes as `PRICES` */
 export const CACHE_READ_MULT_BY_PREFIX: Record<string, number> = {
+  'claude-fable-5-2': 0.025,
   'claude-fable-5-1': 0.025,
+  'claude-mythos-5-2': 0.025,
   'claude-mythos-5-1': 0.025,
   'claude-opus-5-5': 0.05,
   'claude-sonnet-5-5': 0.05,
@@ -99,7 +105,9 @@ export function familyOf(model: string): Family {
  */
 export const PREDECESSOR: Record<string, string> = {
   'claude-opus-5-5': 'claude-opus-5',
+  'claude-fable-5-2': 'claude-fable-5-1',
   'claude-fable-5-1': 'claude-fable-5',
+  'claude-mythos-5-2': 'claude-mythos-5-1',
   'claude-mythos-5-1': 'claude-mythos-5',
   'claude-sonnet-5': 'claude-sonnet-4-6',
   'claude-sonnet-5-5': 'claude-sonnet-5',

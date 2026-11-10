@@ -87,6 +87,18 @@ describe('prices', () => {
     expect(costOf('claude-opus-5-5', { in: 0, cw1h: 1e6, cw5m: 1e6, cr: 0, out: 0 })).toBeCloseTo(8 + 5, 9)
   })
 
+  it('prices fable 5.2 on its own row, not as fable 5 (10 Nov 2026 table)', () => {
+    expect(priceFor('claude-fable-5-2')).toEqual([8.0, 40.0])
+    expect(priceFor('claude-mythos-5-2')).toEqual([8.0, 40.0])
+    // cache read 0.20, 5m write 10, 1h write 16, per Anthropic's model page
+    expect(costOf('claude-fable-5-2', { in: 0, cw1h: 0, cw5m: 0, cr: 1e6, out: 0 })).toBeCloseTo(0.2, 9)
+    expect(costOf('claude-fable-5-2', { in: 0, cw1h: 0, cw5m: 1e6, cr: 0, out: 0 })).toBeCloseTo(10, 9)
+    expect(costOf('claude-fable-5-2', { in: 0, cw1h: 1e6, cw5m: 0, cr: 0, out: 0 })).toBeCloseTo(16, 9)
+    expect(costOf('claude-fable-5-2', { in: 1e6, cw1h: 0, cw5m: 0, cr: 0, out: 1e6 })).toBeCloseTo(48, 9)
+    expect(familyOf('claude-fable-5-2')).toBe('fable')
+    expect(predecessorOf('claude-fable-5-2')).toBe('claude-fable-5-1')
+  })
+
   it('prices the cache buckets at their own multipliers', () => {
     // 1M cache-read opus tokens is a tenth of the 5.00 input price
     expect(costOf('claude-opus-5', { in: 0, cw1h: 0, cw5m: 0, cr: 1e6, out: 0 })).toBeCloseTo(0.5, 9)
