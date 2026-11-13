@@ -1,3 +1,4 @@
+import { annotationsFor } from '../../../server/history-annotations'
 import { useEffect, useState, type ReactNode } from 'react'
 import {
   errorLine,
@@ -159,6 +160,9 @@ function HistoryLetter({ history, codex }: { history: ClaudeHistory; codex: Code
                     <span className="cmp">{rate(week.dollarsPerPercent)}</span> a weekly point
                   </>
                 )}
+                {annotationsFor(history.annotations ?? [], week.start, week.end).map((event) => (
+                  <span className="sub" key={event.id} title={event.explanation}>{event.label} · overlaps this week</span>
+                ))}
                 {' · '}
                 {week.chatsPercent === null ? 'Chats not measured' : `Chats ${pct(week.chatsPercent)}`}
               </span>
@@ -224,6 +228,11 @@ function PointCost({ history }: { history: ClaudeHistory }) {
         </p>
       }
     >
+      {(history.annotations ?? []).map((event) => (
+        <p className="more" key={event.id}>
+          <b>{event.label}</b> · {dayDate(event.start)}–{dayDate(event.end - 1)}. {event.explanation}
+        </p>
+      ))}
       <CostPerPercentChart history={history} />
     </Question>
   )

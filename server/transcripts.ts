@@ -10,7 +10,7 @@
 // was fine there since the proof only ever aggregated per block.
 import { createReadStream, readdirSync, statSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { join } from 'node:path'
+import { basename, dirname, join } from 'node:path'
 import { createInterface } from 'node:readline'
 import { costOf, familyOf, isPriced, type Family, type Tokens } from './prices'
 
@@ -77,6 +77,25 @@ function safeReaddir(dir: string): string[] {
 
 /** every lead transcript and every subagent transcript under `~/.claude/projects` */
 export function transcriptFiles(root = projectsRoot()): TranscriptFile[] {
+  const roots = [root]
+  // mirrors stay outside Claude's own tree; discovery also works for a test home
+  if (basename(root) === 'projects' && basename(dirname(root)) === '.claude') {
+    const sources = join(dirname(dirname(root)), '.cache', 'tally', 'claude-sources')
+    for (const name of safeReaddir(sources)) roots.push(join(sources, name, 'projects'))
+  }
+  const bySession = new Map<string, TranscriptFile>()
+  for (const source of roots) {
+    for (const file of filesInRoot(source)) {
+      const key = `${file.sessionId}/${basename(file.path)}`
+      const previous = bySession.get(key)
+      // a copied session may exist on two hosts; keep its most complete file once
+      if (!previous || file.size > previous.size) bySession.set(key, file)
+    }
+  }
+  return [...bySession.values()]
+}
+
+function filesInRoot(root: string): TranscriptFile[] {
   const out: TranscriptFile[] = []
   for (const project of safeReaddir(root)) {
     const projectDir = join(root, project)
@@ -254,6 +273,17 @@ export async function parseTranscript(
   return { records: [...last.values()].filter((record) => record.t >= start && record.t < end), title, cwd, lines }
 }
 
+/** copied/forked histories can repeat a request across files; count its final usage once */
+export function uniqueRequests(records: RequestRecord[]): RequestRecord[] {
+  const byId = new Map<string, RequestRecord>()
+  for (const record of records) {
+    const previous = byId.get(record.mid)
+    // a shorter copied streaming response must not replace its completed response
+    if (!previous || record.out > previous.out) byId.set(record.mid, record)
+  }
+  return [...byId.values()]
+}
+
 export interface ScanResult {
   records: RequestRecord[]
   sessions: Map<string, SessionMeta>
@@ -283,5 +313,5 @@ export async function scan(start: number, end: number, root = projectsRoot()): P
     }
   }
   records.sort((a, b) => a.t - b.t)
-  return { records, sessions }
+  return { records: uniqueRequests(records), sessions }
 }

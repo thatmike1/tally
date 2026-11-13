@@ -1,3 +1,5 @@
+import { annotationsFor } from '../../../server/history-annotations'
+import type { HistoryAnnotation } from '../../../server/history-types'
 import { useEffect, useRef, useState, type RefObject } from 'react'
 import type { BlockSummary, ClaudeHistory, CodexWindow, WeekSummary } from '../api'
 import { dayDate, dayKey, hm, money, pct, rate } from '../format'
@@ -102,12 +104,14 @@ function TimePanel({
   to,
   series,
   unit,
+  annotations = [],
 }: {
   width: number
   from: number
   to: number
   series: Series[]
   unit: string
+  annotations?: HistoryAnnotation[]
 }) {
   const values = series.flatMap((one) => one.points.map((point) => point.value))
   const top = niceMax(Math.max(...values, 0))
@@ -120,6 +124,15 @@ function TimePanel({
 
   return (
     <svg width={width} height={height} role="img" aria-label={`${series.map((one) => one.name).join(' and ')} over time`}>
+      {annotationsFor(annotations, from, to).map((event) => (
+        <g key={event.id}>
+          <title>{`${event.label}: ${event.explanation}`}</title>
+          <rect x={x(Math.max(from, event.start))} y={TOP}
+            width={Math.max(1, x(Math.min(to, event.end)) - x(Math.max(from, event.start)))}
+            height={PLOT} fill="currentColor" opacity={0.05} />
+          <text x={x(Math.max(from, event.start)) + 4} y={TOP + 11} className="tk">{event.label}</text>
+        </g>
+      ))}
       {tip.layer}
       {[0, 0.5, 1].map((fraction) => (
         <g key={fraction}>
@@ -278,7 +291,7 @@ export function CostPerPercentChart({ history }: { history: ClaudeHistory }) {
         unit="$"
       />
       <div className="ch-sub">weekly and Fable · one mark per window</div>
-      <TimePanel width={width} from={history.since} to={history.now} series={weeks} unit="$" />
+      <TimePanel width={width} from={history.since} to={history.now} series={weeks} unit="$" annotations={history.annotations} />
       <Legend series={[blocks, ...weeks]} />
     </div>
   )

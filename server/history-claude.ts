@@ -1,3 +1,4 @@
+import { HISTORY_ANNOTATIONS } from './history-annotations'
 // `GET /api/history`: every 5-hour block and weekly window since the first
 // meter sample, with list cost against measured meter movement. the routes are
 // mounted in `app.ts` under `/api/history`.
@@ -262,6 +263,7 @@ export async function claudeHistory(options: HistoryOptions = {}): Promise<Claud
   return {
     since,
     now,
+    annotations: HISTORY_ANNOTATIONS,
     blocks: blockSummaries(samples, records, now),
     weeks: weekSummaries(samples, records, now, options.usageRaw ?? usageRawPath(home)),
     subValue: subValue(samples, records, now, plan),

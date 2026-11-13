@@ -117,8 +117,18 @@ export interface SubValue {
   planName: string
 }
 
+/** known account events; unix seconds, start inclusive and end exclusive */
+export interface HistoryAnnotation {
+  id: string
+  start: number
+  end: number
+  label: string
+  explanation: string
+}
+
 /** `GET /api/history` */
 export interface ClaudeHistory {
+  annotations: HistoryAnnotation[]
   /**
    * the day the sampler's first api reading fell on, so the page never claims
    * history it has no samples for. null with an empty log: there is no history

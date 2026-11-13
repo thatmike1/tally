@@ -357,3 +357,48 @@ describe('TranscriptIndex on hand-written transcripts', () => {
     index.close()
   })
 })
+
+it('indexes named mirrors beside desktop, includes subagents and uses the longer duplicate once', async () => {
+  const home = mkdtempSync(join(tmpdir(), 'tally-mirror-'))
+  temps.push(home)
+  const local = projectsRoot(home)
+  const remote = join(home, '.cache/tally/claude-sources/laptop/projects')
+  const line = (id: string, output: number) => JSON.stringify({ type: 'assistant', timestamp: '2026-11-06T12:00:00Z', message: { id, model: 'claude-opus-5', usage: { input_tokens: 10, output_tokens: output } } }) + '\n'
+  mkdirSync(join(local, 'project'), { recursive: true })
+  mkdirSync(join(remote, 'project/session/subagents'), { recursive: true })
+  writeFileSync(join(local, 'project/session.jsonl'), line('one', 1))
+  writeFileSync(join(remote, 'project/session.jsonl'), line('one', 1) + line('one', 9))
+  writeFileSync(join(remote, 'project/session/subagents/agent-a.jsonl'), line('two', 3))
+  const index = new TranscriptIndex({ home, path: ':memory:' })
+  try {
+    await index.refresh()
+    const indexed = index.query(0, 9_999_999_999).records
+    expect(indexed).toHaveLength(2)
+    expect(indexed.find((r) => r.mid === 'one')?.out).toBe(9)
+    expect(indexed.find((r) => r.mid === 'two')?.agent).toBe(true)
+    expect(sorted(indexed)).toEqual(sorted((await scan(0, 9_999_999_999, local)).records))
+  } finally {
+    index.close()
+  }
+})
+
+it('counts requests inherited into a fork once, keeping completed usage across files', async () => {
+  const root = copyRoot()
+  const project = join(root, 'fork-test')
+  mkdirSync(project)
+  const row = (out: number) => JSON.stringify({ type: 'assistant', timestamp: '2030-01-01T00:00:00Z', message: { id: 'forked-message', model: 'claude-opus-5', usage: { input_tokens: 10, output_tokens: out } } }) + '\n'
+  writeFileSync(join(project, 'original.jsonl'), row(8))
+  writeFileSync(join(project, 'fork.jsonl'), row(3))
+  const index = new TranscriptIndex({ root, path: ':memory:' })
+  try {
+    await index.refresh()
+    const from = Date.parse('2030-01-01T00:00:00Z') / 1000
+    for (const name of ['original', 'fork']) utimesSync(join(project, `${name}.jsonl`), from + 1, from + 1)
+    const indexed = index.query(from, from + 1).records
+    expect(indexed).toHaveLength(1)
+    expect(indexed[0]!.out).toBe(8)
+    expect((await scan(from, from + 1, root)).records).toEqual(indexed)
+  } finally {
+    index.close()
+  }
+})

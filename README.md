@@ -315,3 +315,30 @@ this machine's checkout nor the network changes a test result.
 (`scripts/demo-home.mjs`). `docs/v1.png` and `docs/v2-week.png` are earlier
 versions: no tray face, no T3 sidebar widget, no Codex. Tally renders no
 transcripts itself and never will; that is AgentsView's job.
+
+## Remote Claude history and known events
+
+Set `CLAUDE_SOURCES="laptop=laptop"` in a `[Service]` drop-in for
+`tally-sampler.service` (the same `name=[user@]host` syntax as `CODEX_SOURCES`).
+Reload systemd after changing the drop-in. The existing sampler timer copies
+Claude JSONL files, including subagents, every 15 minutes after sampling. For
+an initial import run `CLAUDE_SOURCES="laptop=laptop" python3 sampler/usage-sample.py --claude-sync`.
+Each mirror lives in `~/.cache/tally/claude-sources/<name>/projects/` with a
+sibling `status.json` recording the attempt and last success. Offline sources
+keep their last good files; no remote deletion propagates. Nothing is copied
+into Claude's session tree. The index and live scan discover these directories;
+when a session file occurs on two machines, the longer copy wins once.
+Requests copied into forked histories are also deduplicated by message id,
+keeping the completed response (greatest output count) across files.
+The existing VPS transcript sync can continue alongside these named mirrors.
+
+`server/history-annotations.ts` is the curated list of events served as
+`/api/history.annotations`. Add a stable id, unix-second start (inclusive), end
+(exclusive), short label and explanation. Explicit date offsets preserve the
+intended local day across daylight saving changes. Approximate dates must say
+so in the explanation. The T3 entrypoint entry covers about 12 October through
+5 November 2026 inclusive, including the desktop/laptop transition; it records
+an observed accounting difference, not an independently established provider
+policy. History shows the explanation, flags overlapping weeks, and shades the
+range on the weekly chart. Future launches or mid-week redeemed resets can use
+the same structure without changing the UI.

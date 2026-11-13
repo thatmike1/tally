@@ -5,4 +5,6 @@ Description=sample the Claude account usage meters into tally's limits log
 
 [Service]
 Type=oneshot
+# optional named transcript sources; override in a service drop-in
+Environment=CLAUDE_SOURCES=
 ExecStart=@TALLY_DIR@/sampler/usage-sample.py

@@ -19,3 +19,17 @@ describe('dayTicks', () => {
     expect(dayTicks(FROM + 3600, FROM + 4 * DAY + 3600, 1400)).toHaveLength(4)
   })
 })
+
+it('renders the known era as a labelled band on the weekly chart', async () => {
+  const { renderToStaticMarkup } = await import('react-dom/server')
+  const { createElement } = await import('react')
+  const { CostPerPercentChart } = await import('./charts')
+  const { claudeHistory } = await import('../../../server/history-claude')
+  const { HISTORY_ANNOTATIONS } = await import('../../../server/history-annotations')
+  const history = await claudeHistory({ home: '/nonexistent/tally-test', now: 1794560000 })
+  history.since = HISTORY_ANNOTATIONS[0]!.start - 86400
+  const html = renderToStaticMarkup(createElement(CostPerPercentChart, { history }))
+  expect(html).toContain('T3 entrypoint penalty')
+  expect(html).toContain('opacity="0.05"')
+  expect(html).toContain('laptop fixed 5 Nov')
+})

@@ -26,6 +26,7 @@ import {
   parseTranscript,
   projectsRoot,
   transcriptFiles,
+  uniqueRequests,
   type ParsedTranscript,
   type RequestRecord,
   type SessionMeta,
@@ -528,12 +529,12 @@ export class TranscriptIndex {
         cwd: row.cwd === null || row.cwd === undefined ? null : String(row.cwd),
       })
     }
-    return { records, sessions }
+    return { records: uniqueRequests(records), sessions }
   }
 
   /** every indexed request of one session, parent and subagent files together */
   sessionRecords(sessionId: string): RequestRecord[] {
-    return (this.statements.bySession.all(sessionId) as Record<string, any>[]).map(toRecord)
+    return uniqueRequests((this.statements.bySession.all(sessionId) as Record<string, any>[]).map(toRecord))
   }
 
   /** what the index holds for one transcript file, or null when it has never read it */
